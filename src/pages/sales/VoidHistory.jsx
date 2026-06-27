@@ -16,8 +16,9 @@ export default function VoidHistory() {
   const [expanded, setExpanded] = useState(new Set())
   // Pagination
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
-  const [hasMore, setHasMore] = useState(false)
+  const [limit, setLimit] = useState(25)
+  const [total, setTotal] = useState(0)
+  const [jump, setJump] = useState(1)
   // Date filter
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -27,26 +28,28 @@ export default function VoidHistory() {
       setLoading(true)
       const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
       const params = new URLSearchParams()
-      params.set('limit', String(pageSize))
-      params.set('skip', String((page - 1) * pageSize))
+      params.set('limit', String(limit))
+      params.set('skip', String((page - 1) * limit))
       if (typeFilter) params.set('type', typeFilter)
       if (fromDate) params.set('from', fromDate)
       if (toDate) params.set('to', toDate)
       const res = await fetch(`${API}/api/voids?${params.toString()}`, { headers })
       if (res.ok) {
         const data = await res.json()
-        const list = Array.isArray(data) ? data : []
+        const list = Array.isArray(data?.rows) ? data.rows : (Array.isArray(data) ? data : [])
         setRows(list)
-        setHasMore(list.length === pageSize)
+        setTotal(data?.total || list.length)
         return
       }
     } catch {}
     setRows([])
-    setHasMore(false)
+    setTotal(0)
     setLoading(false)
   }
 
-  useEffect(() => { loadServer().finally(()=>setLoading(false)) }, [page, pageSize, typeFilter, fromDate, toDate])
+  const totalPages = Math.max(1, Math.ceil(total / limit)) || 1
+
+  useEffect(() => { loadServer().finally(()=>setLoading(false)) }, [page, limit, typeFilter, fromDate, toDate])
 
   const staffWaiterName = (id) => (state.staff || []).find(s => s.id === id)?.name || '-'
 
@@ -95,7 +98,7 @@ export default function VoidHistory() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
           <span className="text-3xl">🚫</span> Void History
         </h1>
@@ -130,7 +133,7 @@ export default function VoidHistory() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-4 text-sm">
+        <div className="mt-4 flex flex-wrap gap-2 sm:gap-4 text-sm">
           <div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <span className="text-blue-800 dark:text-blue-200 font-medium">Dine-in: {counts['Dine-in']||0}</span>
           </div>
@@ -143,19 +146,10 @@ export default function VoidHistory() {
           <div className="px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
             <span className="text-orange-800 dark:text-orange-200 font-medium">Drive-thru: {counts['Drive-thru']||0}</span>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Page size</label>
-            <select value={pageSize} onChange={e=>{ setPage(1); setPageSize(Number(e.target.value)||25) }} className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600">
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </div>
         </div>
       </div>
 
-      <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
             <tr>
@@ -246,11 +240,26 @@ export default function VoidHistory() {
       </div>
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <div className="text-sm text-gray-600 dark:text-gray-400">Page {page}</div>
-        <div className="flex gap-2">
-          <button type="button" className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium transition-colors disabled:opacity-50" disabled={loading || page<=1} onClick={()=>setPage(p=>Math.max(1, p-1))}>← Prev</button>
-          <button type="button" className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium transition-colors disabled:opacity-50" disabled={loading || !hasMore} onClick={()=>setPage(p=>p+1)}>Next →</button>
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {totalPages} • {total} total</span>
+          <div className="flex items-center gap-1">
+            <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+            <select value={limit} onChange={e=>{ setPage(1); setLimit(Number(e.target.value)||25); setJump(1) }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button disabled={page<=1 || loading} onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+          <button disabled={page>=totalPages || loading} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+          <div className="flex items-center gap-1 ml-2">
+            <input type="number" min={1} max={totalPages} value={jump} onChange={e=>setJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+            <button disabled={loading || totalPages<1} onClick={()=>setPage(Math.min(totalPages, Math.max(1, Number(jump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+          </div>
         </div>
       </div>
     </div>

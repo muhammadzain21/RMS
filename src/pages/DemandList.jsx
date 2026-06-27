@@ -391,7 +391,7 @@ export default function DemandList() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {totalPages} • {total} total</span>
           <div className="flex items-center gap-1">

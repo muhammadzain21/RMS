@@ -32,7 +32,8 @@ export default function AddStaffTab({
     shiftId: ''
   });
   const [customPos, setCustomPos] = useState('');
-  
+  const [jump, setJump] = useState(1);
+
   // Biometric device state
   const [deviceUsers, setDeviceUsers] = useState([]);
   const [deviceLoading, setDeviceLoading] = useState(false);
@@ -194,7 +195,7 @@ export default function AddStaffTab({
     <div className="space-y-6">
       {/* Header Card */}
       <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-lg p-4 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">👤 Staff Directory</h2>
             <p className="text-purple-100 text-sm">Manage your team members and their details</p>
@@ -366,15 +367,6 @@ export default function AddStaffTab({
           </div>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-          <select
-            value={pagination.limit}
-            onChange={(e) => setPagination(prev => ({ ...prev, limit: parseInt(e.target.value), page: 1 }))}
-            className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-          >
-            {[10, 20, 50, 100].map(l => (
-              <option key={l} value={l}>{l} per page</option>
-            ))}
-          </select>
           <button
             className="flex items-center gap-2 px-5 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all duration-200"
             onClick={handleAdd}
@@ -474,41 +466,27 @@ export default function AddStaffTab({
       )}
 
       {/* Pagination Controls */}
-      {pagination.pages > 1 && (
-        <div className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4 mt-6">
-          <div className="text-sm text-slate-500">
-            Showing {staff.length} of {pagination.total} staff
+      {pagination.total > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {pagination.page} of {pagination.pages} • {pagination.total} total</span>
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+              <select value={pagination.limit} onChange={e=>{ setPagination(prev => ({ ...prev, limit: parseInt(e.target.value), page: 1 })); setJump(1); }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              disabled={pagination.page <= 1}
-              onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            >
-              Previous
-            </button>
-            <div className="flex items-center gap-1">
-              {[...Array(pagination.pages)].map((_, i) => (
-                <button
-                  key={i + 1}
-                  onClick={() => setPagination(prev => ({ ...prev, page: i + 1 }))}
-                  className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${
-                    pagination.page === i + 1
-                      ? 'bg-purple-500 text-white shadow-sm'
-                      : 'hover:bg-slate-100 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
+            <button disabled={pagination.page<=1} onClick={()=>setPagination(prev => ({ ...prev, page: prev.page - 1 }))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+            <button disabled={pagination.page>=pagination.pages} onClick={()=>setPagination(prev => ({ ...prev, page: prev.page + 1 }))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+            <div className="flex items-center gap-1 ml-2">
+              <input type="number" min={1} max={pagination.pages} value={jump} onChange={e=>setJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+              <button disabled={pagination.pages<1} onClick={()=>setPagination(prev => ({ ...prev, page: Math.min(pagination.pages, Math.max(1, Number(jump)||1)) }))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
             </div>
-            <button
-              disabled={pagination.page >= pagination.pages}
-              onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            >
-              Next
-            </button>
           </div>
         </div>
       )}

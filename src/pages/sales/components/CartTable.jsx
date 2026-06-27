@@ -2,7 +2,7 @@ import React from 'react'
 
 export default function CartTable({ items = [], menu = [], decQty, incQty, updateItem, removeItem, lineTotal, onEditItem }) {
   return (
-    <div className="border-2 border-indigo-200 rounded-lg overflow-hidden max-w-full bg-gradient-to-br from-indigo-50/80 to-white dark:from-indigo-950/30 dark:to-gray-900 dark:border-indigo-800 shadow-sm">
+    <div className="border-2 border-indigo-200 rounded-lg overflow-x-auto max-w-full bg-gradient-to-br from-indigo-50/80 to-white dark:from-indigo-950/30 dark:to-gray-900 dark:border-indigo-800 shadow-sm">
       <div className="hidden md:grid grid-cols-12 bg-gradient-to-r from-indigo-100 to-indigo-50 dark:from-indigo-900/60 dark:to-indigo-950/40 dark:text-indigo-100 text-xs font-bold min-w-0 border-b-2 border-indigo-200 dark:border-indigo-800">
         <div className="col-span-6 px-2 py-2 border-r border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-100">NAME</div>
         <div className="col-span-2 px-2 py-2 border-r border-indigo-200 dark:border-indigo-800 text-center text-indigo-900 dark:text-indigo-100">QTY</div>

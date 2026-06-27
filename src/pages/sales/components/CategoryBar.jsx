@@ -9,23 +9,37 @@ export default function CategoryBar({
 }) {
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap content-start gap-1.5 overflow-y-auto max-h-36 md:max-h-48 lg:max-h-44 py-2 px-2 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 shadow-sm">
+      <div className="flex flex-wrap content-start gap-2 overflow-y-auto max-h-36 md:max-h-48 lg:max-h-44 py-2 px-2 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 shadow-sm">
         {(categories || []).map((cat, i) => {
-          const label = String(cat)
-          const isActive = String(selectedCategory || '') === label
+          const isObj = cat && typeof cat === 'object'
+          const name = String(isObj ? cat.name || '' : cat)
+          const imageUrl = isObj ? cat.imageUrl || '' : ''
+          const isActive = String(selectedCategory || '') === name
           return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onSelectCategory(label)}
-              className={`min-w-[72px] min-h-[40px] sm:min-w-[84px] sm:min-h-[44px] md:min-w-[96px] md:min-h-[48px] px-2 py-1 rounded-lg border-2 text-center select-none transition-all duration-200 ${isActive ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white border-blue-500 shadow-md shadow-blue-500/20 scale-105' : 'bg-white dark:bg-gray-800 dark:text-gray-100 border-gray-200 dark:border-gray-600 shadow-sm hover:bg-blue-50 hover:border-blue-300 hover:shadow-md dark:hover:bg-gray-700'}`}
-            >
-              <div className="flex items-center justify-center gap-1">
-                {isActive && <span className="text-blue-200 text-xs">✓</span>}
-                <span className="font-bold text-[11px] sm:text-xs uppercase leading-tight break-words">{label}</span>
-              </div>
-              <div className={`${isActive ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'} text-[9px] mt-0.5`}>Category</div>
-            </button>
+            <div key={i} className="flex flex-col items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => onSelectCategory(name)}
+                className={`w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] md:w-[96px] md:h-[96px] rounded-lg border-2 overflow-hidden select-none transition-all duration-200 p-0 ${isActive ? 'border-blue-500 shadow-md shadow-blue-500/20 scale-105' : 'border-gray-200 dark:border-gray-600 shadow-sm hover:border-blue-300 hover:shadow-md'}`}
+                title={name}
+              >
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.target.style.display = 'none' }}
+                  />
+                ) : (
+                  <div className={`w-full h-full flex items-center justify-center font-bold text-[10px] sm:text-xs uppercase leading-tight px-1 ${isActive ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-100 hover:bg-blue-50 dark:hover:bg-gray-700'}`}>
+                    {name}
+                  </div>
+                )}
+              </button>
+              {imageUrl && (
+                <span className="font-bold text-[10px] sm:text-[11px] uppercase leading-tight break-words text-center text-gray-700 dark:text-gray-200 w-[72px] sm:w-[84px] md:w-[96px]">{name}</span>
+              )}
+            </div>
           )
         })}
       </div>

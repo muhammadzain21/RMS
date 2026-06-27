@@ -28,6 +28,7 @@ export default function RecallDialog({
   const [limit, setLimit] = useState(10)
   const [pages, setPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const [jump, setJump] = useState(1)
   const [loading, setLoading] = useState(false)
   const [serverRows, setServerRows] = useState([])
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -196,22 +197,27 @@ export default function RecallDialog({
           </table>
         </div>
 
-        <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="text-xs text-gray-500">
-            {canFetch ? (
-              <>Showing {filtered.length} of {total} entries</>
-            ) : (
-              <>Showing {filtered.length} of {(recalls||[]).length} entries</>
-            )}
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pages} • {canFetch ? total : (recalls||[]).length} total</span>
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+              <select value={limit} onChange={e=>{ setLimit(parseInt(e.target.value, 10) || 20); setPage(1); setJump(1); }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
-          <div className="flex items-center gap-2 justify-between sm:justify-end">
-            <select value={limit} onChange={e=>setLimit(parseInt(e.target.value, 10) || 20)} className="px-2 py-2 border rounded text-sm bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
-              {[10,20,50,100].map(n => (<option key={n} value={n}>{n}/page</option>))}
-            </select>
-            <button type="button" disabled={page<=1 || loading} onClick={()=>setPage(p=>Math.max(1, p-1))} className="px-3 py-2 rounded border text-sm disabled:opacity-50">Prev</button>
-            <div className="text-sm">{page} / {pages}</div>
-            <button type="button" disabled={page>=pages || loading} onClick={()=>setPage(p=>Math.min(pages, p+1))} className="px-3 py-2 rounded border text-sm disabled:opacity-50">Next</button>
-            <button type="button" onClick={onClose} className="px-3 py-2 rounded border text-sm">Close</button>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={page<=1 || loading} onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+            <button type="button" disabled={page>=pages || loading} onClick={()=>setPage(p=>Math.min(pages,p+1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+            <div className="flex items-center gap-1 ml-2">
+              <input type="number" min={1} max={pages} value={jump} onChange={e=>setJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+              <button type="button" disabled={pages<1} onClick={()=>setPage(Math.min(pages, Math.max(1, Number(jump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+            </div>
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 font-medium transition-all dark:text-gray-100 ml-2">Close</button>
           </div>
         </div>
       </div>

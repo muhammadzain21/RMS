@@ -22,6 +22,7 @@ export default function CashOpening() {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [total, setTotal] = useState(0)
+  const [jump, setJump] = useState(1)
   const [loading, setLoading] = useState(false)
   const [serverRows, setServerRows] = useState([])
 
@@ -167,14 +168,14 @@ export default function CashOpening() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
           <span className="text-3xl">💰</span> Cash Opening
         </h1>
       </div>
 
       <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Record Opening Cash</h2>
           {isTodayClosed && (
             <span className="px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">🔒 Today Closed</span>
@@ -213,7 +214,7 @@ export default function CashOpening() {
       <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Cash Opening History</h2>
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="sm:ml-auto flex flex-wrap gap-2">
             <button onClick={exportCSV} className="px-3 py-1.5 text-sm rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors font-medium border border-emerald-200 dark:border-emerald-700">📊 CSV</button>
             <button onClick={exportPDF} className="px-3 py-1.5 text-sm rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium border border-red-200 dark:border-red-700">📄 PDF</button>
           </div>
@@ -231,17 +232,6 @@ export default function CashOpening() {
           <div>
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Search</label>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Date, amount, user..." className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div className="ml-auto flex items-end gap-2">
-            <select value={limit} onChange={e => { setLimit(Number(e.target.value) || 10); setPage(1) }} className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-sm">
-              <option value={10}>10 per page</option>
-              <option value={20}>20 per page</option>
-              <option value={50}>50 per page</option>
-              <option value={100}>100 per page</option>
-            </select>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Page {page} / {pageCount}</div>
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">←</button>
-            <button onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={page >= pageCount} className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">→</button>
           </div>
         </div>
 
@@ -282,6 +272,31 @@ export default function CashOpening() {
             </tfoot>
           </table>
         </div>
+
+        {total > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pageCount} • {total} total</span>
+              <div className="flex items-center gap-1">
+                <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+                <select value={limit} onChange={e=>{ setLimit(Number(e.target.value) || 10); setPage(1); setJump(1) }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button disabled={page<=1 || loading} onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+              <button disabled={page>=pageCount || loading} onClick={()=>setPage(p=>Math.min(pageCount,p+1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+              <div className="flex items-center gap-1 ml-2">
+                <input type="number" min={1} max={pageCount} value={jump} onChange={e=>setJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+                <button disabled={loading || pageCount<1} onClick={()=>setPage(Math.min(pageCount, Math.max(1, Number(jump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       {ConfirmDialog}
     </div>

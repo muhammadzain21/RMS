@@ -51,8 +51,13 @@ export default function SalesNew() {
 
   // Left column UI state
   const categories = useMemo(() => (state.categories||[])
-    .filter(c => c && c.active !== false)
-    .map(c => c.name), [state.categories])
+    .filter(c => c && c.active !== false && c.showOnPos !== false)
+    .sort((a, b) => {
+      const orderA = Number(a.sortOrder ?? 0)
+      const orderB = Number(b.sortOrder ?? 0)
+      if (orderA !== orderB) return orderA - orderB
+      return String(a.name||'').localeCompare(String(b.name||''))
+    }), [state.categories])
   const [selectedCategory, setSelectedCategory] = useState('')
   const [search, setSearch] = useState('')
 

@@ -19,11 +19,15 @@ router.get('/', async (req, res, next) => {
         ...(to ? { $lte: new Date(`${to}T23:59:59.999Z`) } : {})
       }
     }
+    const total = await Void.countDocuments(q)
     const rows = await Void.find(q).sort({ createdAt: -1 }).skip(Number(skip||0)).limit(Number(limit||200))
-    res.json(rows.map(r => {
-      const obj = r.toObject({ flattenMaps: true })
-      return { ...obj, id: r.id }
-    }))
+    res.json({
+      rows: rows.map(r => {
+        const obj = r.toObject({ flattenMaps: true })
+        return { ...obj, id: r.id }
+      }),
+      total
+    })
   } catch (e) { next(e) }
 })
 

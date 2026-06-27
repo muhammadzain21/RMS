@@ -9,7 +9,7 @@ export default function Categories() {
   const { token } = useAuth()
   const { confirm, ConfirmDialog } = useConfirm()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
-  const [form, setForm] = useState({ name: '', showOnPos: true, active: true })
+  const [form, setForm] = useState({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0 })
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
@@ -37,11 +37,17 @@ export default function Categories() {
 
   const reset = () => {
     setEditingId(null)
-    setForm({ name: '', showOnPos: true, active: true })
+    setForm({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0 })
   }
   const onEdit = (row) => {
     setEditingId(row.id)
-    setForm({ name: row.name||'', showOnPos: !!row.showOnPos, active: row.active!==false })
+    setForm({
+      name: row.name || '',
+      showOnPos: !!row.showOnPos,
+      active: row.active !== false,
+      imageUrl: row.imageUrl || '',
+      sortOrder: Number(row.sortOrder || 0),
+    })
   }
 
   const onSubmit = async (e) => {
@@ -111,36 +117,77 @@ export default function Categories() {
 
   return (
     <div className="space-y-4 w-full">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
           <span className="text-3xl">📂</span> Categories
         </h1>
       </div>
 
       <form onSubmit={onSubmit} className="p-5 rounded-xl border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50/60 to-white dark:from-purple-950/30 dark:to-gray-900 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <input placeholder="📛 Category Name" className="px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 transition-all" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} />
-          <label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all">
-            <input type="checkbox" checked={!!form.showOnPos} onChange={e=>setForm(v=>({...v,showOnPos:e.target.checked}))} className="w-5 h-5 text-purple-500 rounded focus:ring-purple-500" />
-            <span className="font-medium">📱 Display on POS</span>
-          </label>
-          <label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all">
-            <input type="checkbox" checked={!!form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))} className="w-5 h-5 text-purple-500 rounded focus:ring-purple-500" />
-            <span className="font-medium">✅ Active</span>
-          </label>
-          <div className="flex gap-2">
-            <button disabled={loading} className="flex-1 px-4 py-2.5 bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">{editingId ? '💾 Update' : '➕ Add'}</button>
-            {editingId && <button type="button" disabled={loading} onClick={reset} className="px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-all disabled:opacity-50">❌</button>}
+        <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">📛 Name</label>
+            <input placeholder="Category Name" className="w-full px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 transition-all" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">📱 Display on POS</label>
+            <label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all h-[46px] w-full">
+              <input type="checkbox" checked={!!form.showOnPos} onChange={e=>setForm(v=>({...v,showOnPos:e.target.checked}))} className="w-5 h-5 text-purple-500 rounded focus:ring-purple-500" />
+              <span className="font-medium">Show on POS</span>
+            </label>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">✅ Status</label>
+            <label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all h-[46px] w-full">
+              <input type="checkbox" checked={!!form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))} className="w-5 h-5 text-purple-500 rounded focus:ring-purple-500" />
+              <span className="font-medium">Active</span>
+            </label>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">#️⃣ Sort Order</label>
+            <input type="number" placeholder="0" className="w-full px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 transition-all" value={form.sortOrder} onChange={e=>setForm(v=>({...v,sortOrder:e.target.value}))} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">📷 Image</label>
+            <div className="flex items-center gap-2 h-[46px]">
+              <div className="relative flex-1">
+                <input type="file" accept="image/*" className="hidden" id="cat-image-upload" onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = () => setForm(v => ({ ...v, imageUrl: String(reader.result) }))
+                  reader.readAsDataURL(file)
+                }} />
+                <label htmlFor="cat-image-upload" className="inline-flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-700 border-2 border-purple-200 dark:border-purple-700 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all cursor-pointer w-full justify-center">
+                  <span>📷</span> {form.imageUrl ? 'Change' : 'Add'}
+                </label>
+              </div>
+              {form.imageUrl && <button type="button" onClick={() => setForm(v => ({ ...v, imageUrl: '' }))} className="px-3 py-2.5 border-2 border-red-200 dark:border-red-700 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">✕</button>}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">⚡ Action</label>
+            <div className="flex gap-2">
+              <button disabled={loading} className="flex-1 px-4 py-2.5 bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">{editingId ? '💾 Update' : '➕ Add'}</button>
+              {editingId && <button type="button" disabled={loading} onClick={reset} className="px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-all disabled:opacity-50">❌</button>}
+            </div>
           </div>
         </div>
+        {form.imageUrl && (
+          <div className="mt-3">
+            <img src={form.imageUrl} alt="Category preview" className="h-20 w-auto rounded-lg border-2 border-purple-200 dark:border-purple-700 shadow-sm" />
+          </div>
+        )}
       </form>
 
-      <div className="border-2 border-purple-200 dark:border-purple-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-purple-200 dark:border-purple-800 rounded-xl overflow-x-auto shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
             <tr>
+              <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">#️⃣ Order</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">📛 Name</th>
-              <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">📱 Display on POS</th>
+              <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">� Image</th>
+              <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">�� Display on POS</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">✅ Active</th>
               <th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">⚙️ Actions</th>
             </tr>
@@ -148,7 +195,15 @@ export default function Categories() {
           <tbody>
             {paginatedItems.map(r => (
               <tr key={r.id} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <td className="p-3 text-gray-600 dark:text-gray-400">{Number(r.sortOrder||0)}</td>
                 <td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td>
+                <td className="p-3">
+                  {r.imageUrl ? (
+                    <img src={r.imageUrl} alt={r.name} className="h-10 w-auto rounded border border-gray-200 dark:border-gray-600" />
+                  ) : (
+                    <span className="text-gray-400 text-xs">—</span>
+                  )}
+                </td>
                 <td className="p-3">{r.showOnPos ? <span className="text-green-600 dark:text-green-400">✅ Yes</span> : <span className="text-gray-400">❌ No</span>}</td>
                 <td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">✅ Yes</span> : <span className="text-gray-400">❌ No</span>}</td>
                 <td className="p-3 text-center">
@@ -161,7 +216,7 @@ export default function Categories() {
             ))}
             {!items.length && (
               <tr>
-                <td colSpan={4} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={6} className="p-8 text-center text-gray-500 dark:text-gray-400">
                   <div className="text-4xl mb-2">📂</div>
                   <div>No categories found</div>
                 </td>
@@ -172,7 +227,7 @@ export default function Categories() {
       </div>
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pages} • {items.length} total</span>
           <div className="flex items-center gap-1">

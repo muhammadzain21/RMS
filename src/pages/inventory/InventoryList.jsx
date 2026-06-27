@@ -187,7 +187,7 @@ export default function InventoryList() {
         <button onClick={()=>setTab('expiring')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='expiring' ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-gray-200 dark:border-gray-600'}`}>📅 Expiring Soon ({expirySoonCount})</button>
         <button onClick={()=>setTab('out')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='out' ? 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 border border-gray-200 dark:border-gray-600'}`}>❌ Out of Stock ({outOfStockCount})</button>
       </div>
-      <div className="border-2 border-blue-200 dark:border-blue-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-blue-200 dark:border-blue-800 rounded-xl overflow-x-auto shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
             <tr>
@@ -275,7 +275,7 @@ export default function InventoryList() {
       </div>
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pages} • {filteredItems.length} total</span>
           <div className="flex items-center gap-1">

@@ -19,7 +19,7 @@ export default function Cashbook() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">Cashbook (Returns by Payment Method)</h1>
         <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="px-3 py-2 border rounded" />
       </div>

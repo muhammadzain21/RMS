@@ -110,8 +110,10 @@ export default function Consumption() {
   // Pagination state
   const [itemsPage, setItemsPage] = useState(1)
   const [itemsPageSize, setItemsPageSize] = useState(15)
+  const [itemsJump, setItemsJump] = useState(1)
   const [consPage, setConsPage] = useState(1)
   const [consPageSize, setConsPageSize] = useState(15)
+  const [consJump, setConsJump] = useState(1)
   // Item-wise filter
   const [itemFilter, setItemFilter] = useState('')
   const [applyFilterToConsumption, setApplyFilterToConsumption] = useState(true)
@@ -276,7 +278,7 @@ export default function Consumption() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
           <span className="text-3xl">📊</span> Daily Sales & Consumption
         </h1>
@@ -289,7 +291,7 @@ export default function Consumption() {
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:text-white border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-blue-500" />
           </div>
           <button onClick={refreshData} className="px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors font-medium border border-blue-200 dark:border-blue-700">🔄 Refresh</button>
-          <div className="ml-auto flex gap-2">
+          <div className="sm:ml-auto flex gap-2">
             <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors font-medium border border-emerald-200 dark:border-emerald-700">📊 CSV</button>
             <button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium border border-red-200 dark:border-red-700">📄 PDF</button>
           </div>
@@ -351,17 +353,27 @@ export default function Consumption() {
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between gap-2 text-sm p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-600 dark:text-gray-400">Rows per page</span>
-            <select value={itemsPageSize} onChange={e=>{ setItemsPageSize(Number(e.target.value)); setItemsPage(1) }} className="px-3 py-1 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
-              {[10,15,20,50,100].map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {itemsPage} of {itemsTotalPages} • {filteredItemRows.length} total</span>
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+              <select value={itemsPageSize} onChange={e=>{ setItemsPageSize(Number(e.target.value)); setItemsPage(1); setItemsJump(1) }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+                <option value={10}>10</option>
+                <option value={15}>15</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-600 dark:text-gray-400">{itemsStart + 1}-{Math.min(itemsStart + itemsPageSize, filteredItemRows.length)} of {filteredItemRows.length}</span>
-            <button className="px-3 py-1 border rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors" disabled={itemsPage<=1} onClick={()=>setItemsPage(p=>Math.max(1,p-1))}>← Prev</button>
-            <button className="px-3 py-1 border rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors" disabled={itemsPage>=itemsTotalPages} onClick={()=>setItemsPage(p=>Math.min(itemsTotalPages,p+1))}>Next →</button>
+            <button disabled={itemsPage<=1} onClick={()=>setItemsPage(p=>Math.max(1,p-1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+            <button disabled={itemsPage>=itemsTotalPages} onClick={()=>setItemsPage(p=>Math.min(itemsTotalPages,p+1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+            <div className="flex items-center gap-1 ml-2">
+              <input type="number" min={1} max={itemsTotalPages} value={itemsJump} onChange={e=>setItemsJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+              <button disabled={itemsTotalPages<1} onClick={()=>setItemsPage(Math.min(itemsTotalPages, Math.max(1, Number(itemsJump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+            </div>
           </div>
         </div>
       </section>
@@ -400,17 +412,27 @@ export default function Consumption() {
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between gap-2 text-sm p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-600 dark:text-gray-400">Rows per page</span>
-            <select value={consPageSize} onChange={e=>{ setConsPageSize(Number(e.target.value)); setConsPage(1) }} className="px-3 py-1 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
-              {[10,15,20,50,100].map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {consPage} of {consTotalPages} • {filteredConsumptionRows.length} total</span>
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+              <select value={consPageSize} onChange={e=>{ setConsPageSize(Number(e.target.value)); setConsPage(1); setConsJump(1) }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+                <option value={10}>10</option>
+                <option value={15}>15</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-600 dark:text-gray-400">{consStart + 1}-{Math.min(consStart + consPageSize, filteredConsumptionRows.length)} of {filteredConsumptionRows.length}</span>
-            <button className="px-3 py-1 border rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors" disabled={consPage<=1} onClick={()=>setConsPage(p=>Math.max(1,p-1))}>← Prev</button>
-            <button className="px-3 py-1 border rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors" disabled={consPage>=consTotalPages} onClick={()=>setConsPage(p=>Math.min(consTotalPages,p+1))}>Next →</button>
+            <button disabled={consPage<=1} onClick={()=>setConsPage(p=>Math.max(1,p-1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+            <button disabled={consPage>=consTotalPages} onClick={()=>setConsPage(p=>Math.min(consTotalPages,p+1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+            <div className="flex items-center gap-1 ml-2">
+              <input type="number" min={1} max={consTotalPages} value={consJump} onChange={e=>setConsJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+              <button disabled={consTotalPages<1} onClick={()=>setConsPage(Math.min(consTotalPages, Math.max(1, Number(consJump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+            </div>
           </div>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700">

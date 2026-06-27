@@ -71,7 +71,7 @@ export default function MarkAttendanceTab({
     <div className="space-y-6">
       {/* Biometric Status Bar */}
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-2xl">👆</span>
             <div>
@@ -95,7 +95,7 @@ export default function MarkAttendanceTab({
 
       {/* Info Card */}
       <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Mark Attendance</h2>
             <p className="text-blue-100 text-sm">

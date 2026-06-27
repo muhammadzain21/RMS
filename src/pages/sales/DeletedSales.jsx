@@ -197,25 +197,25 @@ export default function DeletedSales() {
       <div className="px-4 py-3 rounded-xl bg-rose-50 border-2 border-rose-200 text-rose-900 text-sm flex items-center gap-2">
         <span className="text-lg">ℹ️</span> This page shows sales that have been deleted from the system. These records are kept for audit purposes.
       </div>
-      <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 border-2 border-rose-200 dark:border-rose-800">
-        <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 border-2 border-rose-200 dark:border-rose-800">
+        <div className="flex flex-wrap gap-2">
           <button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📄 PDF</button>
           <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📊 CSV</button>
         </div>
-        <div className="ml-4 flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm font-medium text-rose-700 dark:text-rose-300">📅 From</label>
           <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm font-medium text-rose-700 dark:text-rose-300">📅 To</label>
           <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
         </div>
-        <div className="ml-auto">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search..." className="px-4 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
+        <div className="sm:ml-auto w-full sm:w-auto">
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search..." className="w-full sm:w-auto px-4 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
         </div>
       </div>
 
-      <div className="border-2 border-rose-200 dark:border-rose-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-rose-200 dark:border-rose-800 rounded-xl overflow-x-auto shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
             <tr>
@@ -261,7 +261,7 @@ export default function DeletedSales() {
       </div>
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pages} • {rows.length} total</span>
           <div className="flex items-center gap-1">

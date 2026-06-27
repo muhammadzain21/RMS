@@ -27,30 +27,30 @@ const salesSection = {
 const operationsSection = {
   label: 'Operations',
   items: [
-    //{ path: '/inventory', label: 'Inventory', icon: '📦', order: 15 },
-    //{ path: '/supply/history', label: 'Supply', icon: '🚚', order: 16 },
-    //{ path: '/demands', label: 'Demands', icon: '📋', order: 17 },
-    //{ path: '/suppliers', label: 'Suppliers', icon: '🏭', order: 18 },
+    { path: '/inventory', label: 'Inventory', icon: '📦', order: 15 },
+    { path: '/supply/history', label: 'Supply', icon: '🚚', order: 16 },
+    { path: '/demands', label: 'Demands', icon: '📋', order: 17 },
+    { path: '/suppliers', label: 'Suppliers', icon: '🏭', order: 18 },
     { path: '/customers', label: 'Customers', icon: '👤', order: 19 },
-    //{ path: '/tables', label: 'Tables', icon: '🪑', order: 20 },
+    { path: '/tables', label: 'Tables', icon: '🪑', order: 20 },
     { path: '/menu', label: 'Menu', icon: '🍔', order: 21, end: true },
     { path: '/menu/categories', label: 'Categories', icon: '🗂️', order: 22 },
-    //{ path: '/menu/recipes', label: 'Recipes', icon: '🧪', order: 23 },
+    { path: '/menu/recipes', label: 'Recipes', icon: '🧪', order: 23 },
     { path: '/sales/consumption', label: 'Consumption', icon: '📊', order: 24 },
-   // { path: '/riders', label: 'Riders', icon: '🏍️', order: 25 },
+    { path: '/riders', label: 'Riders', icon: '🏍️', order: 25 },
   ]
 }
 
-// const staffSection = {
-//   label: 'Staff Management',
-//   items: [
-//     { path: '/staff/mark-attendance', label: 'Mark Attendance', icon: '✓', order: 26 },
-//     { path: '/staff/add', label: 'Add Staff', icon: '👤', order: 27 },
-//     { path: '/staff/daily', label: 'Daily View', icon: '📆', order: 28 },
-//     { path: '/staff/monthly', label: 'Monthly View', icon: '📊', order: 29 },
-//     { path: '/staff/settings', label: 'Staff Settings', icon: '⚙️', order: 30 },
-//   ]
-// }
+const staffSection = {
+  label: 'Staff Management',
+  items: [
+    { path: '/staff/mark-attendance', label: 'Mark Attendance', icon: '✓', order: 26 },
+    { path: '/staff/add', label: 'Add Staff', icon: '👤', order: 27 },
+    { path: '/staff/daily', label: 'Daily View', icon: '📆', order: 28 },
+    { path: '/staff/monthly', label: 'Monthly View', icon: '📊', order: 29 },
+    { path: '/staff/settings', label: 'Staff Settings', icon: '⚙️', order: 30 },
+  ]
+}
 
 const financeSection = {
   label: 'Finance',
@@ -68,7 +68,7 @@ const adminSection = {
     { path: '/sidebar-permissions', label: 'Permissions', icon: '🔒', order: 35 },
     { path: '/audit', label: 'Audit', icon: '📝', order: 36 },
     { path: '/settings', label: 'Settings', icon: '⚙️', order: 37 },
-   // { path: '/biometric-settings', label: 'Biometric', icon: '🖐️', order: 38 },
+    { path: '/biometric-settings', label: 'Biometric', icon: '🖐️', order: 38 },
   ]
 }
 
@@ -77,7 +77,7 @@ const adminSection = {
 export const allSections = [
   salesSection,
   operationsSection,
-  // staffSection,
+   staffSection,
   financeSection,
   adminSection,
 ]

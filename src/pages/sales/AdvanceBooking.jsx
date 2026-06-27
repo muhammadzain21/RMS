@@ -207,7 +207,7 @@ export default function AdvanceBooking() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
           <span className="text-3xl">📅</span> Advance Booking
         </h1>
@@ -274,7 +274,7 @@ export default function AdvanceBooking() {
       <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Bookings</h2>
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="sm:ml-auto flex flex-wrap gap-2">
             <button onClick={exportCSV} className="px-3 py-1.5 text-sm rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors font-medium border border-emerald-200 dark:border-emerald-700">📊 CSV</button>
             <button onClick={exportPDF} className="px-3 py-1.5 text-sm rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium border border-red-200 dark:border-red-700">📄 PDF</button>
           </div>

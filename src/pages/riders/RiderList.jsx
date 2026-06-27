@@ -206,7 +206,7 @@ export default function RiderList() {
         </div>
       </form>
 
-      <div className="border-2 border-cyan-200 dark:border-cyan-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-cyan-200 dark:border-cyan-800 rounded-xl overflow-x-auto shadow-sm">
         <DataTable
           columns={[
             { label: '📅 Date', key: 'date' },
@@ -233,7 +233,7 @@ export default function RiderList() {
       {rollup.length > 0 && (
         <div className="space-y-3 p-5 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50/60 to-white dark:from-emerald-950/30 dark:to-gray-900 shadow-sm">
           <h2 className="text-lg font-bold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">📊 Day Close Rollup</h2>
-          <div className="border-2 border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden">
+          <div className="border-2 border-emerald-200 dark:border-emerald-800 rounded-xl overflow-x-auto">
             <DataTable
               columns={[
                 { label: '🏍️ Rider', key: 'riderName' },

@@ -69,7 +69,7 @@ export default function SupplyNew() {
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded" />
           </label>
           <label className="block text-sm md:col-span-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <span>Supplier</span>
               <button type="button" onClick={()=>setModalOpen(true)} className="text-sm px-2 py-1 rounded border">+ Add Supplier</button>
             </div>

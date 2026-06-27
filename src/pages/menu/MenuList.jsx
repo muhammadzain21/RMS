@@ -14,6 +14,7 @@ export default function MenuList() {
     price: 0,
     sortOrder: 0,
     active: true,
+    imageUrl: '',
   })
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -32,7 +33,7 @@ export default function MenuList() {
 
   const reset = () => {
     setEditingId(null);
-    setForm({ name:'', category:'', price:0, sortOrder:0, active:true })
+    setForm({ name:'', category:'', price:0, sortOrder:0, active:true, imageUrl:'' })
   }
   const onEdit = (row) => {
     setEditingId(row.id)
@@ -42,12 +43,13 @@ export default function MenuList() {
       price: Number(row.price||0),
       sortOrder: Number(row.sortOrder||0),
       active: row.active ?? true,
+      imageUrl: row.imageUrl || '',
     })
   }
 
   const onSubmit = async (e) => {
     e.preventDefault()
-    const payload = { ...form, price: Number(form.price||0), sortOrder: Number(form.sortOrder||0) }
+    const payload = { ...form, price: Number(form.price||0), sortOrder: Number(form.sortOrder||0), imageUrl: form.imageUrl || '' }
     if (!payload.name?.trim()) { toast.error('Name is required'); return }
     try {
       setLoading(true)
@@ -164,7 +166,7 @@ export default function MenuList() {
       </div>
 
       <form onSubmit={onSubmit} className="p-5 rounded-xl border-2 border-orange-200 dark:border-orange-800 bg-gradient-to-br from-orange-50/60 to-white dark:from-orange-950/30 dark:to-gray-900 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">🍔 Item Name</label>
             <input placeholder="e.g. Zinger Burger" className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-orange-500 transition-all" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} />
@@ -188,10 +190,28 @@ export default function MenuList() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">✅ Status</label>
-            <label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all h-[46px]">
+            <label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all h-[46px] w-full">
               <input type="checkbox" checked={!!form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))} className="w-5 h-5 text-orange-500 rounded focus:ring-orange-500" />
               <span className="font-medium">Active</span>
             </label>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">📷 Image</label>
+            <div className="flex items-center gap-2 h-[46px]">
+              <div className="relative flex-1">
+                <input type="file" accept="image/*" className="hidden" id="menu-image-upload" onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = () => setForm(v => ({ ...v, imageUrl: String(reader.result) }))
+                  reader.readAsDataURL(file)
+                }} />
+                <label htmlFor="menu-image-upload" className="inline-flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-700 border-2 border-orange-200 dark:border-orange-700 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all cursor-pointer w-full justify-center">
+                  <span>📷</span> {form.imageUrl ? 'Change' : 'Add'}
+                </label>
+              </div>
+              {form.imageUrl && <button type="button" onClick={() => setForm(v => ({ ...v, imageUrl: '' }))} className="px-3 py-2.5 border-2 border-red-200 dark:border-red-700 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">✕</button>}
+            </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">⚡ Action</label>
@@ -201,14 +221,20 @@ export default function MenuList() {
             </div>
           </div>
         </div>
+        {form.imageUrl && (
+          <div className="mt-3">
+            <img src={form.imageUrl} alt="Menu item preview" className="h-20 w-auto rounded-lg border-2 border-orange-200 dark:border-orange-700 shadow-sm" />
+          </div>
+        )}
       </form>
 
-      <div className="border-2 border-orange-200 dark:border-orange-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-orange-200 dark:border-orange-800 rounded-xl overflow-x-auto shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
             <tr>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">#️⃣ Order</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">🍔 Name</th>
+              <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">📷 Image</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">📂 Category</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">💰 Price</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">✅ Active</th>
@@ -220,6 +246,13 @@ export default function MenuList() {
               <tr key={r.id || idx} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                 <td className="p-3 text-gray-600 dark:text-gray-400">{Number(r.sortOrder||0)}</td>
                 <td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td>
+                <td className="p-3">
+                  {r.imageUrl ? (
+                    <img src={r.imageUrl} alt={r.name} className="h-10 w-auto rounded border border-gray-200 dark:border-gray-600" />
+                  ) : (
+                    <span className="text-gray-400 text-xs">—</span>
+                  )}
+                </td>
                 <td className="p-3 text-gray-600 dark:text-gray-400">{r.category}</td>
                 <td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.price||0).toLocaleString()}</td>
                 <td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td>
@@ -233,7 +266,7 @@ export default function MenuList() {
             ))}
             {!items.length && (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">
                   <div className="text-4xl mb-2">🍔</div>
                   <div>No menu items found</div>
                 </td>
@@ -244,7 +277,7 @@ export default function MenuList() {
       </div>
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pages} • {items.length} total</span>
           <div className="flex items-center gap-1">

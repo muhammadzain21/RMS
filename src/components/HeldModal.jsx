@@ -11,6 +11,7 @@ export default function HeldModal({
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [jump, setJump] = useState(1)
 
   const filtered = useMemo(() => {
     let rows = held
@@ -42,14 +43,6 @@ export default function HeldModal({
         <div className="flex items-center gap-2 ml-auto">
           <label className="text-sm">Search:</label>
           <input value={search} onChange={e=>{setSearch(e.target.value); setPage(1)}} className="border rounded px-2 py-1.5" placeholder="Search" />
-        </div>
-
-        <div className="flex items-center gap-2 text-sm">
-          <label>Show</label>
-          <select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value)); setPage(1)}} className="border rounded px-2 py-1">
-            {[10,20,50].map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <span>entries</span>
         </div>
 
         <div className="overflow-auto border rounded">
@@ -89,12 +82,26 @@ export default function HeldModal({
           </table>
         </div>
 
-        <div className="flex items-center justify-between text-sm">
-          <div>Showing {Math.min((page-1)*pageSize+1, filtered.length)} to {Math.min(page*pageSize, filtered.length)} of {filtered.length} entries</div>
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {totalPages} • {filtered.length} total</span>
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+              <select value={pageSize} onChange={e=>{ setPageSize(Number(e.target.value)); setPage(1); setJump(1) }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
-            <button type="button" disabled={page<=1} className="px-3 py-1 border rounded disabled:opacity-50" onClick={()=>setPage(p=>Math.max(1,p-1))}>Previous</button>
-            <div>{page}</div>
-            <button type="button" disabled={page>=totalPages} className="px-3 py-1 border rounded disabled:opacity-50" onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Next</button>
+            <button type="button" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+            <button type="button" disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+            <div className="flex items-center gap-1 ml-2">
+              <input type="number" min={1} max={totalPages} value={jump} onChange={e=>setJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+              <button type="button" disabled={totalPages<1} onClick={()=>setPage(Math.min(totalPages, Math.max(1, Number(jump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+            </div>
           </div>
         </div>
       </div>

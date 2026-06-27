@@ -34,7 +34,7 @@ export default function CustomerProfile() {
   if (!customer) {
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <h1 className="text-xl font-semibold">Customer</h1>
           <button onClick={()=>navigate('/customers')} className="px-3 py-2 rounded border">Back</button>
         </div>
@@ -45,7 +45,7 @@ export default function CustomerProfile() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Customer Profile</h1>
         <div className="flex items-center gap-2">
           <button onClick={()=>navigate('/customers')} className="px-3 py-2 rounded border">Back</button>

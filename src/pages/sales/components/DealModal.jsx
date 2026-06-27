@@ -15,7 +15,7 @@ export default function DealModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-3xl bg-white dark:bg-gray-900 border rounded p-4 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div className="text-lg font-semibold">Modifier Groups</div>
           <div className="flex items-center gap-2 text-sm">
             <span>Qty</span>

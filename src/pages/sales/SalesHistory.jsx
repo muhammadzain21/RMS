@@ -408,17 +408,17 @@ export default function SalesHistory() {
           <span className="text-lg">🔒</span> Selected date is closed. Deleting sales for this date is disabled.
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
-        <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
+        <div className="flex flex-wrap gap-2">
           <button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📄 PDF</button>
           <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📊 CSV</button>
           <button onClick={bulkPrint} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">🖨️ Bulk Print</button>
         </div>
-        <div className="ml-4 flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm font-medium text-indigo-700 dark:text-indigo-300">📅 Date</label>
           <input type="date" value={date} onChange={e => { setDate(e.target.value); setPage(1); }} className="px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" />
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm font-medium text-indigo-700 dark:text-indigo-300">💳 Mode</label>
           <select value={paymentFilter} onChange={e => { setPaymentFilter(e.target.value); setPage(1); }} className="px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all">
             <option value="">All Modes</option>
@@ -427,12 +427,12 @@ export default function SalesHistory() {
             <option value="complimentary">Personal</option>
           </select>
         </div>
-        <div className="ml-auto">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search..." className="px-4 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" />
+        <div className="sm:ml-auto w-full sm:w-auto">
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search..." className="w-full sm:w-auto px-4 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" />
         </div>
       </div>
 
-      <div className="border-2 border-indigo-200 dark:border-indigo-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-indigo-200 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
             <tr>
@@ -491,7 +491,7 @@ export default function SalesHistory() {
       </div>
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pages} • {rows.length} total</span>
           <div className="flex items-center gap-1">

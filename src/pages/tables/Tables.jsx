@@ -180,21 +180,21 @@ export default function Tables() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">Tables</h1>
       </div>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-end gap-2">
         <button onClick={()=>setAddOpen(true)} className="px-3 py-2 rounded border bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800">Add Table</button>
-        <label className="text-sm">
+        <label className="text-sm flex flex-col">
           <span className="text-sm">Date</span>
           <input type="date" className="mt-1 px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600" value={selectedDate} onChange={e=>{ setSelectedDate(e.target.value); setFromDate(''); setToDate('') }} />
         </label>
-        <div className="flex items-end gap-2">
-          <label className="text-sm">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm flex flex-col">
             <span className="text-sm">From</span>
             <input type="date" className="mt-1 px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600" value={fromDate} onChange={e=>{ setFromDate(e.target.value); setSelectedDate('') }} />
           </label>
-          <label className="text-sm">
+          <label className="text-sm flex flex-col">
             <span className="text-sm">To</span>
             <input type="date" className="mt-1 px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600" value={toDate} onChange={e=>{ setToDate(e.target.value); setSelectedDate('') }} />
           </label>
@@ -223,12 +223,12 @@ export default function Tables() {
             URL.revokeObjectURL(url)
           }} className="px-3 py-2 rounded border bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900 dark:text-green-200 dark:hover:bg-green-800">Export CSV</button>
         </div>
-        <div className="ml-auto">
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." className="px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600" />
+        <div className="sm:ml-auto w-full sm:w-auto">
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." className="w-full sm:w-auto px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600" />
         </div>
       </div>
 
-      <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
+      <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
             <tr>
@@ -292,7 +292,7 @@ export default function Tables() {
       </div>
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {pages} • {rows.length} total</span>
           <div className="flex items-center gap-1">

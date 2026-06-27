@@ -118,7 +118,7 @@ export default function BiometricSettings() {
 
         <div className="p-6 space-y-5">
           {/* Toggle */}
-          <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600">
             <div>
               <div className="font-medium text-gray-900 dark:text-white">Enable Biometric</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Turn on to sync attendance from fingerprint device</div>

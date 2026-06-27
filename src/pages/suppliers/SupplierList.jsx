@@ -18,6 +18,7 @@ export default function SupplierList() {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [total, setTotal] = useState(0)
+  const [jump, setJump] = useState(1)
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState([]) // Local state for paginated display
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -126,11 +127,26 @@ export default function SupplierList() {
       />
 
       {/* Pagination controls */}
-      <div className="flex items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700">
-        <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {totalPages}{total ? ` • ${total} total suppliers` : ''}</div>
+      <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {totalPages}{total ? ` • ${total} total suppliers` : ''}</span>
+          <div className="flex items-center gap-1">
+            <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+            <select value={limit} onChange={e=>{ setLimit(Number(e.target.value)); setPage(1); setJump(1); reloadSuppliers(1, search) }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <button disabled={page<=1 || loading} onClick={()=>goToPage(page-1)} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
           <button disabled={page>=totalPages || loading} onClick={()=>goToPage(page+1)} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+          <div className="flex items-center gap-1 ml-2">
+            <input type="number" min={1} max={totalPages} value={jump} onChange={e=>setJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+            <button disabled={loading || totalPages<1} onClick={()=>goToPage(Math.min(totalPages, Math.max(1, Number(jump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+          </div>
         </div>
       </div>
 

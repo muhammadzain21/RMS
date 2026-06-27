@@ -35,7 +35,7 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
     <div className="space-y-6">
       {/* Header Card */}
       <div className="bg-gradient-to-r from-slate-600 to-slate-700 rounded-xl shadow-lg p-4 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Staff Settings</h2>
             <p className="text-slate-300 text-sm">Configure shifts, attendance rules and salary calculations</p>
@@ -109,7 +109,7 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
                         <span>to</span>
                         <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 rounded text-red-700 dark:text-red-400">{formatTime12(shift.checkOut)}</span>
                       </div>
-                      <div className="flex gap-2 ml-auto">
+                      <div className="flex gap-2 sm:ml-auto">
                         <button
                           onClick={() => setEditingShiftId(shift.id)}
                           className="px-3 py-1.5 rounded-lg bg-blue-100 text-blue-600 text-sm hover:bg-blue-200"

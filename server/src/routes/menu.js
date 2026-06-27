@@ -12,7 +12,7 @@ router.get('/', async (req, res, next) => {
   try {
     const q = {}
     if (req.query.active) q.active = req.query.active === 'true'
-    const items = await MenuItem.find(q).sort({ name: 1 })
+    const items = await MenuItem.find(q).sort({ sortOrder: 1, name: 1 })
     res.json(items)
   } catch (e) { next(e) }
 })

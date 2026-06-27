@@ -1,4 +1,3 @@
-import DataTable from '../../components/DataTable.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { useMemo, useState, useEffect } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
@@ -14,6 +13,9 @@ export default function ReturnHistory() {
   const { confirm, ConfirmDialog } = useConfirm()
   const [date, setDate] = useState('')
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [jump, setJump] = useState(1)
   // Removed detail drawer and selected state
 
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -122,6 +124,11 @@ export default function ReturnHistory() {
     toast.success('CSV exported')
   }
 
+  const total = rows.length
+  const totalPages = Math.max(1, Math.ceil(total / limit)) || 1
+  const start = (page - 1) * limit
+  const pagedRows = rows.slice(start, start + limit)
+
   const bulkPrint = () => {
     const win = window.open('', '_blank')
     if (!win) return
@@ -141,7 +148,7 @@ export default function ReturnHistory() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
           <span className="text-3xl">🔄</span> Return History
         </h1>
@@ -165,34 +172,75 @@ export default function ReturnHistory() {
       )}
 
       <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3">
+          <div className="flex flex-wrap gap-2">
             <button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium border border-red-200 dark:border-red-700">📄 PDF</button>
             <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors font-medium border border-emerald-200 dark:border-emerald-700">📊 CSV</button>
             <button onClick={bulkPrint} className="px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors font-medium border border-blue-200 dark:border-blue-700">🖨️ Bulk Print</button>
           </div>
-          <div className="ml-4 flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date Filter</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500" />
           </div>
-          <div className="ml-auto">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search returns..." className="px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 w-64" />
+          <div className="sm:ml-auto w-full sm:w-auto">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search returns..." className="w-full sm:w-64 px-4 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
       </div>
 
-      <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
-        <DataTable
-          columns={cols}
-          data={rows}
-          searchable={false}
-          exportable={false}
-          pageSize={10}
-          pageSizeOptions={[10,25,50,100]}
-          compact
-          maxHeight={520}
-        />
+      <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
+            <tr>
+              {cols.map(c => (
+                <th key={c.key} className="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pagedRows.map(r => (
+              <tr key={r.id} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                {cols.map(c => (
+                  <td key={c.key} className="px-4 py-3">{c.render ? c.render(r) : r[c.key]}</td>
+                ))}
+              </tr>
+            ))}
+            {pagedRows.length === 0 && (
+              <tr>
+                <td colSpan={cols.length} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <div className="text-4xl mb-2">🔄</div>
+                  <div>No returns found</div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
+
+      {total > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-4 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200 dark:border-gray-700 gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Page {page} of {totalPages} • {total} total</span>
+            <div className="flex items-center gap-1">
+              <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+              <select value={limit} onChange={e=>{ setLimit(Number(e.target.value)); setPage(1); setJump(1) }} className="px-2 py-1 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600">
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">← Prev</button>
+            <button disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 font-medium transition-all dark:text-gray-100">Next →</button>
+            <div className="flex items-center gap-1 ml-2">
+              <input type="number" min={1} max={totalPages} value={jump} onChange={e=>setJump(Number(e.target.value)||1)} className="w-16 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-center bg-white dark:bg-gray-800 dark:text-gray-100" />
+              <button disabled={totalPages<1} onClick={()=>setPage(Math.min(totalPages, Math.max(1, Number(jump)||1)))} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Go</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {ConfirmDialog}
     </div>

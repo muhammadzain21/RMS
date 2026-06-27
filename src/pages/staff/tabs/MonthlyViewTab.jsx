@@ -267,7 +267,7 @@ export default function MonthlyViewTab({
     <div className="space-y-6">
       {/* Header Card */}
       <div className="bg-gradient-to-r from-teal-500 to-emerald-500 rounded-xl shadow-lg p-4 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">📊 Monthly Report & Salary</h2>
             <p className="text-teal-100 text-sm">View attendance records and calculate monthly salary</p>
