@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Production build
+dist/
+build/
+out/
+
+# Electron releases
+release/
+
+# Vite cache
+.vite/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+server/.env
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database / Backup
+*.db
+*.sqlite
+*.sqlite3
+data/
+backups/
+
+# Misc
+coverage/
+.cache/
+temp/
+tmp/

@@ -1,0 +1,124 @@
+{
+  "name": "pizza-rms-frontend",
+  "description": "Restaurant management system desktop app (Electron + React + Node server)",
+  "author": "Oresto RMS",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "npm run dev:all",
+    "dev:browser": "npm run dev:client",
+    "dev:client-server": "concurrently -k -n CLIENT,SERVER -c blue,green \"npm:dev:client\" \"npm:dev:server\"",
+    "dev:all": "concurrently -k -n CLIENT,SERVER,ELECTRON -c blue,green,magenta \"npm:dev:client\" \"npm:dev:server\" \"npm:dev:electron:wait\"",
+    "dev:client": "vite",
+    "dev:server": "npm --prefix server run dev",
+    "dev:electron:wait": "wait-on http://localhost:5173 && npm run electron:dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "electron:build": "npm run build && electron-builder",
+    "preelectron:build": "npm --prefix server install --omit=dev --no-audit --no-fund"
+  },
+  "dependencies": {
+    "classnames": "^2.5.1",
+    "date-fns": "^3.6.0",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.10",
+    "vite": "^5.4.2",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "directories": {
+      "output": "release"
+    },
+    "appId": "com.oresto.rms",
+    "productName": "Uncle John's Cafe",
+    "compression": "maximum",
+    "asar": true,
+    "npmRebuild": false,
+    "publish": [],
+    "files": [
+      "dist/**",
+      "electron/**",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "server/",
+        "to": "app/server/",
+        "filter": [
+          "src/**",
+          "package.json",
+          "node_modules/**",
+          "!node_modules/pizza-rms-frontend{,/**}",
+          "!node_modules/**/test{,s}/**",
+          "!node_modules/**/__tests__{,/**}",
+          "!node_modules/**/example{,s}/**",
+          "!node_modules/**/demo{,s}/**",
+          "!node_modules/**/docs{,/**}",
+          "!node_modules/**/*.map",
+          "!node_modules/**/*.md",
+          "!node_modules/**/README{,.*}",
+          "!node_modules/**/CHANGELOG{,.*}",
+          "!node_modules/**/LICENSE{,.*}",
+          "!node_modules/**/*.ts",
+          "!node_modules/**/*.tsx",
+          "!node_modules/**/*.d.ts"
+        ]
+      },
+      {
+        "from": "server/.env",
+        "to": "app/server/.env"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico",
+      "publisherName": "Uncle John's Cafe"
+    },
+    "nsis": {
+      "artifactName": "Uncle John's Cafe-Setup-${version}.exe",
+      "include": "build/installer.nsh",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "warningsAsErrors": false,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "displayLanguageSelector": false,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "license": "",
+      "multiLanguageInstaller": false
+    }
+  }
+}
