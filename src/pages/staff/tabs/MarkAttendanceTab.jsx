@@ -88,7 +88,7 @@ export default function MarkAttendanceTab({
             disabled={biometricStatus.pendingSync}
             className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50"
           >
-            {biometricStatus.pendingSync ? 'Syncing...' : '🔄 Sync Now'}
+            {biometricStatus.pendingSync ? 'Syncing...' : 'Sync Now'}
           </button>
         </div>
       </div>

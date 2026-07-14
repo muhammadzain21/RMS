@@ -283,7 +283,7 @@ export default function Settings() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg">
-          <span className="text-2xl text-white">⚙️</span>
+          <span className="text-2xl text-white font-bold">S</span>
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
@@ -504,7 +504,7 @@ export default function Settings() {
                       toast.error('Failed to refresh printers')
                     }
                   }}
-                  icon="🔄"
+                  icon=""
                 >
                   Refresh Printers
                 </SecondaryButton>
@@ -513,7 +513,7 @@ export default function Settings() {
           </Card>
 
           <div className="flex justify-end">
-            <PrimaryButton onClick={saveSystem} icon="💾">Save System Settings</PrimaryButton>
+            <PrimaryButton onClick={saveSystem} icon="">Save System Settings</PrimaryButton>
           </div>
         </div>
       )}

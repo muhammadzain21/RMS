@@ -167,10 +167,10 @@ export default function InventoryList() {
           <span className="text-3xl">📦</span> Inventory
         </h1>
         <div className="flex flex-wrap gap-2">
-          <button onClick={refreshIngredients} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">🔄 Refresh</button>
-          <button onClick={() => { setUpdateOpen(true) }} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">📊 Update Stock</button>
-          <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-slate-500 to-slate-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">📥 Export CSV</button>
-          <button onClick={() => setIngModalOpen(true)} className="px-4 py-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">➕ Add Ingredient</button>
+          <button onClick={refreshIngredients} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Refresh</button>
+          <button onClick={() => { setUpdateOpen(true) }} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Update Stock</button>
+          <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-slate-500 to-slate-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Export CSV</button>
+          <button onClick={() => setIngModalOpen(true)} className="px-4 py-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Add Ingredient</button>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

@@ -293,9 +293,9 @@ export default function AdvanceBooking() {
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Status</label>
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500">
               <option value="">All Status</option>
-              <option value="Booked">📋 Booked</option>
-              <option value="Completed">✅ Completed</option>
-              <option value="Cancelled">❌ Cancelled</option>
+              <option value="Booked">Booked</option>
+              <option value="Completed">Completed</option>
+              <option value="Cancelled">Cancelled</option>
             </select>
           </div>
           <div>
@@ -349,9 +349,9 @@ export default function AdvanceBooking() {
                   </td>
                   <td className="px-4 py-3">
                     <select value={r.status} onChange={e => updateStatus(r.id, e.target.value)} className="px-2 py-1 border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-sm">
-                      <option value="Booked">📋 Booked</option>
-                      <option value="Completed">✅ Completed</option>
-                      <option value="Cancelled">❌ Cancelled</option>
+                      <option value="Booked">Booked</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Cancelled">Cancelled</option>
                     </select>
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">

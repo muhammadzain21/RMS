@@ -232,13 +232,13 @@ export default function AuditLog() {
               disabled={loading}
               className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
             >
-              {loading ? '⏳ Loading...' : '🔍 Apply'}
+              {loading ? 'Loading...' : 'Apply'}
             </button>
             <button 
               onClick={()=>{ setFrom(''); setTo(''); setType(''); setQ(''); setUserId(''); setTimeout(load,0) }} 
               className="px-4 py-2 rounded-lg bg-gradient-to-br from-gray-500 to-gray-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"
             >
-              🔄 Reset
+              Reset
             </button>
           </div>
         </div>
@@ -251,14 +251,14 @@ export default function AuditLog() {
           disabled={rows.length === 0}
           className="px-4 py-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors font-medium border border-emerald-200 dark:border-emerald-700 disabled:opacity-50"
         >
-          📊 Export CSV
+          Export CSV
         </button>
         <button 
           onClick={exportPDF} 
           disabled={rows.length === 0}
           className="px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium border border-red-200 dark:border-red-700 disabled:opacity-50"
         >
-          📄 Export PDF
+          Export PDF
         </button>
       </div>
 

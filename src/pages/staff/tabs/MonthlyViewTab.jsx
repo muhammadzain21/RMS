@@ -510,14 +510,12 @@ export default function MonthlyViewTab({
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
                 onClick={() => { if (!monthlyStaffId) { toast.error('Select staff'); return; } setShowPayDialog(true); }}
               >
-                <span>💳</span>
                 <span>Pay Staff</span>
               </button>
               <button
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
                 onClick={downloadPDF}
               >
-                <span>📄</span>
                 <span>Download PDF</span>
               </button>
             </div>
@@ -527,8 +525,7 @@ export default function MonthlyViewTab({
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
               <h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <span>📝</span>
-                Payment History
+                <span>Payment History</span>
               </h3>
             </div>
             <div className="p-6">

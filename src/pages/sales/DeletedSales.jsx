@@ -199,19 +199,19 @@ export default function DeletedSales() {
       </div>
       <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 border-2 border-rose-200 dark:border-rose-800">
         <div className="flex flex-wrap gap-2">
-          <button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📄 PDF</button>
-          <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📊 CSV</button>
+          <button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Export PDF</button>
+          <button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Export CSV</button>
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <label className="text-sm font-medium text-rose-700 dark:text-rose-300">📅 From</label>
+          <label className="text-sm font-medium text-rose-700 dark:text-rose-300">From</label>
           <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <label className="text-sm font-medium text-rose-700 dark:text-rose-300">📅 To</label>
+          <label className="text-sm font-medium text-rose-700 dark:text-rose-300">To</label>
           <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
         </div>
         <div className="sm:ml-auto w-full sm:w-auto">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search..." className="w-full sm:w-auto px-4 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="w-full sm:w-auto px-4 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" />
         </div>
       </div>
 
@@ -290,35 +290,35 @@ export default function DeletedSales() {
           <div className="fixed right-0 top-0 h-full w-full max-w-md z-50 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 shadow-2xl flex flex-col border-l-4 border-rose-500">
             <div className="p-4 border-b border-rose-200 dark:border-rose-800 flex items-center justify-between bg-gradient-to-r from-rose-50 to-white dark:from-rose-950/30 dark:to-gray-900">
               <div className="font-bold text-lg text-rose-900 dark:text-rose-100 flex items-center gap-2">
-                <span>🗑️</span> Deleted Sale - {selected.billNo ? `BILL-${selected.billNo}` : ''}
+                <span>Deleted Sale - {selected.billNo ? `BILL-${selected.billNo}` : ''}</span>
               </div>
               <button onClick={() => setDrawerOpen(false)} className="px-3 py-1.5 text-sm rounded-lg border-2 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all">Close</button>
             </div>
             <div className="p-4 space-y-4 overflow-auto">
               <div className="p-3 rounded-xl bg-gradient-to-r from-rose-50 to-rose-100/50 dark:from-rose-950/30 dark:to-rose-900/20 border border-rose-200 dark:border-rose-800">
-                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">🗑️ Deleted At</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Deleted At</div>
                 <div className="font-semibold text-gray-900 dark:text-gray-100">{selected.deletedAt ? format(new Date(selected.deletedAt), 'yyyy-MM-dd HH:mm') : '-'}</div>
               </div>
               <div className="p-3 rounded-xl bg-gradient-to-r from-pink-50 to-pink-100/50 dark:from-pink-950/30 dark:to-pink-900/20 border border-pink-200 dark:border-pink-800">
-                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">👤 Deleted By</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Deleted By</div>
                 <div className="font-semibold text-gray-900 dark:text-gray-100">{selected.deletedBy || 'system'}</div>
               </div>
               <div className="p-3 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
-                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">📅 Sale Date</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Sale Date</div>
                 <div className="font-semibold text-gray-900 dark:text-gray-100">{selected.date}</div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-xl bg-gradient-to-r from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">👤 Sold By</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Sold By</div>
                   <div className="font-semibold text-gray-900 dark:text-gray-100">{selected.soldBy || '-'}</div>
                 </div>
                 <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-emerald-100/50 dark:from-emerald-950/30 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">👥 Customer</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Customer</div>
                   <div className="font-semibold text-gray-900 dark:text-gray-100">{customerText(selected.customer)}</div>
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 border border-amber-200 dark:border-amber-800">
-                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">🍽️ Order Type</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Order Type</div>
                 <div className="font-semibold text-gray-900 dark:text-gray-100">{selected.orderType || '-'}</div>
               </div>
               {selected.orderType === 'Dine-in' && (

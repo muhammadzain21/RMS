@@ -129,7 +129,7 @@ export default function KotHistory() {
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Token / table / waiter" className="mt-1 w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" />
           </label>
           <div className="flex items-end justify-end gap-2">
-            <button onClick={loadServer} className="px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors font-medium border border-blue-200 dark:border-blue-700" disabled={loading}>{loading ? '⏳ Refreshing...' : '🔄 Refresh'}</button>
+            <button onClick={loadServer} className="px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors font-medium border border-blue-200 dark:border-blue-700" disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</button>
           </div>
         </div>
 

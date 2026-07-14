@@ -122,6 +122,8 @@ export default function SalesHistory() {
         const serviceAmt = Number(s.serviceAmt || 0)
         return Math.max(0, subtotal - itemsDiscount - billDiscount + taxAmt + serviceAmt)
       })()
+      // Check if this sale has a return recorded
+      const hasReturn = (state.returns || []).some(r => r.saleId === s.id)
       return ({
       id: s.id,
       date: s.date, // no time captured; keep date for now
@@ -141,6 +143,7 @@ export default function SalesHistory() {
       tableNo: s.orderType === 'Dine-in' ? (s.tableNo || '-') : '-',
       waiterName: s.orderType === 'Dine-in' ? (s.waiterId ? (state.staff||[]).find(st=>st.id===s.waiterId)?.name || s.waiter || '-' : (s.waiter || '-')) : '-',
       riderName: s.orderType === 'Delivery' ? (s.riderId ? (state.riders||[]).find(r=>r.id===s.riderId)?.name || '-' : (s.rider || '-')) : '-',
+      status: hasReturn ? 'Returned' : 'Paid',
       detail: s, // keep full sale for drawer
       offlineBillNo: s.offlineBillNo ?? '-',
     })})
@@ -149,7 +152,7 @@ export default function SalesHistory() {
       mapped = mapped.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(t)))
     }
     return mapped
-  }, [state.sales, state.menu, date, search])
+  }, [state.sales, state.menu, state.returns, date, search])
 
   const pages = Math.ceil(rows.length / limit) || 1
   const paginatedRows = rows.slice((page - 1) * limit, page * limit)
@@ -278,6 +281,9 @@ export default function SalesHistory() {
     { label: 'Sale Total', key: 'saleTotal', hideBelow: 'md', render: r => `PKR ${Number(r.saleTotal).toLocaleString()}` },
     { label: 'Net Amount', key: 'netAmount', render: r => `PKR ${Number(r.netAmount).toLocaleString()}` },
     { label: 'Payment Mode', key: 'paymentMethod' },
+    { label: 'Status', key: 'status', render: r => (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span>
+    ) },
     { label: 'Delivery Date', key: 'deliveryDate', hideBelow: 'lg' },
     { label: 'Print', key: 'print', render: r => (
       <button
@@ -320,10 +326,11 @@ export default function SalesHistory() {
       `PKR ${Number(r.saleTotal).toLocaleString()}`,
       `PKR ${Number(r.netAmount).toLocaleString()}`,
       r.paymentMethod,
+      r.status,
       r.deliveryDate
     ])
     doc.autoTable({ 
-      head: [['Date','Bill#','Customer','Order Type','Table','Waiter','Rider','Sale Total','Net Amount','Payment','Delivery']], 
+      head: [['Date','Bill#','Customer','Order Type','Table','Waiter','Rider','Sale Total','Net Amount','Payment','Status','Delivery']], 
       body,
       startY: 60,
       styles: { 
@@ -349,7 +356,8 @@ export default function SalesHistory() {
         7: { cellWidth: 70, halign: 'right' },  // Sale Total
         8: { cellWidth: 70, halign: 'right' },  // Net Amount
         9: { cellWidth: 50 },  // Payment
-        10: { cellWidth: 70 },  // Delivery
+        10: { cellWidth: 55 },  // Status
+        11: { cellWidth: 70 },  // Delivery
       },
       margin: { left: 40, right: 40 },
       tableWidth: 'auto'
@@ -359,8 +367,8 @@ export default function SalesHistory() {
   }
 
   const exportCSV = () => {
-    const headers = ['Date','Bill Number','Customer','Order Type','Table','Waiter','Rider','Sale Total (PKR)','Net Amount (PKR)','Payment Mode','Delivery Date']
-    const lines = rows.map(r => [r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.netAmount,r.paymentMethod,r.deliveryDate]
+    const headers = ['Date','Bill Number','Customer','Order Type','Table','Waiter','Rider','Sale Total (PKR)','Net Amount (PKR)','Payment Mode','Status','Delivery Date']
+    const lines = rows.map(r => [r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.netAmount,r.paymentMethod,r.status,r.deliveryDate]
       .map(v => '"' + String(v ?? '').replaceAll('"','""') + '"').join(',')).join('\n')
     const csv = headers.join(',') + '\n' + lines
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -378,13 +386,13 @@ export default function SalesHistory() {
     if (!win) return
     const rowsHtml = rows.map(r => `<tr>
       <td>${r.date}</td><td>${r.billNo}</td><td>${r.customer}</td><td>${r.orderType}</td><td>${r.tableNo}</td><td>${r.waiterName}</td><td>${r.riderName}</td>
-      <td>PKR ${Number(r.saleTotal).toLocaleString()}</td><td>PKR ${Number(r.netAmount).toLocaleString()}</td><td>${r.paymentMethod}</td><td>${r.deliveryDate}</td>
+      <td>PKR ${Number(r.saleTotal).toLocaleString()}</td><td>PKR ${Number(r.netAmount).toLocaleString()}</td><td>${r.paymentMethod}</td><td>${r.status}</td><td>${r.deliveryDate}</td>
     </tr>`).join('')
     win.document.write(`<!doctype html><html><head><title>Bulk Print</title>
       <style>body{font-family:sans-serif} table{width:100%; border-collapse:collapse} th,td{border:1px solid #ddd;padding:6px;font-size:12px} th{background:#f3f4f6}</style>
     </head><body>
       <h3>Sales History</h3>
-      <table><thead><tr><th>Date</th><th>Bill#</th><th>Customer</th><th>Order Type</th><th>Table</th><th>Waiter</th><th>Rider</th><th>Sale Total</th><th>Net Amount</th><th>Payment</th><th>Delivery</th></tr></thead>
+      <table><thead><tr><th>Date</th><th>Bill#</th><th>Customer</th><th>Order Type</th><th>Table</th><th>Waiter</th><th>Rider</th><th>Sale Total</th><th>Net Amount</th><th>Payment</th><th>Status</th><th>Delivery</th></tr></thead>
       <tbody>${rowsHtml}</tbody></table>
       <script>window.onload=()=>window.print()</script>
     </body></html>`)
@@ -446,6 +454,7 @@ export default function SalesHistory() {
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th>
+              <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th>
               <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th>
               <th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
             </tr>
@@ -463,6 +472,9 @@ export default function SalesHistory() {
                 <td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td>
                 <td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td>
                 <td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td>
+                <td className="p-3">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span>
+                </td>
                 <td className="p-3 text-gray-600 dark:text-gray-400">{r.deliveryDate}</td>
                 <td className="p-3 text-center">
                   <div className="flex items-center justify-center gap-2">
@@ -480,7 +492,7 @@ export default function SalesHistory() {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={13} className="p-8 text-center text-gray-500 dark:text-gray-400">
                   <div className="text-4xl mb-2">📜</div>
                   <div>No sales found</div>
                 </td>

@@ -174,7 +174,7 @@ export default function ExpenseNew() {
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
           <span className="text-3xl">💸</span> Expenses
         </h1>
-        <button onClick={openDialog} className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">➕ Add Expense</button>
+        <button onClick={openDialog} className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Add Expense</button>
       </div>
 
       {showForm && (
@@ -236,13 +236,13 @@ export default function ExpenseNew() {
           <table className="min-w-full text-sm">
             <thead className="bg-gradient-to-r from-rose-100 to-rose-50 dark:from-rose-900/60 dark:to-rose-950/40">
               <tr>
-                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">📅 Date</th>
-                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">🕐 Time</th>
-                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">📂 Type</th>
-                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">📝 Description</th>
-                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">📋 Notes</th>
-                <th className="text-right p-3 font-bold text-rose-900 dark:text-rose-100">💰 Amount</th>
-                <th className="text-center p-3 font-bold text-rose-900 dark:text-rose-100">⚙️ Actions</th>
+                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Date</th>
+                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Time</th>
+                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Type</th>
+                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Description</th>
+                <th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Notes</th>
+                <th className="text-right p-3 font-bold text-rose-900 dark:text-rose-100">Amount</th>
+                <th className="text-center p-3 font-bold text-rose-900 dark:text-rose-100">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-rose-100 dark:divide-rose-800/50">
@@ -258,8 +258,8 @@ export default function ExpenseNew() {
                   <td className="p-3 text-gray-500">{e.note || '-'}</td>
                   <td className="p-3 text-right font-bold text-rose-600">PKR {Number(e.amount||0).toLocaleString()}</td>
                   <td className="p-3 text-center">
-                    <button onClick={()=>startEdit(e)} className="text-blue-600 hover:text-blue-800 font-medium mr-3 transition-colors">✏️ Edit</button>
-                    <button onClick={()=>remove(e.id)} className="text-red-600 hover:text-red-800 font-medium transition-colors">🗑️ Delete</button>
+                    <button onClick={()=>startEdit(e)} className="text-blue-600 hover:text-blue-800 font-medium mr-3 transition-colors">Edit</button>
+                    <button onClick={()=>remove(e.id)} className="text-red-600 hover:text-red-800 font-medium transition-colors">Delete</button>
                   </td>
                 </tr>
               ))}

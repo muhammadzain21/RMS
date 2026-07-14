@@ -205,11 +205,11 @@ export default function Categories() {
                   )}
                 </td>
                 <td className="p-3">{r.showOnPos ? <span className="text-green-600 dark:text-green-400">✅ Yes</span> : <span className="text-gray-400">❌ No</span>}</td>
-                <td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">✅ Yes</span> : <span className="text-gray-400">❌ No</span>}</td>
+                <td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td>
                 <td className="p-3 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">✏️ Edit</button>
-                    <button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">🗑️ Delete</button>
+                    <button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Edit</button>
+                    <button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button>
                   </div>
                 </td>
               </tr>

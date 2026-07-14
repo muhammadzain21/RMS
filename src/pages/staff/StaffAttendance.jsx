@@ -554,11 +554,11 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
   };
 
   const tabs = [
-    { id: 'attendance', label: 'Mark Attendance', icon: '✓' },
-    { id: 'addStaff', label: 'Add Staff', icon: '👤' },
-    { id: 'daily', label: 'Daily View', icon: '📅' },
-    { id: 'monthly', label: 'Monthly View', icon: '📊' },
-    { id: 'settings', label: 'Staff Settings', icon: '⚙️' }
+    { id: 'attendance', label: 'Mark Attendance', icon: '' },
+    { id: 'addStaff', label: 'Add Staff', icon: '' },
+    { id: 'daily', label: 'Daily View', icon: '' },
+    { id: 'monthly', label: 'Monthly View', icon: '' },
+    { id: 'settings', label: 'Staff Settings', icon: '' }
   ];
 
   return (

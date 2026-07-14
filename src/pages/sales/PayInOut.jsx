@@ -272,7 +272,7 @@ export default function PayInOut() {
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td>
                   <td className="px-4 py-3">
                     <button onClick={()=>remove(r.id)} disabled={closedDates.has(r.date)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium text-sm border border-red-200 dark:border-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                      🗑️ Delete
+                      Delete
                     </button>
                   </td>
                 </tr>

@@ -155,20 +155,20 @@ export default function RiderList() {
       <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 border-2 border-cyan-200 dark:border-cyan-800">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div>
-            <label className="block text-xs font-bold text-cyan-700 dark:text-cyan-300 mb-1">📅 Date</label>
+            <label className="block text-xs font-bold text-cyan-700 dark:text-cyan-300 mb-1">Date</label>
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 w-full focus:ring-2 focus:ring-cyan-500 transition-all" />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-xs font-bold text-cyan-700 dark:text-cyan-300 mb-1">🏍️ Rider</label>
+            <label className="block text-xs font-bold text-cyan-700 dark:text-cyan-300 mb-1">Rider</label>
             <select value={filterRider} onChange={e=>setFilterRider(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 w-full focus:ring-2 focus:ring-cyan-500 transition-all">
               <option value="">All Riders</option>
               {riders.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <div className="md:col-span-3 flex items-end gap-2">
-            <button onClick={load} className="px-4 py-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">🔄 Refresh</button>
-            <button onClick={loadRollup} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📊 Load Rollup</button>
-            <button onClick={exportCsv} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">📥 Export CSV</button>
+            <button onClick={load} className="px-4 py-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Refresh</button>
+            <button onClick={loadRollup} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Load Rollup</button>
+            <button onClick={exportCsv} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Export CSV</button>
           </div>
         </div>
       </div>
@@ -176,48 +176,48 @@ export default function RiderList() {
       <form onSubmit={onAdd} className="p-5 rounded-xl border-2 border-orange-200 dark:border-orange-800 bg-gradient-to-br from-orange-50/60 to-white dark:from-orange-950/30 dark:to-gray-900 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <div>
-            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">🏍️ Rider</label>
+            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">Rider</label>
             <select value={form.riderId} onChange={e=>setForm({...form, riderId:e.target.value})} className="px-3 py-2 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 w-full focus:ring-2 focus:ring-orange-500 transition-all">
               {riders.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">📦 Deliveries</label>
+            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">Deliveries</label>
             <input type="number" placeholder="Deliveries" value={form.deliveries} onChange={e=>setForm({...form, deliveries:Number(e.target.value)})} className="px-3 py-2 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 w-full focus:ring-2 focus:ring-orange-500 transition-all" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">💰 Amount</label>
+            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">Amount</label>
             <input type="number" placeholder="Amount" value={form.amount} onChange={e=>setForm({...form, amount:Number(e.target.value)})} className="px-3 py-2 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 w-full focus:ring-2 focus:ring-orange-500 transition-all" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">💳 Method</label>
+            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">Method</label>
             <select value={form.method} onChange={e=>setForm({...form, method:e.target.value})} className="px-3 py-2 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 w-full focus:ring-2 focus:ring-orange-500 transition-all">
-              <option value="COD">💵 Cash on Delivery</option>
-              <option value="PaidToOwner">🏪 Paid to Owner</option>
+              <option value="COD">Cash on Delivery</option>
+              <option value="PaidToOwner">Paid to Owner</option>
             </select>
           </div>
           <div className="md:col-span-2">
-            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">📝 Note (optional)</label>
+            <label className="block text-xs font-bold text-orange-700 dark:text-orange-300 mb-1">Note (optional)</label>
             <input placeholder="Note (optional)" value={form.note} onChange={e=>setForm({...form, note:e.target.value})} className="px-3 py-2 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 w-full focus:ring-2 focus:ring-orange-500 transition-all" />
           </div>
         </div>
         <div className="mt-4">
-          <button disabled={loading} className="px-5 py-2.5 bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">➕ Add Record</button>
+          <button disabled={loading} className="px-5 py-2.5 bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Add Record</button>
         </div>
       </form>
 
       <div className="border-2 border-cyan-200 dark:border-cyan-800 rounded-xl overflow-x-auto shadow-sm">
         <DataTable
           columns={[
-            { label: '📅 Date', key: 'date' },
-            { label: '🏍️ Rider', key: 'riderName' },
-            { label: '📦 Deliveries', key: 'deliveries' },
-            { label: '💰 Amount', render: r => `${Number(r.amount||0).toFixed(2)}` },
-            { label: '💳 Method', render: r => r.method === 'COD' ? '💵 Cash on Delivery' : '🏪 Paid to Owner' },
-            { label: '✅ Settled', render: r => r.settled ? '✅ Yes' : '❌ No' },
-            { label: '📝 Note', key: 'note' },
-            { label: '⚙️ Actions', render: r => (
-              <button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">🗑️ Delete</button>
+            { label: 'Date', key: 'date' },
+            { label: 'Rider', key: 'riderName' },
+            { label: 'Deliveries', key: 'deliveries' },
+            { label: 'Amount', render: r => `${Number(r.amount||0).toFixed(2)}` },
+            { label: 'Method', render: r => r.method === 'COD' ? 'Cash on Delivery' : 'Paid to Owner' },
+            { label: 'Settled', render: r => r.settled ? 'Yes' : 'No' },
+            { label: 'Note', key: 'note' },
+            { label: 'Actions', render: r => (
+              <button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button>
             )},
           ]}
           data={records}

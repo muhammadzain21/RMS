@@ -86,8 +86,21 @@ export default function ReturnNew() {
 
   const formatCurrency = (amount) => `PKR ${Number(amount || 0).toLocaleString()}`
 
+  // Check if a sale has been fully returned (all items returned)
+  const isFullyReturned = (saleId, sale) => {
+    if (!sale || !Array.isArray(sale.items)) return false
+    const priorReturns = (state.returns || []).filter(r => r.saleId === saleId)
+    const returnedMap = {}
+    priorReturns.forEach(r => {
+      r.items.forEach(it => { returnedMap[it.itemId] = (returnedMap[it.itemId] || 0) + Number(it.qty || 0) })
+    })
+    return sale.items.every(si => (returnedMap[si.itemId] || 0) >= Number(si.qty || 0))
+  }
+
   const allSales = useMemo(() => {
     const list = [...(state.sales || [])]
+      // Exclude fully returned sales
+      .filter(s => !isFullyReturned(s.id, s))
     list.sort((a,b) => (b.date||'').localeCompare(a.date||'') || String(b.billNo||'').localeCompare(String(a.billNo||'')))
     if (!saleSearch) return list
     const t = saleSearch.toLowerCase()
@@ -100,7 +113,7 @@ export default function ReturnNew() {
         String(cust||'').toLowerCase().includes(t)
       )
     })
-  }, [state.sales, saleSearch])
+  }, [state.sales, state.returns, saleSearch])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -161,34 +174,62 @@ export default function ReturnNew() {
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</span>
               <input value={date} onChange={e => setDate(e.target.value)} type="date" className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" />
             </label>
-            <label className="block">
+            <label className="block md:col-span-2">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Select Order / Sale</span>
-              <div className="mt-1 space-y-2">
-                <input value={saleSearch} onChange={e=>setSaleSearch(e.target.value)} placeholder="Search by date, bill, customer..." className="px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" />
-                <select
-                  value={saleId}
-                  onChange={e => { setSaleId(e.target.value); setReturnQtys({}) }}
-                  className="px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
-                  size={saleId ? 1 : 6}
-                >
-                  <option value="">-- Select an order --</option>
-                  {allSales.map(s => {
-                    const bill = s.billNo ? `BILL-${s.billNo}` : s.id.slice(0,6)
-                    return <option key={s.id} value={s.id}>{`${s.date} | ${bill} | ${customerText(s.customer)} | ${formatCurrency(s.total)}`}</option>
-                  })}
-                </select>
-              </div>
+              <input value={saleSearch} onChange={e=>setSaleSearch(e.target.value)} placeholder="Search by date, bill, customer..." className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" />
             </label>
+          </div>
+
+          {/* Sales Table */}
+          <div className="mt-4 overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg max-h-64 overflow-y-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Bill No</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Customer</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Total</th>
+                  <th className="px-3 py-2 text-center font-semibold text-gray-700 dark:text-gray-300">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allSales.map(s => {
+                  const bill = s.billNo ? `BILL-${s.billNo}` : s.id.slice(0,6)
+                  const isSelected = saleId === s.id
+                  return (
+                    <tr key={s.id} className={`border-t cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`} onClick={() => { setSaleId(s.id); setReturnQtys({}) }}>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td>
+                      <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{bill}</td>
+                      <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{customerText(s.customer)}</td>
+                      <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{formatCurrency(s.total)}</td>
+                      <td className="px-3 py-2 text-center">
+                        <button type="button" className={`px-3 py-1 rounded-lg text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                          {isSelected ? 'Selected' : 'Select'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {allSales.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">
+                      No orders available for return (all orders may have been fully returned)
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* Sale Summary */}
           {sale && (
-            <div className="mt-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+            <div className="mt-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <div className="text-sm text-gray-600 dark:text-gray-400">
                 <span className="font-medium text-gray-800 dark:text-gray-200">Sale Total:</span> {formatCurrency(sale.total)}
                 {'  '}<span className="font-medium text-gray-800 dark:text-gray-200">| Payment:</span> {sale.paymentMethod || 'cash'}
                 {'  '}<span className="font-medium text-gray-800 dark:text-gray-200">| Customer:</span> {customerText(sale.customer)}
               </div>
+              <button type="button" onClick={() => { setSaleId(''); setReturnQtys({}); setSaleSearch('') }} className="px-4 py-2 rounded-lg bg-slate-500 text-white text-sm font-medium hover:bg-slate-600 transition-colors">Cancel</button>
             </div>
           )}
         </div>

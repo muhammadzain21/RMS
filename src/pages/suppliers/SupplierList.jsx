@@ -80,8 +80,8 @@ export default function SupplierList() {
           <span className="text-3xl">🏭</span> Suppliers
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <input value={search} onChange={onSearchChange} placeholder="🔍 Search by name/company..." className="px-4 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all" />
-          <button onClick={onAdd} className="px-4 py-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">➕ Add Supplier</button>
+          <input value={search} onChange={onSearchChange} placeholder="Search by name/company..." className="px-4 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all" />
+          <button onClick={onAdd} className="px-4 py-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Add Supplier</button>
         </div>
       </div>
 

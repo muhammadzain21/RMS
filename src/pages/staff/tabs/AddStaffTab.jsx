@@ -237,7 +237,7 @@ export default function AddStaffTab({
               disabled={deviceLoading}
               className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50"
             >
-              {deviceLoading ? 'Loading...' : '🔄 Refresh'}
+              {deviceLoading ? 'Loading...' : 'Refresh'}
             </button>
           </div>
 
