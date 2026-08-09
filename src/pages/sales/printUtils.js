@@ -1,4 +1,5 @@
 // Printing utilities
+const isDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
 const getAPIBase = () => {
   try {
     if (typeof window !== 'undefined' && window.API_BASE) return window.API_BASE
@@ -69,10 +70,11 @@ export async function openKotPrintUtil(opts = {}) {
     if (useInApp) {
       const overlay = document.createElement('div')
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px;'
+      const dark = isDarkMode()
       const frameWrap = document.createElement('div')
-      frameWrap.style.cssText = 'background:#fff;width:420px;max-width:95vw;height:640px;max-height:95vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;'
+      frameWrap.style.cssText = `background:${dark?'#111827':'#fff'};width:420px;max-width:95vw;height:640px;max-height:95vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;`
       const toolbar = document.createElement('div')
-      toolbar.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding:8px;border-bottom:1px solid #e5e7eb;background:#fafafa'
+      toolbar.style.cssText = `display:flex;gap:8px;justify-content:flex-end;padding:8px;border-bottom:1px solid ${dark?'#374151':'#e5e7eb'};background:${dark?'#1f2937':'#fafafa'}`
       const btnPrint = document.createElement('button')
       btnPrint.textContent = 'Print'
       btnPrint.className = 'kot-print-btn'
@@ -80,7 +82,7 @@ export async function openKotPrintUtil(opts = {}) {
       const btnClose = document.createElement('button')
       btnClose.textContent = 'OK'
       btnClose.className = 'kot-close-btn'
-      btnClose.style.cssText = 'padding:8px 16px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;cursor:pointer;border-radius:6px;font-weight:500'
+      btnClose.style.cssText = `padding:8px 16px;border:1px solid ${dark?'#4b5563':'#d1d5db'};background:${dark?'#374151':'#f9fafb'};color:${dark?'#e5e7eb':'#374151'};cursor:pointer;border-radius:6px;font-weight:500`
       const iframe = document.createElement('iframe')
       iframe.style.cssText = 'border:0;flex:1;width:100%'
       toolbar.appendChild(btnPrint); toolbar.appendChild(btnClose)
@@ -248,6 +250,16 @@ export async function printSaleReceiptUtil(opts = {}) {
     }
     const logoAbs = toAbsolute(logoUrl)
     const logoAbsList = logoCandidates.map(toAbsolute)
+    const darkCSS = isDarkMode() ? `
+    body{background:#111827;color:#e5e7eb}
+    h1{color:#e5e7eb}
+    .muted{color:#9ca3af}
+    th{background:#1f2937;color:#e5e7eb}
+    td{border-bottom:1px solid #374151}
+    .emph{color:#e5e7eb}
+    .hr{border-top:1px dashed #4b5563}
+    .toolbar{background:#111827;border-bottom:1px solid #374151}
+    .btn{background:#374151;color:#e5e7eb;border-color:#4b5563}` : ''
     const html = `<!doctype html>
 <html>
 <head>
@@ -274,6 +286,7 @@ export async function printSaleReceiptUtil(opts = {}) {
     .hr{ border-top:1px dashed #999; margin:4px 0 }
     .toolbar{ position:sticky; top:0; background:#fff; padding:6px 0; display:${auto ? 'none' : 'flex'}; gap:8px; justify-content:flex-end; border-bottom:1px solid #ddd }
     .btn{ padding:6px 10px; border:1px solid #999; background:#f5f5f5; cursor:pointer }
+    ${darkCSS}
   </style>
 </head>
 <body>
@@ -379,10 +392,11 @@ export async function printSaleReceiptUtil(opts = {}) {
     if (useInApp) {
       const overlay = document.createElement('div')
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px;'
+      const dark = isDarkMode()
       const frameWrap = document.createElement('div')
-      frameWrap.style.cssText = 'background:#fff;width:420px;max-width:95vw;height:640px;max-height:95vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;'
+      frameWrap.style.cssText = `background:${dark?'#111827':'#fff'};width:420px;max-width:95vw;height:640px;max-height:95vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;`
       const toolbar = document.createElement('div')
-      toolbar.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding:8px;border-bottom:1px solid #e5e7eb;background:#fafafa'
+      toolbar.style.cssText = `display:flex;gap:8px;justify-content:flex-end;padding:8px;border-bottom:1px solid ${dark?'#374151':'#e5e7eb'};background:${dark?'#1f2937':'#fafafa'}`
       const btnPrint = document.createElement('button')
       btnPrint.textContent = 'Print'
       btnPrint.className = 'receipt-print-btn'
@@ -390,7 +404,7 @@ export async function printSaleReceiptUtil(opts = {}) {
       const btnClose = document.createElement('button')
       btnClose.textContent = 'OK'
       btnClose.className = 'receipt-close-btn'
-      btnClose.style.cssText = 'padding:8px 16px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;cursor:pointer;border-radius:6px;font-weight:500'
+      btnClose.style.cssText = `padding:8px 16px;border:1px solid ${dark?'#4b5563':'#d1d5db'};background:${dark?'#374151':'#f9fafb'};color:${dark?'#e5e7eb':'#374151'};cursor:pointer;border-radius:6px;font-weight:500`
       const iframe = document.createElement('iframe')
       iframe.style.cssText = 'border:0;flex:1;width:100%'
       toolbar.appendChild(btnPrint); toolbar.appendChild(btnClose)
@@ -481,6 +495,15 @@ export function buildKOTHtml(opts = {}) {
       tableDisplay = floor ? `Table ${tableNo} / ${floor}` : `Table ${tableNo}`
     }
 
+    const darkCSS = isDarkMode() ? `
+    body{background:#111827;color:#e5e7eb}
+    h1{color:#e5e7eb}
+    .muted{color:#9ca3af}
+    th{background:#1f2937;color:#e5e7eb}
+    td{border-bottom:1px solid #374151}
+    .emph{color:#e5e7eb}
+    .endline{border-top:2px dashed #4b5563;color:#9ca3af}
+    .kitchen-note{background:#1f1020;color:#f87171;border-color:#f87171}` : ''
     const html = `<!doctype html>
 <html>
 <head>
@@ -503,6 +526,7 @@ export function buildKOTHtml(opts = {}) {
     .emph{ font-weight:900; font-size:13px; color:#000 }
     .endline{ border-top:2px dashed #999; margin:12px 0; text-align:center; font-size:10px; color:#666; padding-top:4px }
     .kitchen-note{ text-align:center; font-size:14px; font-weight:bold; color:#c00; margin-top:8px; padding:8px; border:1px dashed #c00; background:#fff8f8 }
+    ${darkCSS}
   </style>
   </head>
   <body>

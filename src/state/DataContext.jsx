@@ -519,7 +519,7 @@ export function DataProvider({ children }) {
           try { console.debug('Auth token missing; skipping protected datasets and hydrating settings only') } catch {}
           // Normalize settings while preserving all fields
           const normalizedTables = Array.isArray(settings?.tables)
-            ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '' })).filter(t => t.name)
+            ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
             : []
           const mergedSettings = {
             ...state.settings,
@@ -558,7 +558,7 @@ export function DataProvider({ children }) {
         const mapId = (x) => ({ ...x, id: x.id || x._id })
         // Prefer /api/tables when available (logged-in). Fallback to settings.tables
         const tablesFromApi = Array.isArray(tablesList) && tablesList.length > 0
-          ? tablesList.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '' })).filter(t => t.name)
+          ? tablesList.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
           : null
         try { console.debug('Tables source:', tablesFromApi ? 'tables API' : 'settings', { apiCount: tablesFromApi?.length || 0, settingsCount: Array.isArray(settings?.tables) ? settings.tables.length : 0 }) } catch {}
 
@@ -569,7 +569,7 @@ export function DataProvider({ children }) {
         const normalizedTablesAuth = (tablesFromApi && tablesFromApi.length)
           ? tablesFromApi
           : (Array.isArray(settings?.tables)
-            ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '' })).filter(t => t.name)
+            ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
             : [])
         const mergedSettingsAuth = {
           ...state.settings,

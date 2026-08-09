@@ -437,20 +437,20 @@ export default function Dashboard() {
         </div>
       
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-          <StatsCard variant="blue" icon={<span className="text-2xl">💰</span>} title="TODAY'S TOTAL SALE AMOUNT" value={`PKR ${todaysPreDiscountTotal.toLocaleString()}`} />
-          <StatsCard variant="green" icon={<span className="text-2xl">🧾</span>} title="TOTAL SALES TODAY" value={todaysSalesCount} />
-          <StatsCard variant="red" icon={<span className="text-2xl">🏷️</span>} title="ITEMS DISCOUNTED TODAY" value={`${todaysItemsDiscountCount}`} />
-          <StatsCard variant="red" icon={<span className="text-2xl">💸</span>} title="TOTAL BILL DISCOUNTS" value={`PKR ${todaysBillDiscounts.toLocaleString()}`} />
-          <StatsCard variant="red" icon={<span className="text-2xl">🏠</span>} title="PERSONAL TODAY" value={`PKR ${todaysComplimentary.toLocaleString()}`} />
-          <StatsCard variant="orange" icon={<span className="text-2xl">↩️</span>} title="RETURNS TODAY" value={`PKR ${todaysReturns.toLocaleString()}`} />
-          <StatsCard variant="blue" icon={<span className="text-2xl">✅</span>} title="TOTAL BILL AFTER DISCOUNT" value={`PKR ${todaysBillAfterDiscount.toLocaleString()}`} />
-          <StatsCard variant="slate" icon={<span className="text-2xl">📅</span>} title="YESTERDAY'S TOTAL SALE" value={`PKR ${yesterdayPreDiscountTotal.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" icon={<span className="text-2xl">📊</span>} title="TOTAL SALES YESTERDAY" value={yesterdaySalesCount} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" icon={<span className="text-2xl">🔖</span>} title="ITEMS DISCOUNTED YESTERDAY" value={`${yesterdayItemsDiscountCount}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" icon={<span className="text-2xl">💳</span>} title="BILL DISCOUNTS YESTERDAY" value={`PKR ${yesterdayBillDiscounts.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" icon={<span className="text-2xl">🏠</span>} title="PERSONAL YESTERDAY" value={`PKR ${yesterdayComplimentary.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" icon={<span className="text-2xl">↩️</span>} title="RETURNS YESTERDAY" value={`PKR ${yesterdayReturns.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" icon={<span className="text-2xl">🎯</span>} title="BILL AFTER DISCOUNT YESTERDAY" value={`PKR ${yesterdayBillAfterDiscount.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="blue" title="TODAY'S TOTAL SALE AMOUNT" value={`PKR ${todaysPreDiscountTotal.toLocaleString()}`} />
+          <StatsCard variant="green" title="TOTAL SALES TODAY" value={todaysSalesCount} />
+          <StatsCard variant="red" title="ITEMS DISCOUNTED TODAY" value={`${todaysItemsDiscountCount}`} />
+          <StatsCard variant="red" title="TOTAL BILL DISCOUNTS" value={`PKR ${todaysBillDiscounts.toLocaleString()}`} />
+          <StatsCard variant="red" title="PERSONAL TODAY" value={`PKR ${todaysComplimentary.toLocaleString()}`} />
+          <StatsCard variant="orange" title="RETURNS TODAY" value={`PKR ${todaysReturns.toLocaleString()}`} />
+          <StatsCard variant="blue" title="TOTAL BILL AFTER DISCOUNT" value={`PKR ${todaysBillAfterDiscount.toLocaleString()}`} />
+          <StatsCard variant="slate" title="YESTERDAY'S TOTAL SALE" value={`PKR ${yesterdayPreDiscountTotal.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="slate" title="TOTAL SALES YESTERDAY" value={yesterdaySalesCount} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="slate" title="ITEMS DISCOUNTED YESTERDAY" value={`${yesterdayItemsDiscountCount}`} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="slate" title="BILL DISCOUNTS YESTERDAY" value={`PKR ${yesterdayBillDiscounts.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="slate" title="PERSONAL YESTERDAY" value={`PKR ${yesterdayComplimentary.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="slate" title="RETURNS YESTERDAY" value={`PKR ${yesterdayReturns.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="slate" title="BILL AFTER DISCOUNT YESTERDAY" value={`PKR ${yesterdayBillAfterDiscount.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
         </div>
       </div>
 

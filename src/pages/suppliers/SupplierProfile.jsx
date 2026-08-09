@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
@@ -14,10 +14,30 @@ export default function SupplierProfile() {
   const { token } = useAuth()
   const { confirm, ConfirmDialog } = useConfirm()
   const [modalOpen, setModalOpen] = useState(false)
+  const [fetchedSupplier, setFetchedSupplier] = useState(null)
+  const [fetchedSupplies, setFetchedSupplies] = useState([])
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
-  const supplier = useMemo(() => (state.suppliers||[]).find(s => s.id === id), [state.suppliers, id])
-  const supplies = useMemo(() => (state.supplies||[]).filter(sp => sp.supplierId === id), [state.supplies, id])
+  useEffect(() => {
+    const hdr = token ? { Authorization: `Bearer ${token}` } : {}
+    fetch(`${API}/api/suppliers/${id}`, { headers: hdr })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setFetchedSupplier({ ...d, id: d.id || d._id }) })
+      .catch(() => {})
+    fetch(`${API}/api/supplies?supplierId=${id}`, { headers: hdr })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => {
+        const arr = Array.isArray(d) ? d : (d.rows || [])
+        setFetchedSupplies(arr.map(x => ({ ...x, id: x.id || x._id })))
+      })
+      .catch(() => {})
+  }, [id, API, token])
+
+  const supplier = useMemo(() => fetchedSupplier || (state.suppliers||[]).find(s => s.id === id), [fetchedSupplier, state.suppliers, id])
+  const supplies = useMemo(() => {
+    const list = fetchedSupplies.length ? fetchedSupplies : (state.supplies||[]).filter(sp => sp.supplierId === id)
+    return list
+  }, [fetchedSupplies, state.supplies, id])
   const totals = useMemo(() => {
     const totalCost = supplies.reduce((a,b) => a + Number(b.cost||0), 0)
     const totalEntries = supplies.length
@@ -52,12 +72,15 @@ export default function SupplierProfile() {
 
   if (!supplier) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold">Supplier</h1>
-          <button onClick={()=>navigate('/suppliers')} className="px-3 py-2 rounded border">Back</button>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Supplier</h1>
+          <button onClick={()=>navigate('/suppliers')} className="px-4 py-2.5 rounded-lg bg-gray-500 text-white font-medium hover:bg-gray-600 transition-colors">Back</button>
         </div>
-        <div className="p-6 border rounded text-gray-500">Supplier not found.</div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-8 text-center">
+          <div className="text-5xl mb-3"></div>
+          <p className="text-slate-500 dark:text-slate-400">Supplier not found.</p>
+        </div>
       </div>
     )
   }
@@ -65,63 +88,107 @@ export default function SupplierProfile() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Supplier Profile</h1>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Supplier Profile</h1>
         <div className="flex items-center gap-2">
-          <button onClick={()=>navigate('/suppliers')} className="px-3 py-2 rounded border">Back</button>
-          <button onClick={()=>setModalOpen(true)} className="px-3 py-2 rounded border">Edit</button>
-          <button onClick={onDelete} className="px-3 py-2 rounded border text-red-600">Delete</button>
+          <button onClick={()=>navigate('/suppliers')} className="px-4 py-2.5 rounded-lg bg-slate-600 text-white font-medium hover:bg-slate-700 transition-colors">Back</button>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="p-4 border rounded bg-white dark:bg-gray-900 md:col-span-2">
-          <div className="text-lg font-semibold">{supplier.name || supplier.company}</div>
-          <div className="text-sm text-gray-600">{supplier.company || '-'} · {supplier.status || 'Active'}</div>
-          <div className="mt-2 text-sm">
-            <div><strong>Phone:</strong> {supplier.phone || '-'}</div>
-            <div><strong>Address:</strong> {supplier.address || '-'}</div>
-            <div><strong>Tax ID:</strong> {supplier.taxId || '-'}</div>
+      {/* Profile Header Card */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-6">
+        <div className="flex flex-col sm:flex-row items-start gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 text-white flex items-center justify-center text-2xl font-bold flex-shrink-0">
+            {(supplier.name?.[0] || supplier.company?.[0] || 'S').toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">{supplier.name || supplier.company || '-'}</h2>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <span className="text-sm text-slate-500 dark:text-slate-400">{supplier.company || '-'}</span>
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${supplier.status==='Active' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
+                {supplier.status || 'Active'}
+              </span>
+            </div>
           </div>
         </div>
-        <div className="grid gap-3">
-          <div className="p-4 border rounded bg-white dark:bg-gray-900">
-            <div className="text-sm text-gray-600">Total Supplies</div>
-            <div className="text-2xl font-semibold">{totals.totalEntries}</div>
+
+        {/* Contact Info */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+          <div>
+            <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Phone</div>
+            <div className="text-sm text-slate-800 dark:text-slate-200 mt-1">{supplier.phone || '-'}</div>
           </div>
-          <div className="p-4 border rounded bg-white dark:bg-gray-900">
-            <div className="text-sm text-gray-600">Total Items</div>
-            <div className="text-2xl font-semibold">{totals.totalItems}</div>
+          <div>
+            <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Address</div>
+            <div className="text-sm text-slate-800 dark:text-slate-200 mt-1">{supplier.address || '-'}</div>
           </div>
-          <div className="p-4 border rounded bg-white dark:bg-gray-900">
-            <div className="text-sm text-gray-600">Total Cost</div>
-            <div className="text-2xl font-semibold">{totals.totalCost.toFixed(2)}</div>
+          <div>
+            <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Tax ID</div>
+            <div className="text-sm text-slate-800 dark:text-slate-200 mt-1">{supplier.taxId || '-'}</div>
           </div>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <h2 className="font-semibold">Supply Records</h2>
-        <div className="overflow-auto border rounded">
+      {/* Stats Widgets */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Supplies</div>
+          <div className="text-2xl font-bold mt-1 text-blue-600">{totals.totalEntries}</div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Items</div>
+          <div className="text-2xl font-bold mt-1 text-amber-600">{totals.totalItems}</div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Cost</div>
+          <div className="text-2xl font-bold mt-1 text-emerald-600">PKR {totals.totalCost.toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Supply Records Table */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+          <h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+            Supply Records ({supplies.length})
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
+            <thead className="bg-slate-100 dark:bg-slate-700/50">
               <tr>
-                <th className="text-left p-2">Date</th>
-                <th className="text-left p-2">Items</th>
-                <th className="text-left p-2">Cost</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Name</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Qty</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Unit</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Unit Price</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Total Price</th>
               </tr>
             </thead>
-            <tbody>
-              {supplies.map(sp => (
-                <tr key={sp.id} className="border-t">
-                  <td className="p-2">{sp.date ? format(new Date(sp.date), 'yyyy-MM-dd') : '-'}</td>
-                  <td className="p-2">{(sp.items||[]).map(i => `${i.name} x${i.qty}${i.unit}`).join(', ')}</td>
-                  <td className="p-2">{Number(sp.cost||0).toFixed(2)}</td>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+              {supplies.flatMap(sp => (sp.items||[]).map((it, i) => (
+                <tr key={sp.id + '_' + i} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{sp.date ? format(new Date(sp.date), 'yyyy-MM-dd') : '-'}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300 font-medium">{it.name || '-'}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300 text-right">{Number(it.qty || 0)}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{it.unit || ''}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300 text-right">PKR {Number(it.price || 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">PKR {Number((Number(it.qty||0) * Number(it.price||0))).toLocaleString()}</td>
                 </tr>
-              ))}
+              )))}
               {supplies.length === 0 && (
-                <tr><td colSpan={3} className="p-4 text-center text-gray-500">No supplies from this supplier yet.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">No supplies from this supplier yet.</td></tr>
               )}
             </tbody>
+            {supplies.length > 0 && (
+              <tfoot className="bg-slate-50 dark:bg-slate-800/50 font-semibold">
+                <tr className="border-t border-slate-200 dark:border-slate-700">
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300" colSpan={3}>Totals</td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">PKR {totals.totalCost.toLocaleString()}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

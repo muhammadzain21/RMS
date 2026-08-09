@@ -34,11 +34,11 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
   return (
     <div className="space-y-6">
       {/* Header Card */}
-      <div className="bg-gradient-to-r from-slate-600 to-slate-700 rounded-xl shadow-lg p-4 text-white">
+      <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Staff Settings</h2>
-            <p className="text-slate-300 text-sm">Configure shifts, attendance rules and salary calculations</p>
+            <p className="text-blue-100 text-sm">Configure shifts, attendance rules and salary calculations</p>
           </div>
         </div>
       </div>
@@ -293,7 +293,7 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
 
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end">
           <button 
-            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-teal-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
             onClick={onSave}
           >
             <span></span>
@@ -302,27 +302,6 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
         </div>
       </div>
 
-      {/* Info Cards */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="bg-blue-50 dark:bg-slate-800 rounded-xl p-4 border border-blue-200 dark:border-slate-700">
-          <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-2"> Shifts</h4>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Define multiple shifts with different timings. Assign shifts to staff when adding them.
-          </p>
-        </div>
-        <div className="bg-orange-50 dark:bg-slate-800 rounded-xl p-4 border border-orange-200 dark:border-slate-700">
-          <h4 className="font-medium text-orange-800 dark:text-orange-300 mb-2"> Late Policy</h4>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Define how many minutes after shift start time counts as late
-          </p>
-        </div>
-        <div className="bg-green-50 dark:bg-slate-800 rounded-xl p-4 border border-green-200 dark:border-slate-700">
-          <h4 className="font-medium text-green-800 dark:text-green-300 mb-2"> Salary Calculation</h4>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Configure bonuses and deductions based on each staff's assigned shift
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

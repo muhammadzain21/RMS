@@ -13,6 +13,7 @@ const KotItemSchema = new mongoose.Schema({
 
 const KotSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now, index: true },
+  date: { type: String, default: '', index: true }, // yyyy-MM-dd business date
   orderType: { type: String, default: 'Dine-in', index: true },
   tokenNo: { type: String, index: true },
   waiterId: { type: String, index: true },

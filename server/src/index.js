@@ -56,7 +56,7 @@ app.use(cors({
   credentials: false,
   optionsSuccessStatus: 204,
 }))
-app.use(express.json({ limit: '10mb' }))
+app.use(express.json({ limit: '5000mb' }))
 app.use(morgan('dev'))
 
 app.get('/api/health', (_req, res) => {

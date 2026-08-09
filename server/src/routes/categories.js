@@ -28,6 +28,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       active: body.active !== false,
       imageUrl: String(body.imageUrl || ''),
       sortOrder: Number(body.sortOrder ?? 0),
+      discount: Number(body.discount ?? 0),
     })
     await logAudit(req, 'category', `Added category ${item.name}`, { id: item._id })
     res.status(201).json(item)
@@ -41,6 +42,7 @@ router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
     if (update.name !== undefined) update.name = String(update.name).trim()
     if (update.imageUrl !== undefined) update.imageUrl = String(update.imageUrl || '')
     if (update.sortOrder !== undefined) update.sortOrder = Number(update.sortOrder ?? 0)
+    if (update.discount !== undefined) update.discount = Number(update.discount ?? 0)
     const item = await Category.findByIdAndUpdate(req.params.id, update, { new: true })
     await logAudit(req, 'category', `Updated category ${req.params.id}`, { id: req.params.id, patch: req.body })
     res.json(item)

@@ -25,6 +25,7 @@
     "date-fns": "^3.6.0",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.2",
+    "lucide-react": "^0.400.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",
@@ -53,7 +54,7 @@
       "output": "release"
     },
     "appId": "com.oresto.rms",
-    "productName": "Uncle John's Cafe",
+    "productName": "Burger Jeez",
     "compression": "maximum",
     "asar": true,
     "npmRebuild": false,
@@ -61,6 +62,7 @@
     "files": [
       "dist/**",
       "electron/**",
+      "icon.ico",
       "!**/*.map"
     ],
     "extraResources": [
@@ -102,10 +104,10 @@
         }
       ],
       "icon": "icon.ico",
-      "publisherName": "Uncle John's Cafe"
+      "publisherName": "Burger Jeez"
     },
     "nsis": {
-      "artifactName": "Uncle John's Cafe-Setup-${version}.exe",
+      "artifactName": "Burger Jeez-Setup-${version}.exe",
       "include": "build/installer.nsh",
       "oneClick": false,
       "perMachine": false,

@@ -8,12 +8,12 @@ function makeEmptyRow() {
 }
 
 export default function DemandModal({ open, onClose, initial }) {
-  const { state, dispatch } = useData()
+  const { state, dispatch, businessDate } = useData()
   const { token } = useAuth()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const ingredients = state.ingredients || []
 
-  const [date, setDate] = useState(new Date().toLocaleDateString('en-CA'))
+  const [date, setDate] = useState(String(businessDate||'').slice(0,10) || new Date().toLocaleDateString('en-CA'))
   const [note, setNote] = useState('')
   const [rows, setRows] = useState(() => Array.from({ length: 20 }, makeEmptyRow))
   const [activeRow, setActiveRow] = useState(-1)
@@ -23,7 +23,7 @@ export default function DemandModal({ open, onClose, initial }) {
   useEffect(() => {
     if (!open) return
     if (initial) {
-      setDate(initial.date || new Date().toLocaleDateString('en-CA'))
+      setDate(initial.date || String(businessDate||'').slice(0,10) || new Date().toLocaleDateString('en-CA'))
       setNote(initial.note || '')
       const filled = (initial.items || []).map(it => ({
         name: it.name,
@@ -36,7 +36,7 @@ export default function DemandModal({ open, onClose, initial }) {
       const empties = Array.from({ length: Math.max(10, 10 - filled.length) }, makeEmptyRow)
       setRows([...filled, ...empties].slice(0, 10))
     } else {
-      setDate(new Date().toLocaleDateString('en-CA'))
+      setDate(String(businessDate||'').slice(0,10) || new Date().toLocaleDateString('en-CA'))
       setNote('')
       setRows(Array.from({ length: 10 }, makeEmptyRow))
     }

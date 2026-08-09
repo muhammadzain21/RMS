@@ -9,8 +9,17 @@ export default function SlipDialog({ html, title = 'Print Slip', onClose, autoPr
     if (!iframe) return
     const doc = iframe.contentDocument || iframe.contentWindow?.document
     if (doc) {
+      const isDark = document.documentElement.classList.contains('dark')
+      const darkStyle = isDark ? `<style id="dark-override">
+        body{background:#111827 !important;color:#e5e7eb !important}
+        *{color:#e5e7eb !important}
+        table,td,th{border-color:#374151 !important}
+        th{background:#1f2937 !important}
+        .line{border-top-color:#4b5563 !important}
+        .bold{color:#e5e7eb !important}
+      </style>` : ''
       doc.open()
-      doc.write(html)
+      doc.write(html.replace('</head>', `${darkStyle}</head>`))
       doc.close()
     }
     if (autoPrint) {

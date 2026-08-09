@@ -40,9 +40,9 @@ router.get('/', async (_req, res, next) => {
 // POST /api/tables { name }
 router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
-    const { name, floor } = req.body
+    const { name, floor, imageUrl } = req.body
     if (!name || !String(name).trim()) return res.status(400).json({ message: 'Name required' })
-    const row = await Table.create({ name: String(name).trim(), floor: floor ? String(floor).trim() : '' })
+    const row = await Table.create({ name: String(name).trim(), floor: floor ? String(floor).trim() : '', imageUrl: imageUrl ? String(imageUrl) : '' })
     try { await Audit.create({ type: 'table', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Added table ${row.name}`, meta: { id: row._id } }) } catch {}
     res.status(201).json(row)
   } catch (e) { next(e) }
@@ -52,12 +52,13 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
 router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
     const { id } = req.params
-    const { name, notes, active, floor } = req.body
+    const { name, notes, active, floor, imageUrl } = req.body
     const update = {}
     if (name) update.name = String(name).trim()
     if (typeof notes === 'string') update.notes = notes
     if (typeof active === 'boolean') update.active = active
     if (typeof floor === 'string') update.floor = floor.trim()
+    if (typeof imageUrl === 'string') update.imageUrl = imageUrl
     const row = await Table.findByIdAndUpdate(id, update, { new: true })
     if (!row) return res.status(404).json({ message: 'Not found' })
     try { await Audit.create({ type: 'table', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Updated table ${id}`, meta: { id, patch: req.body } }) } catch {}

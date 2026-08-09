@@ -97,6 +97,24 @@ export default function SalesNew() {
 
   // Totals
   const lineTotal = useMemo(() => createLineTotal(state.settings?.modifiers || {}), [state.settings])
+  const allCategories = state.categories || []
+  const itemsDiscount = useMemo(() => items.reduce((disc, it) => {
+    const m = menu.find(x=>x.id===it.itemId)
+    if (!m) return disc
+    const itemDisc = Number(m.discount || 0)
+    let discPct = 0
+    if (itemDisc > 0) {
+      discPct = itemDisc
+    } else {
+      const cat = allCategories.find(c => c.name === m.category)
+      if (cat && Number(cat.discount || 0) > 0) discPct = Number(cat.discount)
+    }
+    if (discPct > 0) {
+      const lt = lineTotal(m, it) || 0
+      return disc + Math.round(lt * (discPct / 100))
+    }
+    return disc
+  }, 0), [items, menu, allCategories, lineTotal])
   const subTotal = useMemo(() => items.reduce((s, it) => {
     const m = menu.find(x=>x.id===it.itemId)
     return s + (lineTotal(m, it) || 0)
@@ -111,7 +129,6 @@ export default function SalesNew() {
   const [serviceAmt, setServiceAmt] = useState(0)
   const [taxPct, setTaxPct] = useState(0)
   const [taxAmt, setTaxAmt] = useState(0)
-  const itemsDiscount = 0
   const totalPayment = Math.max(0, subTotal - billDiscAmt - itemsDiscount + serviceAmt + taxAmt)
 
   // Cash received for payment
@@ -232,11 +249,11 @@ export default function SalesNew() {
           : null,
         totalQty: totalQtyLocal,
         subtotal: subtotalLocal,
-        itemsDiscount: 0,
+        itemsDiscount: Number(itemsDiscount||0),
         billDiscount: Number(billDiscAmt||0),
         taxAmt: Number(taxAmt||0),
         serviceAmt: Number(serviceAmt||0),
-        totalAmount: Math.max(0, subtotalLocal - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0)),
+        totalAmount: Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0)),
         remarks: kotRemarks || '',
       }
     }
@@ -246,6 +263,12 @@ export default function SalesNew() {
     if (activeRecallSource === 'recall' && (activeRecall?.id || activeRecall?._id)) {
       ord.id = activeRecall.id || activeRecall._id
       if (activeRecall.tokenNo) ord.tokenNo = activeRecall.tokenNo
+    }
+    // For delivery orders, show rider selection modal before finalizing payment
+    if (orderType === 'Delivery') {
+      setRecallToPay(ord)
+      setShowSelectRider(true)
+      return
     }
     ;(async ()=>{ await finalizePayment(ord, null) })()
   }
@@ -429,6 +452,8 @@ export default function SalesNew() {
         remarks: ord.remarks || '',
         status: 'PAID',
         paymentMethod: paymentMethod,
+        riderId: rider?.id || '',
+        riderName: rider?.name || '',
         // Ensure dashboard uses business date
         date: businessDate,
         deliveryDate: businessDate,
@@ -466,6 +491,8 @@ export default function SalesNew() {
           serviceAmt: saleBody.serviceAmt,
           billNo: savedSale?.billNo,
           userName: user?.name || user?.username || 'USER',
+          riderId: rider?.id || '',
+          rider: rider?.name || '',
           // Force absolute logo path to ensure it loads inside the iframe
           logoUrl: `${window.location.origin}/receipt-logo.png.jpg`,
           autoPrint: false,
@@ -494,7 +521,7 @@ export default function SalesNew() {
 
       // 2) If delivery and rider selected, add to rider-cash
       if ((ord?.orderType||'') === 'Delivery' && rider?.id) {
-        const yyyyMmDd = new Date().toLocaleDateString('en-CA')
+        const yyyyMmDd = String(businessDate||'').slice(0,10) || new Date().toLocaleDateString('en-CA')
         const rcBody = {
           date: yyyyMmDd,
           riderId: String(rider.id),
@@ -770,12 +797,13 @@ export default function SalesNew() {
       // Recalculate totals
       const subtotalLocal = mergedItems.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
       const totalQtyLocal = mergedItems.reduce((s,it)=> s + Number(it.qty||0), 0)
-      const totalAmountLocal = Math.max(0, subtotalLocal - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
+      const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
 
       const patchBody = {
         items: mergedItems,
         totalQty: totalQtyLocal,
         subtotal: subtotalLocal,
+        itemsDiscount: Number(itemsDiscount||0),
         billDiscount: Number(billDiscAmt||0),
         taxAmt: Number(taxAmt||0),
         serviceAmt: Number(serviceAmt||0),
@@ -811,6 +839,7 @@ export default function SalesNew() {
 
       const body = {
         createdAt: Date.now(),
+        date: String(businessDate||'').slice(0,10),
         orderType: r.orderType || orderType || '',
         tokenNo: r.tokenNo || '',
         waiterId: r.waiterId || kotWaiterId || '',
@@ -881,8 +910,8 @@ export default function SalesNew() {
           })
           const subtotalLocal = patched.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
           const totalQtyLocal = patched.reduce((s,it)=> s + Number(it.qty||0), 0)
-          const totalAmountLocal = Math.max(0, subtotalLocal - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
-          const patchBody = { items: patched, subtotal: subtotalLocal, totalQty: totalQtyLocal, billDiscount: Number(billDiscAmt||0), taxAmt: Number(taxAmt||0), serviceAmt: Number(serviceAmt||0), totalAmount: totalAmountLocal }
+          const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
+          const patchBody = { items: patched, subtotal: subtotalLocal, totalQty: totalQtyLocal, itemsDiscount: Number(itemsDiscount||0), billDiscount: Number(billDiscAmt||0), taxAmt: Number(taxAmt||0), serviceAmt: Number(serviceAmt||0), totalAmount: totalAmountLocal }
           try {
             const pr = await fetch(`${API}/api/recalls/${r.id}`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify(patchBody) })
             if (pr.ok) {
@@ -999,13 +1028,14 @@ export default function SalesNew() {
           // Recalculate totals for the recall
           const subtotalLocal = mergedItems.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
           const totalQtyLocal = mergedItems.reduce((s,it)=> s + Number(it.qty||0), 0)
-          const totalAmountLocal = Math.max(0, subtotalLocal - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
+          const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
 
           // PATCH the existing recall (if we have an id); otherwise just print delta
           const patchBody = {
             items: mergedItems,
             totalQty: totalQtyLocal,
             subtotal: subtotalLocal,
+            itemsDiscount: Number(itemsDiscount||0),
             billDiscount: Number(billDiscAmt||0),
             taxAmt: Number(taxAmt||0),
             serviceAmt: Number(serviceAmt||0),
@@ -1045,6 +1075,7 @@ export default function SalesNew() {
             })
             const kotBody = {
               createdAt: Date.now(),
+              date: String(businessDate||'').slice(0,10),
               orderType: orderType || activeRecall.orderType || 'Dine-in',
               tokenNo: activeRecall.tokenNo || '',
               waiterId: kotWaiterId || activeRecall.waiterId || '',
@@ -1122,7 +1153,7 @@ export default function SalesNew() {
           customer: orderType==='Delivery' ? { name: payName, phone: payPhone, address: payAddress } : null,
           totalQty: totalQtyLocal,
           subtotal: subtotalLocal,
-          itemsDiscount: 0,
+          itemsDiscount: Number(itemsDiscount||0),
           billDiscount: Number(billDiscAmt||0),
           taxAmt: Number(taxAmt||0),
           serviceAmt: Number(serviceAmt||0),
@@ -1143,6 +1174,7 @@ export default function SalesNew() {
             })
             const kotBody = {
               createdAt: Date.now(),
+              date: String(businessDate||'').slice(0,10),
               orderType,
               tokenNo: createdRecall?.tokenNo || '',
               waiterId: orderType==='Dine-in' ? kotWaiterId : '',
@@ -1209,8 +1241,7 @@ export default function SalesNew() {
           categories={categories}
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
-          search={search}
-          setSearch={setSearch}
+          tilesPerRow={state.settings?.posCategoryTilesPerRow || 4}
         />
     {/* Delivery customer modal */}
     <DeliveryCustomerModal
@@ -1226,10 +1257,17 @@ export default function SalesNew() {
       payAddress={payAddress}
       setPayAddress={setPayAddress}
     />
+        <input
+          className="w-full px-3 py-2 border-2 border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm text-sm"
+          placeholder="Search items..."
+          value={search}
+          onChange={e=>setSearch(e.target.value)}
+        />
         <ItemsList
           selectedCategory={selectedCategory}
           itemsInCategory={itemsInCategory}
           addToCart={addToCart}
+          tilesPerRow={state.settings?.posItemTilesPerRow || 4}
         />
         <ActionButtons
           discardSale={discardSale}
@@ -1251,6 +1289,7 @@ export default function SalesNew() {
         <CartTable
           items={items}
           menu={menu}
+          categories={allCategories}
           decQty={decQty}
           incQty={incQty}
           updateItem={updateItem}

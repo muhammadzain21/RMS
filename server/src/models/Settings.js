@@ -33,6 +33,9 @@ const SettingsSchema = new mongoose.Schema({
   billingFooter: { type: String, default: '' },
   // Security: key required to delete a sale (plain text)
   salesDeleteKey: { type: String, default: '' },
+  // POS tile layout: number of tiles per row for category and item grids
+  posCategoryTilesPerRow: { type: Number, default: 4 },
+  posItemTilesPerRow: { type: Number, default: 4 },
 }, { timestamps: true })
 
 export default mongoose.model('Settings', SettingsSchema)

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import RiderCash from '../models/RiderCash.js'
+import Sale from '../models/Sale.js'
 import Audit from '../models/Audit.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { blockIfClosedFromBody, blockIfClosedFromModel, isDateClosed } from '../middleware/dayClosed.js'
@@ -11,13 +12,30 @@ router.use(authRequired)
 // List records (optionally by date or rider)
 router.get('/', async (req, res, next) => {
   try {
-    const { date, riderId, settled } = req.query
+    const { date, from, to, riderId, settled } = req.query
     const q = {}
     if (date) q.date = String(date)
+    if (from || to) {
+      q.date = {}
+      if (from) q.date.$gte = String(from)
+      if (to) q.date.$lte = String(to)
+    }
     if (riderId) q.riderId = riderId
     if (settled === 'true') q.settled = true
     if (settled === 'false') q.settled = false
-    const rows = await RiderCash.find(q).sort({ createdAt: -1 })
+    const rows = await RiderCash.find(q).sort({ createdAt: -1 }).lean()
+    // Attach tokenNo from Sale collection where orderId matches Sale _id
+    const orderIds = rows.map(r => r.orderId).filter(Boolean)
+    if (orderIds.length) {
+      const sales = await Sale.find({ _id: { $in: orderIds } }).select('tokenNo billNo').lean()
+      const saleMap = {}
+      sales.forEach(s => { saleMap[String(s._id)] = s })
+      rows.forEach(r => {
+        if (r.orderId && saleMap[String(r.orderId)]) {
+          r.tokenNo = saleMap[String(r.orderId)].tokenNo || ''
+        }
+      })
+    }
     res.json(rows)
   } catch (e) { next(e) }
 })

@@ -14,9 +14,9 @@ router.get('/', async (req, res, next) => {
     const q = {}
     if (type) q.orderType = type
     if (from || to) {
-      q.createdAt = {
-        ...(from ? { $gte: new Date(`${from}T00:00:00.000Z`) } : {}),
-        ...(to ? { $lte: new Date(`${to}T23:59:59.999Z`) } : {})
+      q.date = {
+        ...(from ? { $gte: String(from) } : {}),
+        ...(to ? { $lte: String(to) } : {})
       }
     }
     const total = await Void.countDocuments(q)
@@ -42,6 +42,7 @@ router.post('/', async (req, res, next) => {
     }
     const doc = {
       createdAt: body.createdAt ? new Date(body.createdAt) : new Date(),
+      date: body.date || '',
       orderType: body.orderType,
       tokenNo: body.tokenNo,
       waiterId: body.waiterId,

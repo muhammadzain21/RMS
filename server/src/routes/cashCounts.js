@@ -42,6 +42,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const rec = await CashCount.create({
       date: String(body.date),
       amount: Number(body.amount || 0),
+      fromUser: body.fromUser || '',
       receiver: body.receiver || '',
       note: body.note || '',
       userId: req.user?.id || '',

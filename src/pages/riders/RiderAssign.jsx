@@ -4,7 +4,7 @@ import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 
 export default function RiderAssign() {
-  const { state } = useData()
+  const { state, businessDate } = useData()
   const { token } = useAuth()
   const [orderId, setOrderId] = useState('')
   const [riderId, setRiderId] = useState('')
@@ -21,7 +21,7 @@ export default function RiderAssign() {
     if (!orderId || !riderId) { toast.error('Order ID and Rider are required'); return }
     try {
       const rider = riders.find(r=>r.id===riderId)
-      const payload = { orderId, riderId, riderName: rider?.name || '', date: new Date().toLocaleDateString('en-CA'), deliveries: 1, amount: 0, deliveryCharge: 0, method: 'COD', note: 'Assigned via RiderAssign' }
+      const payload = { orderId, riderId, riderName: rider?.name || '', date: String(businessDate||'').slice(0,10) || new Date().toLocaleDateString('en-CA'), deliveries: 1, amount: 0, deliveryCharge: 0, method: 'COD', note: 'Assigned via RiderAssign' }
       const res = await fetch(`${API}/api/rider-cash`, { method: 'POST', headers, body: JSON.stringify(payload) })
       if (!res.ok) throw new Error('Failed')
       toast.success(`Assigned order ${orderId} to ${rider?.name || 'rider'}`)

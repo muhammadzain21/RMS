@@ -30,7 +30,6 @@ import RiderDaily from './pages/riders/RiderDaily.jsx'
 import ProfitLoss from './pages/ProfitLoss.jsx'
 import Settings from './pages/settings/Settings.jsx'
 import BiometricSettings from './pages/settings/BiometricSettings.jsx'
-import Cashbook from './pages/finance/Cashbook.jsx'
 import AuditLog from './pages/AuditLog.jsx'
 import UserList from './pages/users/UserList.jsx'
 import SidebarPermissions from './pages/users/SidebarPermissions.jsx'
@@ -106,7 +105,6 @@ function App() {
         <Route path="riders/daily" element={<ProtectedRoute roles={["Admin","Manager"]}><RiderDaily /></ProtectedRoute>} />
 
         <Route path="profit-loss" element={<ProtectedRoute roles={["Admin","Manager"]}><ProfitLoss /></ProtectedRoute>} />
-        <Route path="finance/cashbook" element={<ProtectedRoute roles={["Admin","Manager"]}><Cashbook /></ProtectedRoute>} />
         <Route path="audit" element={<ProtectedRoute roles={["Admin"]}><AuditLog /></ProtectedRoute>} />
         <Route path="users" element={<ProtectedRoute roles={["Admin"]}><UserList /></ProtectedRoute>} />
         <Route path="sidebar-permissions" element={<ProtectedRoute roles={["Admin"]}><SidebarPermissions /></ProtectedRoute>} />

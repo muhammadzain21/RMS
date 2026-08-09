@@ -36,6 +36,15 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+// Get single supplier by ID
+router.get('/:id', async (req, res, next) => {
+  try {
+    const s = await Supplier.findById(req.params.id)
+    if (!s) return res.status(404).json({ error: 'Supplier not found' })
+    res.json(s)
+  } catch (e) { next(e) }
+})
+
 // Update
 router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
   try {

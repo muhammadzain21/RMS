@@ -210,7 +210,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "Uncle John's Cafe",
+    title: "Burger Jeez",
     icon: path.join(__dirname, '..', 'icon.ico'),
     webPreferences: {
       nodeIntegration: false,
@@ -264,14 +264,14 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
 })
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.setTitle("Uncle John's Cafe")
+    mainWindow.setTitle("Burger Jeez")
     mainWindow.show()
   })
 
   // Prevent HTML page title from overriding window title
   mainWindow.webContents.on('page-title-updated', (e) => {
     e.preventDefault()
-    mainWindow.setTitle("Uncle John's Cafe")
+    mainWindow.setTitle("Burger Jeez")
   })
 
   // Filter out DevTools-originated Autofill console noise

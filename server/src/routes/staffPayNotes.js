@@ -26,6 +26,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const payload = {
       staffId: req.body.staffId,
       month: req.body.month,
+      date: req.body.date || '',
       notes: req.body.notes || '',
       amount: Number(req.body.amount || 0),
       userId: req.user?.id || '',

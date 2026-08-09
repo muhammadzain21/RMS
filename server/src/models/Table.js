@@ -9,6 +9,7 @@ const TableSchema = new mongoose.Schema({
   totalOrders: { type: Number, default: 0 },
   totalAmount: { type: Number, default: 0 },
   notes: { type: String, default: '' },
+  imageUrl: { type: String, default: '' },
   active: { type: Boolean, default: true }
 }, { timestamps: true })
 

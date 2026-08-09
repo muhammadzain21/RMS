@@ -5,12 +5,12 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 
 export default function RiderDaily() {
-  const { state } = useData()
+  const { state, businessDate } = useData()
   const { token } = useAuth()
   const { confirm, ConfirmDialog } = useConfirm()
   const riders = (state.staff || []).filter(s => String(s.position||'').toLowerCase().includes('rider') && (s.status||'Active') === 'Active')
   const [rows, setRows] = useState([])
-  const [form, setForm] = useState({ riderId:'', deliveries:0, cash:0, date: new Date().toLocaleDateString('en-CA') })
+  const [form, setForm] = useState({ riderId:'', deliveries:0, cash:0, date: String(businessDate||'').slice(0,10) || new Date().toLocaleDateString('en-CA') })
   const [loading, setLoading] = useState(false)
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const headers = useMemo(() => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }), [token])

@@ -18,6 +18,7 @@ const MenuItemSchema = new mongoose.Schema({
   sortOrder: { type: Number, default: 0 },
 
   active: { type: Boolean, default: true },
+  discount: { type: Number, default: 0 },
 }, { timestamps: true })
 
 export default mongoose.model('MenuItem', MenuItemSchema)

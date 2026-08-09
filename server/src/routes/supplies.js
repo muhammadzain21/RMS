@@ -10,10 +10,13 @@ router.use(authRequired)
 // List supplies (optional from,to yyyy-MM-dd)
 router.get('/', async (req, res, next) => {
   try {
-    const { from, to } = req.query
+    const { from, to, supplierId } = req.query
     let filter = {}
     if (from && to) {
       filter.date = { $gte: String(from), $lte: String(to) }
+    }
+    if (supplierId) {
+      filter.supplierId = String(supplierId)
     }
     const rows = await Supply.find(filter).sort({ date: -1, createdAt: -1 })
     res.json(rows)
