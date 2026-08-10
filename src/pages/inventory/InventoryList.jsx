@@ -96,7 +96,7 @@ export default function InventoryList() {
  { label: 'Actions', render: (row) => (
  <div className="flex gap-2"><button
  onClick={() => { setEditingItem(row); setIngModalOpen(true) }}
- className="px-3 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors font-medium"
+ className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-semibold shadow-sm hover:bg-blue-600 transition-all hover:scale-105 active:scale-95"
  >Edit</button><button
  onClick={async () => {
  const confirmed = await confirm({ title: 'Delete Ingredient', message: 'Delete this ingredient?' })
@@ -110,7 +110,7 @@ export default function InventoryList() {
  toast.error('Failed to delete on server')
  }
  }}
- className="px-3 py-1.5 text-sm rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium"
+ className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-semibold shadow-sm hover:bg-rose-600 transition-all hover:scale-105 active:scale-95"
  >Delete</button></div>
  )},
  ]

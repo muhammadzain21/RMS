@@ -39,6 +39,7 @@ import heldsRouter from './routes/helds.js'
 import printRouter from './routes/print.js'
 import biometricRouter from './biometric/routes/index.js'
 import biometricConfigRouter from './routes/biometricConfig.js'
+import inventorySnapshotsRouter, { takeSnapshot } from './routes/inventorySnapshots.js'
 import { startBiometricPoller } from './biometric/jobs/poller.js'
 
 dotenv.config()
@@ -112,6 +113,7 @@ app.use('/api/helds', heldsRouter)
 app.use('/api/print', printRouter)
 app.use('/api/biometric', biometricRouter)
 app.use('/api/biometric-config', biometricConfigRouter)
+app.use('/api/inventory-snapshots', inventorySnapshotsRouter)
 
 async function start() {
   try {

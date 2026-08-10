@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { format, parseISO } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
@@ -13,6 +13,29 @@ export default function Consumption() {
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const [fromDate, setFromDate] = useState(businessDate || new Date().toLocaleDateString('en-CA'))
  const [toDate, setToDate] = useState(businessDate || new Date().toLocaleDateString('en-CA'))
+ const [closingSnapshot, setClosingSnapshot] = useState(null)
+ const [openingSnapshot, setOpeningSnapshot] = useState(null)
+
+ const authHeaders = useMemo(() => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }), [token])
+
+ // Fetch inventory snapshots for the selected date range
+ useEffect(() => {
+   let cancelled = false
+   const fetchSnapshots = async () => {
+     try {
+       const [closingRes, openingRes] = await Promise.all([
+         fetch(`${API}/api/inventory-snapshots?date=${encodeURIComponent(toDate)}`, { headers: authHeaders, cache: 'no-store' }),
+         fetch(`${API}/api/inventory-snapshots/opening?date=${encodeURIComponent(fromDate)}`, { headers: authHeaders, cache: 'no-store' }),
+       ])
+       if (!cancelled) {
+         if (closingRes.ok) setClosingSnapshot(await closingRes.json())
+         if (openingRes.ok) setOpeningSnapshot(await openingRes.json())
+       }
+     } catch {}
+   }
+   fetchSnapshots()
+   return () => { cancelled = true }
+ }, [fromDate, toDate, API, authHeaders])
 
  // Sales for selected date range
  const sales = useMemo(() => (state.sales || []).filter(s => s.date >= fromDate && s.date <= toDate), [state.sales, fromDate, toDate])
@@ -23,6 +46,23 @@ export default function Consumption() {
  // Build maps for quick lookup
  const menuById = useMemo(() => new Map(menu.map(m => [m.id, m])), [menu])
  const ingByName = useMemo(() => new Map(ingredients.map(i => [i.name, i])), [ingredients])
+
+ // Build lookup maps from snapshots
+ const openingStockMap = useMemo(() => {
+   const m = new Map()
+   if (openingSnapshot?.items) {
+     openingSnapshot.items.forEach(it => m.set(it.name, Number(it.qty || 0)))
+   }
+   return m
+ }, [openingSnapshot])
+
+ const closingStockMap = useMemo(() => {
+   const m = new Map()
+   if (closingSnapshot?.items) {
+     closingSnapshot.items.forEach(it => m.set(it.name, Number(it.qty || 0)))
+   }
+   return m
+ }, [closingSnapshot])
 
  // Aggregate item counts and ingredient consumption
  const { itemCounts, customCounts, consumption } = useMemo(() => {
@@ -92,21 +132,38 @@ export default function Consumption() {
 
  const consumptionRows = useMemo(() => {
  const rows = []
+ const hasSnapshots = openingStockMap.size > 0 || closingStockMap.size > 0
  consumption.forEach((amt, ingName) => {
  const inv = ingByName.get(ingName)
- const currentQty = Number(inv?.qty || 0)
- const afterQty = Number((currentQty - amt).toFixed(3))
- rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), currentQty, afterQty, unit: inv?.unit || '' })
+ const unit = inv?.unit || ''
+ let openingQty, closingQty
+ if (hasSnapshots) {
+   openingQty = openingStockMap.has(ingName) ? openingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
+   closingQty = closingStockMap.has(ingName) ? closingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
+ } else {
+   // Fallback: no snapshot, use current live stock
+   openingQty = Number(inv?.qty || 0)
+   closingQty = Number((openingQty - amt).toFixed(3))
+ }
+ rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty: Number(openingQty.toFixed(3)), closingQty: Number(closingQty.toFixed(3)), unit })
  })
  // Include ingredients that had no consumption to help reconciliation
  ingredients.forEach(inv => {
  if (!consumption.has(inv.name)) {
- rows.push({ name: inv.name, consumed: 0, currentQty: Number(inv.qty || 0), afterQty: Number(inv.qty || 0), unit: inv.unit || '' })
+   let openingQty, closingQty
+   if (hasSnapshots) {
+     openingQty = openingStockMap.has(inv.name) ? openingStockMap.get(inv.name) : Number(inv.qty || 0)
+     closingQty = closingStockMap.has(inv.name) ? closingStockMap.get(inv.name) : Number(inv.qty || 0)
+   } else {
+     openingQty = Number(inv.qty || 0)
+     closingQty = Number(inv.qty || 0)
+   }
+   rows.push({ name: inv.name, consumed: 0, openingQty: Number(openingQty.toFixed(3)), closingQty: Number(closingQty.toFixed(3)), unit: inv.unit || '' })
  }
  })
  rows.sort((a,b) => String(a.name).localeCompare(String(b.name)))
  return rows
- }, [consumption, ingByName, ingredients])
+ }, [consumption, ingByName, ingredients, openingStockMap, closingStockMap])
 
  const totalItems = itemRows.reduce((a,b)=>a + Number(b.qty||0), 0)
  // Pagination state
@@ -143,6 +200,15 @@ export default function Consumption() {
  const others = (Array.isArray(state.sales) ? state.sales : []).filter(s => s.date < fromDate || s.date > toDate)
  dispatch({ type: 'HYDRATE', payload: { sales: [...fresh, ...others] } })
  }
+ } catch {}
+ // Snapshots
+ try {
+   const [closingRes, openingRes] = await Promise.all([
+     fetch(`${API}/api/inventory-snapshots?date=${encodeURIComponent(toDate)}`, { headers, cache: 'no-store' }),
+     fetch(`${API}/api/inventory-snapshots/opening?date=${encodeURIComponent(fromDate)}`, { headers, cache: 'no-store' }),
+   ])
+   if (closingRes.ok) setClosingSnapshot(await closingRes.json())
+   if (openingRes.ok) setOpeningSnapshot(await openingRes.json())
  } catch {}
  } catch {}
  }
@@ -198,16 +264,24 @@ export default function Consumption() {
  })
  })
  // Map to rows like original
+ const hasSnapshots = openingStockMap.size > 0 || closingStockMap.size > 0
  const rows = []
  cons.forEach((amt, ingName) => {
  const inv = ingByName.get(ingName)
- const currentQty = Number(inv?.qty || 0)
- const afterQty = Number((currentQty - amt).toFixed(3))
- rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), currentQty, afterQty, unit: inv?.unit || '' })
+ const unit = inv?.unit || ''
+ let openingQty, closingQty
+ if (hasSnapshots) {
+   openingQty = openingStockMap.has(ingName) ? openingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
+   closingQty = closingStockMap.has(ingName) ? closingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
+ } else {
+   openingQty = Number(inv?.qty || 0)
+   closingQty = Number((openingQty - amt).toFixed(3))
+ }
+ rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty: Number(openingQty.toFixed(3)), closingQty: Number(closingQty.toFixed(3)), unit })
  })
  rows.sort((a,b)=> String(a.name).localeCompare(String(b.name)))
  return rows
- }, [applyFilterToConsumption, itemFilter, sales, menuById, modsConfig, ingByName])
+ }, [applyFilterToConsumption, itemFilter, sales, menuById, modsConfig, ingByName, openingStockMap, closingStockMap])
 
  const consTotalPages = Math.max(1, Math.ceil(filteredConsumptionRows.length / consPageSize))
  const consStart = (consPage - 1) * consPageSize
@@ -226,10 +300,10 @@ export default function Consumption() {
  }
  lines.push('')
  // Consumption
- lines.push('Ingredient Consumption vs Inventory,,,')
- lines.push('Ingredient,Unit,Consumed,Current Qty')
+ lines.push('Ingredient Consumption vs Inventory,,,,,')
+ lines.push('Ingredient,Unit,Consumed,Opening Stock,Closing Stock')
  for (const r of filteredConsumptionRows) {
- lines.push([r.name, r.unit||'', r.consumed, r.currentQty].map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(','))
+ lines.push([r.name, r.unit||'', r.consumed, r.openingQty, r.closingQty].map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(','))
  }
  const csv = lines.join('\n')
  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -265,8 +339,8 @@ export default function Consumption() {
  const y = doc.lastAutoTable.finalY + 8
  doc.text('Ingredient Consumption vs Inventory', 14, y)
  doc.autoTable({
- head: [['Ingredient','Unit','Consumed','Current Qty']],
- body: filteredConsumptionRows.map(r => [r.name, r.unit||'', r.consumed, r.currentQty]),
+ head: [['Ingredient','Unit','Consumed','Opening Stock','Closing Stock']],
+ body: filteredConsumptionRows.map(r => [r.name, r.unit||'', r.consumed, r.openingQty, r.closingQty]),
  startY: y + 4,
  styles: { fontSize: 9 },
  headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' }
@@ -288,12 +362,12 @@ export default function Consumption() {
  </span></td><td className="p-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">{r.qty}</td></tr>
  ))}
  </tbody></table></div></section><section className="space-y-3"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-xl"></span> Ingredient Consumption vs Inventory
- </h2><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Ingredient</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Unit</th><th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300">Consumed</th><th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300">Current Qty</th></tr></thead><tbody>
+ </h2><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Ingredient</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Unit</th><th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300">Consumed</th><th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300">Opening Stock</th><th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300">Closing Stock</th></tr></thead><tbody>
  {pagedConsumption.map((r, idx) => (
- <tr key={`${r.name}-${idx}`} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.unit}</td><td className="p-3 text-right font-semibold text-rose-600 dark:text-rose-400">{r.consumed}</td><td className="p-3 text-right text-gray-700 dark:text-gray-300">{r.currentQty}</td></tr>
+ <tr key={`${r.name}-${idx}`} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.unit}</td><td className="p-3 text-right font-semibold text-rose-600 dark:text-rose-400">{r.consumed}</td><td className="p-3 text-right text-gray-700 dark:text-gray-300">{r.openingQty}</td><td className="p-3 text-right font-semibold text-gray-900 dark:text-gray-100">{r.closingQty}</td></tr>
  ))}
  </tbody></table></div><p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
- Note: Consumption is computed from menu item recipes and applied modifiers for the selected date.
+ Note: Consumption is computed from menu item recipes and applied modifiers for the selected date. Opening Stock is from the latest snapshot before the From date; Closing Stock is from the latest snapshot on or before the To date. If no snapshot exists, live stock is shown.
  </p></section></div>
  )
 }

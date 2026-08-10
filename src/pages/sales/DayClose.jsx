@@ -152,8 +152,8 @@ export default function DayClose() {
  // History filters: default to last 7 days
  const iso = (d) => format(d, 'yyyy-MM-dd')
  const addDays = (d, n) => new Date(d.getTime() + n*24*60*60*1000)
- const [from, setFrom] = useState(() => iso(addDays(new Date(), -7)))
- const [to, setTo] = useState(() => iso(new Date()))
+ const [from, setFrom] = useState(() => iso(addDays(new Date(effectiveBusinessDate), -7)))
+ const [to, setTo] = useState(effectiveBusinessDate)
  const [search, setSearch] = useState('')
  const [serverRows, setServerRows] = useState([])
  const [loading, setLoading] = useState(false)
@@ -211,7 +211,7 @@ export default function DayClose() {
 
  // Quick range helpers
  const setRange = (key) => {
- const now = new Date()
+ const now = new Date(effectiveBusinessDate)
  if (key === 'today') {
  setFrom(iso(now)); setTo(iso(now))
  } else if (key === 'yesterday') {

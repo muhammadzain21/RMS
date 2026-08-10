@@ -2,6 +2,7 @@ import { Router } from 'express'
 import DayClose from '../models/DayClose.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { takeSnapshot } from './inventorySnapshots.js'
  
 
 const router = Router()
@@ -59,6 +60,10 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     })
 
     await logAudit(req, 'day', `Day closed ${rec.date} variance ${rec.variance}`, { id: rec._id })
+
+    // Take inventory snapshot at day close
+    takeSnapshot(date, 'day-close').catch(()=>{})
+
     res.status(201).json(rec)
   } catch (e) { next(e) }
 })

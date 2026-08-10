@@ -4,7 +4,7 @@ import ThemeToggle from '../components/ThemeToggle.jsx'
 import { PanelLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 export default function Header({ brand, onMenuClick, onCollapseClick, collapsed }) {
- const { state } = useData()
+ const { state, businessDate } = useData()
  const [currentTime, setCurrentTime] = useState(new Date())
 
  useEffect(() => {
@@ -27,7 +27,7 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed 
  title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
  >
  {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
- </button><div className="md:hidden font-bold text-white drop-shadow">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-3"><div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs"><span className="text-white/80 font-medium">Business Date:</span><span className="font-bold text-white">{state?.businessDate || new Date().toISOString().slice(0, 10)}</span><span className={`ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${state?.daybook?.open ? 'bg-emerald-400 text-emerald-900' : 'bg-gray-300 text-gray-700'}`}>
+ </button><div className="md:hidden font-bold text-white drop-shadow">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-3"><div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs"><span className="text-white/80 font-medium">Business Date:</span><span className="font-bold text-white">{businessDate || new Date().toISOString().slice(0, 10)}</span><span className={`ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${state?.daybook?.open ? 'bg-emerald-400 text-emerald-900' : 'bg-gray-300 text-gray-700'}`}>
  {state?.daybook?.open ? ' Open' : ' Closed'}
  </span></div><div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs" title="System Time"><span className="font-mono font-bold text-white">
  {currentTime.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}

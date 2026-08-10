@@ -250,16 +250,6 @@ export async function printSaleReceiptUtil(opts = {}) {
     }
     const logoAbs = toAbsolute(logoUrl)
     const logoAbsList = logoCandidates.map(toAbsolute)
-    const darkCSS = isDarkMode() ? `
-    body{background:#111827;color:#e5e7eb}
-    h1{color:#e5e7eb}
-    .muted{color:#9ca3af}
-    th{background:#1f2937;color:#e5e7eb}
-    td{border-bottom:1px solid #374151}
-    .emph{color:#e5e7eb}
-    .hr{border-top:1px dashed #4b5563}
-    .toolbar{background:#111827;border-bottom:1px solid #374151}
-    .btn{background:#374151;color:#e5e7eb;border-color:#4b5563}` : ''
     const html = `<!doctype html>
 <html>
 <head>
@@ -286,7 +276,6 @@ export async function printSaleReceiptUtil(opts = {}) {
     .hr{ border-top:1px dashed #999; margin:4px 0 }
     .toolbar{ position:sticky; top:0; background:#fff; padding:6px 0; display:${auto ? 'none' : 'flex'}; gap:8px; justify-content:flex-end; border-bottom:1px solid #ddd }
     .btn{ padding:6px 10px; border:1px solid #999; background:#f5f5f5; cursor:pointer }
-    ${darkCSS}
   </style>
 </head>
 <body>
@@ -495,15 +484,6 @@ export function buildKOTHtml(opts = {}) {
       tableDisplay = floor ? `Table ${tableNo} / ${floor}` : `Table ${tableNo}`
     }
 
-    const darkCSS = isDarkMode() ? `
-    body{background:#111827;color:#e5e7eb}
-    h1{color:#e5e7eb}
-    .muted{color:#9ca3af}
-    th{background:#1f2937;color:#e5e7eb}
-    td{border-bottom:1px solid #374151}
-    .emph{color:#e5e7eb}
-    .endline{border-top:2px dashed #4b5563;color:#9ca3af}
-    .kitchen-note{background:#1f1020;color:#f87171;border-color:#f87171}` : ''
     const html = `<!doctype html>
 <html>
 <head>
@@ -526,7 +506,6 @@ export function buildKOTHtml(opts = {}) {
     .emph{ font-weight:900; font-size:13px; color:#000 }
     .endline{ border-top:2px dashed #999; margin:12px 0; text-align:center; font-size:10px; color:#666; padding-top:4px }
     .kitchen-note{ text-align:center; font-size:14px; font-weight:bold; color:#c00; margin-top:8px; padding:8px; border:1px dashed #c00; background:#fff8f8 }
-    ${darkCSS}
   </style>
   </head>
   <body>

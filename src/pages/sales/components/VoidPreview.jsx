@@ -19,8 +19,8 @@ export default function VoidPreview({
  const tableNo = order?.tableNo || ''
 
  // Local selection state: quantity to void per line index (default to FULL qty)
- const [qtyToVoid, setQtyToVoid] = React.useState(() => items.map(it => Number(it?.qty||0)))
- React.useEffect(() => { setQtyToVoid(items.map(it => Number(it?.qty||0))) }, [order])
+ const [qtyToVoid, setQtyToVoid] = React.useState(() => items.map(() => 0))
+ React.useEffect(() => { setQtyToVoid(items.map(() => 0)) }, [order])
 
  // Only render when dialog should be visible and an order is present
  if (!open || !order) return null

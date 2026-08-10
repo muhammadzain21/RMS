@@ -8,6 +8,7 @@ import Recall from '../models/Recall.js'
 import Settings from '../models/Settings.js'
 import { authRequired } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { takeSnapshot } from './inventorySnapshots.js'
 
 // Sales routes backed by MongoDB via Mongoose
 const router = express.Router()
@@ -252,6 +253,9 @@ router.post('/', async (req, res) => {
       // Log and continue; do not fail the sale creation if inventory update fails
       console.warn('[sales] inventory deduction failed:', invErr && invErr.message)
     }
+
+    // Take inventory snapshot after sale (post-deduction stock state)
+    takeSnapshot(dateStr, 'sale').catch(()=>{})
 
     try {
       const rid = payload.recallId || payload.recall_id || null
