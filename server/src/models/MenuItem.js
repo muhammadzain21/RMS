@@ -12,7 +12,8 @@ const MenuItemSchema = new mongoose.Schema({
 
   // Recipe: map of ingredient name -> amount consumed per 1 qty of this menu item
   // Amount should be in the same base unit as inventory `ingredients.qty` (e.g., grams or pcs)
-  recipe: { type: Map, of: Number, default: {} },
+  // Using Mixed type instead of Map to allow keys with special characters (e.g., "7UP 1.5Liter")
+  recipe: { type: mongoose.Schema.Types.Mixed, default: {} },
 
   // Display order for arranging items (lower = first)
   sortOrder: { type: Number, default: 0 },

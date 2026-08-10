@@ -51,6 +51,15 @@ export default function SalesHistory() {
  }
  // Update UI and restore inventory locally
  dispatch({ type: 'DELETE_SALE', payload: { id: deleteTarget.id } })
+ // Refresh ingredients from server so inventory reflects the restoration
+ try {
+   const ingRes = await fetch(`${API}/api/ingredients`, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }, cache: 'no-store' })
+   if (ingRes.ok) {
+     const ingRows = await ingRes.json()
+     const mapId = (x) => ({ ...x, id: x.id || x._id })
+     dispatch({ type: 'HYDRATE', payload: { ingredients: (ingRows||[]).map(mapId) } })
+   }
+ } catch {}
  setDeleteBusy(false)
  setDeleteOpen(false)
  setDeleteTarget(null)

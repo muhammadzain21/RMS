@@ -132,38 +132,25 @@ export default function Consumption() {
 
  const consumptionRows = useMemo(() => {
  const rows = []
- const hasSnapshots = openingStockMap.size > 0 || closingStockMap.size > 0
  consumption.forEach((amt, ingName) => {
  const inv = ingByName.get(ingName)
  const unit = inv?.unit || ''
- let openingQty, closingQty
- if (hasSnapshots) {
-   openingQty = openingStockMap.has(ingName) ? openingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
-   closingQty = closingStockMap.has(ingName) ? closingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
- } else {
-   // Fallback: no snapshot, use current live stock
-   openingQty = Number(inv?.qty || 0)
-   closingQty = Number((openingQty - amt).toFixed(3))
- }
- rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty: Number(openingQty.toFixed(3)), closingQty: Number(closingQty.toFixed(3)), unit })
+ // Closing = current live stock (after all sales/deductions/restorations)
+ // Opening = closing + consumed (reverse-engineer the pre-sale stock)
+ const closingQty = Number(inv?.qty || 0)
+ const openingQty = Number((closingQty + amt).toFixed(3))
+ rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty, closingQty, unit })
  })
  // Include ingredients that had no consumption to help reconciliation
  ingredients.forEach(inv => {
  if (!consumption.has(inv.name)) {
-   let openingQty, closingQty
-   if (hasSnapshots) {
-     openingQty = openingStockMap.has(inv.name) ? openingStockMap.get(inv.name) : Number(inv.qty || 0)
-     closingQty = closingStockMap.has(inv.name) ? closingStockMap.get(inv.name) : Number(inv.qty || 0)
-   } else {
-     openingQty = Number(inv.qty || 0)
-     closingQty = Number(inv.qty || 0)
-   }
-   rows.push({ name: inv.name, consumed: 0, openingQty: Number(openingQty.toFixed(3)), closingQty: Number(closingQty.toFixed(3)), unit: inv.unit || '' })
+   const qty = Number(inv.qty || 0)
+   rows.push({ name: inv.name, consumed: 0, openingQty: qty, closingQty: qty, unit: inv.unit || '' })
  }
  })
  rows.sort((a,b) => String(a.name).localeCompare(String(b.name)))
  return rows
- }, [consumption, ingByName, ingredients, openingStockMap, closingStockMap])
+ }, [consumption, ingByName, ingredients])
 
  const totalItems = itemRows.reduce((a,b)=>a + Number(b.qty||0), 0)
  // Pagination state
@@ -264,24 +251,17 @@ export default function Consumption() {
  })
  })
  // Map to rows like original
- const hasSnapshots = openingStockMap.size > 0 || closingStockMap.size > 0
  const rows = []
  cons.forEach((amt, ingName) => {
  const inv = ingByName.get(ingName)
  const unit = inv?.unit || ''
- let openingQty, closingQty
- if (hasSnapshots) {
-   openingQty = openingStockMap.has(ingName) ? openingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
-   closingQty = closingStockMap.has(ingName) ? closingStockMap.get(ingName) : (inv ? Number(inv.qty || 0) : 0)
- } else {
-   openingQty = Number(inv?.qty || 0)
-   closingQty = Number((openingQty - amt).toFixed(3))
- }
- rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty: Number(openingQty.toFixed(3)), closingQty: Number(closingQty.toFixed(3)), unit })
+ const closingQty = Number(inv?.qty || 0)
+ const openingQty = Number((closingQty + amt).toFixed(3))
+ rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty, closingQty, unit })
  })
  rows.sort((a,b)=> String(a.name).localeCompare(String(b.name)))
  return rows
- }, [applyFilterToConsumption, itemFilter, sales, menuById, modsConfig, ingByName, openingStockMap, closingStockMap])
+ }, [applyFilterToConsumption, itemFilter, sales, menuById, modsConfig, ingByName])
 
  const consTotalPages = Math.max(1, Math.ceil(filteredConsumptionRows.length / consPageSize))
  const consStart = (consPage - 1) * consPageSize
@@ -367,7 +347,7 @@ export default function Consumption() {
  <tr key={`${r.name}-${idx}`} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.unit}</td><td className="p-3 text-right font-semibold text-rose-600 dark:text-rose-400">{r.consumed}</td><td className="p-3 text-right text-gray-700 dark:text-gray-300">{r.openingQty}</td><td className="p-3 text-right font-semibold text-gray-900 dark:text-gray-100">{r.closingQty}</td></tr>
  ))}
  </tbody></table></div><p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
- Note: Consumption is computed from menu item recipes and applied modifiers for the selected date. Opening Stock is from the latest snapshot before the From date; Closing Stock is from the latest snapshot on or before the To date. If no snapshot exists, live stock is shown.
+ Note: Consumption is computed from menu item recipes and applied modifiers for the selected date. Closing Stock is the current live inventory. Opening Stock = Closing Stock + Consumed.
  </p></section></div>
  )
 }

@@ -131,7 +131,7 @@ router.post('/', async (req, res) => {
       const norm = (s) => String(s||'').trim().toLowerCase().replace(/\s+/g, ' ')
       const menuByNormName = new Map()
       if (validIds.length) {
-        const menuRows = await MenuItem.find({ _id: { $in: validIds } }, { _id: 1, recipe: 1, recipeBySize: 1, name: 1 }).lean()
+        const menuRows = await MenuItem.find({ _id: { $in: validIds } }, { _id: 1, recipe: 1, name: 1 }).lean()
         for (const m of (menuRows||[])) { menuMap.set(String(m._id), m); menuByNormName.set(norm(m.name), m) }
       }
       // Also pre-load by flavour names if provided
@@ -139,7 +139,7 @@ router.post('/', async (req, res) => {
       if (uniqueNames.length) {
         const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const ors = uniqueNames.map(n => ({ name: new RegExp(`^\\s*${escapeRegExp(n)}\\s*$`, 'i') }))
-        const nameRows = await MenuItem.find({ $or: ors }, { _id: 1, recipe: 1, recipeBySize: 1, name: 1 }).lean()
+        const nameRows = await MenuItem.find({ $or: ors }, { _id: 1, recipe: 1, name: 1 }).lean()
         for (const m of (nameRows||[])) { menuMap.set(String(m._id), m); menuByNormName.set(norm(m.name), m) }
       }
 
@@ -159,15 +159,10 @@ router.post('/', async (req, res) => {
         }
         const key = mapSize(sizeRaw)
 
-        // 1) Apply base item's recipe (prefer per-size when available)
+        // 1) Apply base item's recipe
         {
           const m = menuMap.get(String(line.itemId))
-          let chosen = null
-          if (key && m?.recipeBySize && typeof m.recipeBySize === 'object') {
-            const rbs = m.recipeBySize[key]
-            if (rbs && typeof rbs === 'object') chosen = rbs
-          }
-          if (!chosen && m?.recipe && typeof m.recipe === 'object') chosen = m.recipe
+          const chosen = m?.recipe && typeof m.recipe === 'object' ? m.recipe : null
           for (const [ingName, perUnit] of Object.entries(chosen || {})) {
             const useAmt = Number(perUnit || 0) * qty
             if (!useAmt) continue
@@ -190,12 +185,7 @@ router.post('/', async (req, res) => {
                 }
               }
               if (!fm) continue
-              let chosen = null
-              if (key && fm?.recipeBySize && typeof fm.recipeBySize === 'object') {
-                const rbs = fm.recipeBySize[key]
-                if (rbs && typeof rbs === 'object') chosen = rbs
-              }
-              if (!chosen && fm?.recipe && typeof fm.recipe === 'object') chosen = fm.recipe
+              const chosen = fm?.recipe && typeof fm.recipe === 'object' ? fm.recipe : null
               for (const [ingName, perUnit] of Object.entries(chosen || {})) {
                 const useAmt = Number(perUnit || 0) * qty
                 if (!useAmt) continue
@@ -330,6 +320,124 @@ router.delete('/:id', async (req, res) => {
     
     // Delete from Sale collection
     await Sale.findByIdAndDelete(id)
+    
+    // Restore inventory: reverse the recipe consumption that was deducted when the sale was created
+    try {
+      const items = Array.isArray(sale.items) ? sale.items : []
+      const baseItemIds = [...new Set(items.map(it => it.itemId).filter(Boolean))]
+      const flavourIdsFromMods = []
+      const flavourNamesFromMods = []
+      for (const it of items) {
+        try {
+          const arr = Array.isArray(it?.mods?.flavours) ? it.mods.flavours : []
+          for (const fid of arr) if (fid) flavourIdsFromMods.push(String(fid))
+        } catch {}
+        try {
+          const arrN = Array.isArray(it?.mods?.flavourNames) ? it.mods.flavourNames : []
+          for (const nm of arrN) if (nm) flavourNamesFromMods.push(String(nm))
+        } catch {}
+      }
+      const itemIds = [...new Set([...baseItemIds, ...flavourIdsFromMods])]
+      const isValidObjectId = (s) => /^(?:[a-fA-F0-9]{24})$/.test(String(s||''))
+      const validIds = itemIds.filter(isValidObjectId)
+      const menuMap = new Map()
+      const norm = (s) => String(s||'').trim().toLowerCase().replace(/\s+/g, ' ')
+      const menuByNormName = new Map()
+      if (validIds.length) {
+        const menuRows = await MenuItem.find({ _id: { $in: validIds } }, { _id: 1, recipe: 1, name: 1 }).lean()
+        for (const m of (menuRows||[])) { menuMap.set(String(m._id), m); menuByNormName.set(norm(m.name), m) }
+      }
+      const uniqueNames = [...new Set(flavourNamesFromMods.map(norm).filter(Boolean))]
+      if (uniqueNames.length) {
+        const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const ors = uniqueNames.map(n => ({ name: new RegExp(`^\\s*${escapeRegExp(n)}\\s*$`, 'i') }))
+        const nameRows = await MenuItem.find({ $or: ors }, { _id: 1, recipe: 1, name: 1 }).lean()
+        for (const m of (nameRows||[])) { menuMap.set(String(m._id), m); menuByNormName.set(norm(m.name), m) }
+      }
+
+      // Aggregate consumption to restore (same logic as sale creation, but we'll ADD back)
+      const cons = new Map()
+      for (const line of items) {
+        const qty = Number(line?.qty || 0)
+        if (!qty) continue
+        // 1) Base item's recipe
+        {
+          const m = menuMap.get(String(line.itemId))
+          const chosen = m?.recipe && typeof m.recipe === 'object' ? m.recipe : null
+          for (const [ingName, perUnit] of Object.entries(chosen || {})) {
+            const useAmt = Number(perUnit || 0) * qty
+            if (!useAmt) continue
+            cons.set(ingName, Number((cons.get(ingName) || 0) + useAmt))
+          }
+        }
+        // 2) Flavour recipes
+        {
+          const flavours = Array.isArray(line?.mods?.flavours) ? line.mods.flavours : []
+          const flavourNames = Array.isArray(line?.mods?.flavourNames) ? line.mods.flavourNames : []
+          if (flavours.length) {
+            for (const fid of flavours) {
+              let fm = menuMap.get(String(fid))
+              if (!fm && flavourNames.length) {
+                for (const nm of flavourNames) {
+                  const cand = menuByNormName.get(norm(nm))
+                  if (cand) { fm = cand; break }
+                }
+              }
+              if (!fm) continue
+              const chosen = fm?.recipe && typeof fm.recipe === 'object' ? fm.recipe : null
+              for (const [ingName, perUnit] of Object.entries(chosen || {})) {
+                const useAmt = Number(perUnit || 0) * qty
+                if (!useAmt) continue
+                cons.set(ingName, Number((cons.get(ingName) || 0) + useAmt))
+              }
+            }
+          }
+        }
+      }
+
+      if (cons.size) {
+        const ings = await Ingredient.find({}, { name: 1 }).lean()
+        const norm2 = (s) => String(s||'').trim().toLowerCase().replace(/\s+/g, ' ')
+        const noSpace = (s) => norm2(s).replace(/\s+/g, '')
+        const canonByNorm = new Map((ings||[]).map(i => [norm2(i.name), i.name]))
+        const canonByNoSpace = new Map((ings||[]).map(i => [noSpace(i.name), i.name]))
+
+        const canonCons = new Map()
+        for (const [rawName, amt] of cons.entries()) {
+          const a = Number(amt || 0)
+          if (!(a > 0)) continue
+          const n1 = norm2(rawName)
+          const n2 = noSpace(rawName)
+          let key = canonByNorm.get(n1) || canonByNoSpace.get(n2)
+          if (!key) {
+            key = { raw: rawName }
+          }
+          const mapKey = typeof key === 'string' ? key : JSON.stringify(key)
+          canonCons.set(mapKey, Number((canonCons.get(mapKey) || 0) + a))
+        }
+
+        // Build bulk ops to ADD back the consumed quantities (reverse of sale creation)
+        const ops = []
+        for (const [k, amt] of canonCons.entries()) {
+          const parsed = (() => { try { return JSON.parse(k) } catch { return null } })()
+          if (parsed && parsed.raw) {
+            const escaped = String(parsed.raw).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const rx = new RegExp(`^\\s*${escaped}\\s*$`, 'i')
+            ops.push({ updateOne: { filter: { name: rx }, update: { $inc: { qty: Number(amt) } } } })
+          } else {
+            ops.push({ updateOne: { filter: { name: String(k) }, update: { $inc: { qty: Number(amt) } } } })
+          }
+        }
+        if (ops.length) {
+          await Ingredient.bulkWrite(ops, { ordered: false })
+        }
+      }
+
+      // Take a fresh snapshot after restoring inventory
+      takeSnapshot(sale.date || toYyyyMmDd(new Date()), 'sale-delete').catch(()=>{})
+    } catch (invErr) {
+      console.warn('[sales] inventory restore on delete failed:', invErr && invErr.message)
+    }
     
     // Log audit for sale deletion
     try {
