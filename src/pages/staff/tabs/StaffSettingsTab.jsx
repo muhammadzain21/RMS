@@ -63,20 +63,16 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
                 <div key={shift.id} className="flex flex-col md:flex-row items-start md:items-center gap-3 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600">
                   {editingShiftId === shift.id ? (
                     <>
-                      <input
-                        type="text"
-                        placeholder="Shift ID"
-                        className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm w-32"
-                        value={shift.id}
-                        onChange={e => updateShift(index, 'id', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Shift Name"
-                        className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm flex-1"
-                        value={shift.name}
-                        onChange={e => updateShift(index, 'name', e.target.value)}
-                      />
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Shift Name</label>
+                        <input
+                          type="text"
+                          placeholder="Shift Name"
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+                          value={shift.name}
+                          onChange={e => updateShift(index, 'name', e.target.value)}
+                        />
+                      </div>
                       <input
                         type="time"
                         className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
@@ -102,7 +98,6 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
                       <div className="flex items-center gap-2">
                         <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
                         <span className="font-medium text-slate-800 dark:text-slate-200">{shift.name}</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">({shift.id})</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                         <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 rounded text-green-700 dark:text-green-400">{formatTime12(shift.checkIn)}</span>
@@ -134,20 +129,16 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
             <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-3">Add New Shift</h4>
             <div className="flex flex-col md:flex-row gap-3">
-              <input
-                type="text"
-                placeholder="Shift ID (e.g., morning)"
-                className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm w-40"
-                value={newShift.id}
-                onChange={e => setNewShift({ ...newShift, id: e.target.value })}
-              />
-              <input
-                type="text"
-                placeholder="Shift Name (e.g., Morning Shift)"
-                className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm flex-1"
-                value={newShift.name}
-                onChange={e => setNewShift({ ...newShift, name: e.target.value })}
-              />
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Shift Name</label>
+                <input
+                  type="text"
+                  placeholder="Shift Name (e.g., Morning Shift)"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"
+                  value={newShift.name}
+                  onChange={e => setNewShift({ ...newShift, name: e.target.value })}
+                />
+              </div>
               <input
                 type="time"
                 className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm"

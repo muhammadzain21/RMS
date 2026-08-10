@@ -320,6 +320,7 @@ router.delete('/:id', async (req, res) => {
       ...sale,
       originalSaleId: sale._id,
       deletedAt: new Date(),
+      deletedDate: toYyyyMmDd(new Date()),
       deletedBy: req.user?.username || 'system',
       userName: req.user?.username || ''
     }

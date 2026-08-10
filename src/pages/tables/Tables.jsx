@@ -83,7 +83,13 @@ export default function Tables() {
  const salesForTable = dineInSales.filter(s => (s.tableNo||'').trim() === name)
  const sumRow = summary.find(s => s.table === name)
  const lastDate = sumRow?.lastDate || t.lastOrderDate || (salesForTable.length ? salesForTable[0].date : '-')
- const lastWaiter = sumRow?.lastWaiter || (t.lastWaiter && t.lastWaiter.trim()) || (salesForTable.length ? (salesForTable[0].waiter || '-') : '-')
+ const lastWaiterRaw = sumRow?.lastWaiter || (t.lastWaiter && t.lastWaiter.trim()) || (salesForTable.length ? (salesForTable[0].waiterId || salesForTable[0].waiter || '') : '')
+ const resolveWaiterName = (id) => {
+ if (!id || id === '-') return '-'
+ const st = (state.staff||[]).find(s => s.id === id)
+ return st?.name || id
+ }
+ const lastWaiter = resolveWaiterName(lastWaiterRaw)
  const totalAmount = typeof sumRow?.totalAmount === 'number' ? sumRow.totalAmount : (typeof t.totalAmount === 'number' ? t.totalAmount : salesForTable.reduce((a,b)=>a+Number(b.total||0),0))
  return {
  table: name,

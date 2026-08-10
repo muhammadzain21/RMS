@@ -14,7 +14,15 @@ router.get('/summary', async (req, res, next) => {
     const q = { orderType: 'Dine-in' }
     if (date) q.date = date
     if (from || to) q.date = { ...(q.date || {}), ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) }
-    const rows = await Sale.find(q).sort({ createdAt: -1 }).select('tableNo date waiter total createdAt')
+    const rows = await Sale.find(q).sort({ createdAt: -1 }).select('tableNo date waiterId total createdAt')
+    // Also fetch all-time latest sale per table (not filtered by date) for lastDate
+    const allTimeRows = await Sale.find({ orderType: 'Dine-in' }).sort({ createdAt: -1 }).select('tableNo date waiterId createdAt')
+    const allTimeMap = new Map()
+    for (const s of allTimeRows) {
+      const name = (s.tableNo || '').trim()
+      if (!name || allTimeMap.has(name)) continue
+      allTimeMap.set(name, { lastDate: s.date || '-', lastWaiter: s.waiterId || '-' })
+    }
     const map = new Map()
     for (const s of rows) {
       const name = (s.tableNo || '').trim()
@@ -23,7 +31,16 @@ router.get('/summary', async (req, res, next) => {
       const e = map.get(name)
       e.orders += 1
       e.totalAmount += Number(s.total || 0)
-      if (e.lastDate === '-') { e.lastDate = s.date || '-'; e.lastWaiter = s.waiter || '-' }
+      if (e.lastDate === '-') { e.lastDate = s.date || '-'; e.lastWaiter = s.waiterId || '-' }
+    }
+    // Merge all-time lastDate for tables that had no sales in the filtered range
+    for (const [name, info] of allTimeMap) {
+      if (!map.has(name)) {
+        map.set(name, { table: name, orders: 0, totalAmount: 0, lastDate: info.lastDate, lastWaiter: info.lastWaiter })
+      } else {
+        const e = map.get(name)
+        if (e.lastDate === '-') { e.lastDate = info.lastDate; e.lastWaiter = info.lastWaiter }
+      }
     }
     res.json({ date, from, to, tables: Array.from(map.values()) })
   } catch (e) { next(e) }

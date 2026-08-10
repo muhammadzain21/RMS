@@ -171,6 +171,8 @@ export default function SalesNew() {
     setSearch('')
     // Payment method
     setPaymentMethod('cash')
+    // Cash received
+    setCashReceived(0)
     // Order type & dialogs
     setOrderType('')
     setShowHeld(false)

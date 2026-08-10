@@ -161,6 +161,46 @@ export default function SalesHistory() {
  return mapped
  }, [state.sales, state.menu, state.returns, fromDate, toDate, search])
 
+ // Summary stats from filtered rows
+ const stats = useMemo(() => {
+ const list = rows
+ const totalSales = list.length
+ const totalRevenue = list.reduce((s, r) => s + Number(r.netAmount || 0), 0)
+ const totalSaleAmount = list.reduce((s, r) => s + Number(r.saleTotal || 0), 0)
+ const totalDiscount = Math.max(0, totalSaleAmount - totalRevenue + list.reduce((s, r) => {
+ const d = r.detail
+ return s + Number(d?.taxAmt || 0) + Number(d?.serviceAmt || 0)
+ }, 0))
+ // By payment method
+ const cashSales = list.filter(r => (r.paymentMethod || 'CASH').toUpperCase() === 'CASH')
+ const cardSales = list.filter(r => {
+ const p = (r.paymentMethod || '').toUpperCase()
+ return p === 'CARD' || p === 'ONLINE'
+ })
+ const personalSales = list.filter(r => {
+ const p = (r.paymentMethod || '').toUpperCase()
+ return p === 'COMPLIMENTARY' || p === 'PERSONAL'
+ })
+ // By order type
+ const dineInCount = list.filter(r => (r.orderType || '').toLowerCase() === 'dine-in').length
+ const takeAwayCount = list.filter(r => (r.orderType || '').toLowerCase() === 'take-away' || (r.orderType || '').toLowerCase() === 'takeaway').length
+ const deliveryCount = list.filter(r => (r.orderType || '').toLowerCase() === 'delivery').length
+ return {
+ totalSales,
+ totalRevenue,
+ totalDiscount: Math.max(0, totalSaleAmount - list.reduce((s, r) => s + Number(r.netAmount || 0) - Number(r.detail?.taxAmt || 0) - Number(r.detail?.serviceAmt || 0), 0)),
+ cashCount: cashSales.length,
+ cashAmount: cashSales.reduce((s, r) => s + Number(r.netAmount || 0), 0),
+ cardCount: cardSales.length,
+ cardAmount: cardSales.reduce((s, r) => s + Number(r.netAmount || 0), 0),
+ personalCount: personalSales.length,
+ personalAmount: personalSales.reduce((s, r) => s + Number(r.netAmount || 0), 0),
+ dineInCount,
+ takeAwayCount,
+ deliveryCount,
+ }
+ }, [rows])
+
  const pages = Math.ceil(rows.length / limit) || 1
  const paginatedRows = rows.slice((page - 1) * limit, page * limit)
 
@@ -270,7 +310,7 @@ export default function SalesHistory() {
  const logoDataUrl = logoAbs ? await loadAsDataURL(logoAbs) : ''
  const effectiveLogo = logoDataUrl || logoCandidate
  // Show in-app preview with toolbar (Print and OK buttons)
- printSaleReceiptUtil({ ...saleData, autoPrint: false, previewInApp: true, logoUrl: effectiveLogo })
+ printSaleReceiptUtil({ ...saleData, autoPrint: true, previewInApp: false, logoUrl: effectiveLogo })
  } catch (error) {
  console.error(' Error reprinting sale:', error)
  toast.error('Error reprinting receipt. Please try again.')
@@ -322,6 +362,49 @@ export default function SalesHistory() {
  doc.text('Sales History', 40, 32)
  doc.setFontSize(10)
  doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 40, 48)
+ if (fromDate || toDate) {
+ doc.text(`Period: ${fromDate || '...'} to ${toDate || '...'}`, 40, 60)
+ }
+ // Summary stats as colored widget boxes
+ const fmtPkr = (n) => `PKR ${Math.round(n).toLocaleString()}`
+ const widgets = [
+ { label: 'Total Sales', value: String(stats.totalSales), bg: [219, 234, 254], border: [59, 130, 246], text: [30, 58, 138] },
+ { label: 'Total Revenue', value: fmtPkr(stats.totalRevenue), bg: [209, 250, 229], border: [16, 185, 129], text: [6, 78, 59] },
+ { label: 'Total Discount', value: fmtPkr(stats.totalDiscount), bg: [254, 243, 199], border: [245, 158, 11], text: [120, 53, 15] },
+ { label: 'Cash Sales', value: `${stats.cashCount} / ${fmtPkr(stats.cashAmount)}`, bg: [207, 250, 254], border: [6, 182, 212], text: [14, 116, 144] },
+ { label: 'Card / Online', value: `${stats.cardCount} / ${fmtPkr(stats.cardAmount)}`, bg: [233, 213, 255], border: [147, 51, 234], text: [88, 28, 135] },
+ { label: 'Personal', value: `${stats.personalCount} / ${fmtPkr(stats.personalAmount)}`, bg: [254, 226, 226], border: [244, 63, 94], text: [136, 19, 55] },
+ { label: 'Dine-in', value: String(stats.dineInCount), bg: [224, 231, 255], border: [99, 102, 241], text: [49, 46, 129] },
+ { label: 'Take-away', value: String(stats.takeAwayCount), bg: [204, 251, 241], border: [20, 184, 166], text: [19, 78, 74] },
+ { label: 'Delivery', value: String(stats.deliveryCount), bg: [255, 237, 213], border: [249, 115, 22], text: [124, 45, 18] },
+ ]
+ const pageWidth = doc.internal.pageSize.getWidth()
+ const margin = 40
+ const gap = 8
+ const boxW = (pageWidth - 2 * margin - 2 * gap) / 3
+ const boxH = 52
+ let statY = fromDate || toDate ? 74 : 60
+ for (let i = 0; i < widgets.length; i++) {
+ const col = i % 3
+ const row = Math.floor(i / 3)
+ const x = margin + col * (boxW + gap)
+ const y = statY + row * (boxH + gap)
+ const w = widgets[i]
+ doc.setFillColor(w.bg[0], w.bg[1], w.bg[2])
+ doc.setDrawColor(w.border[0], w.border[1], w.border[2])
+ doc.setLineWidth(1.5)
+ doc.roundedRect(x, y, boxW, boxH, 6, 6, 'FD')
+ doc.setFontSize(7)
+ doc.setTextColor(w.text[0], w.text[1], w.text[2])
+ doc.setFont(undefined, 'bold')
+ doc.text(w.label.toUpperCase(), x + 10, y + 16)
+ doc.setFontSize(13)
+ doc.text(w.value, x + 10, y + 38)
+ doc.setTextColor(0, 0, 0)
+ doc.setFont(undefined, 'normal')
+ }
+ const totalWidgetRows = Math.ceil(widgets.length / 3)
+ const tableStartY = statY + totalWidgetRows * (boxH + gap) + 6
  const body = rows.map(r => [
  r.date,
  r.billNo,
@@ -339,7 +422,7 @@ export default function SalesHistory() {
  doc.autoTable({ 
  head: [['Date','Bill#','Customer','Order Type','Table','Waiter','Rider','Sale Total','Net Amount','Payment','Status','Delivery']], 
  body,
- startY: 60,
+ startY: tableStartY,
  styles: { 
  fontSize: 8,
  cellPadding: 4,
@@ -391,8 +474,21 @@ export default function SalesHistory() {
  const bulkPrint = () => {
  const win = window.open('', '_blank')
  if (!win) return
+ const fmtPkr = (n) => `PKR ${Math.round(n).toLocaleString()}`
+ const widgetData = [
+ { label: 'Total Sales', value: String(stats.totalSales), bg: '#dbeafe', border: '#3b82f6', color: '#1e3a8a' },
+ { label: 'Total Revenue', value: fmtPkr(stats.totalRevenue), bg: '#d1fae5', border: '#10b981', color: '#064e3b' },
+ { label: 'Total Discount', value: fmtPkr(stats.totalDiscount), bg: '#fef3c7', border: '#f59e0b', color: '#78350f' },
+ { label: 'Cash Sales', value: `${stats.cashCount} / ${fmtPkr(stats.cashAmount)}`, bg: '#cffafe', border: '#06b6d4', color: '#0e7490' },
+ { label: 'Card / Online', value: `${stats.cardCount} / ${fmtPkr(stats.cardAmount)}`, bg: '#e9d5ff', border: '#9333ea', color: '#581c87' },
+ { label: 'Personal', value: `${stats.personalCount} / ${fmtPkr(stats.personalAmount)}`, bg: '#fee2e2', border: '#f43f5e', color: '#881337' },
+ { label: 'Dine-in', value: String(stats.dineInCount), bg: '#e0e7ff', border: '#6366f1', color: '#312e81' },
+ { label: 'Take-away', value: String(stats.takeAwayCount), bg: '#ccfbf1', border: '#14b8a6', color: '#134e4a' },
+ { label: 'Delivery', value: String(stats.deliveryCount), bg: '#ffedd5', border: '#f97316', color: '#7c2d12' },
+ ]
+ const widgetsHtml = widgetData.map(w => `<div style="background:${w.bg};border:2px solid ${w.border};border-radius:8px;padding:10px 14px;flex:1;min-width:180px"><div style="font-size:10px;font-weight:700;color:${w.color};text-transform:uppercase;letter-spacing:0.5px">${w.label}</div><div style="font-size:16px;font-weight:700;color:${w.color};margin-top:4px">${w.value}</div></div>`).join('')
  const rowsHtml = rows.map(r => `<tr><td>${r.date}</td><td>${r.billNo}</td><td>${r.customer}</td><td>${r.orderType}</td><td>${r.tableNo}</td><td>${r.waiterName}</td><td>${r.riderName}</td><td>PKR ${Number(r.saleTotal).toLocaleString()}</td><td>PKR ${Number(r.netAmount).toLocaleString()}</td><td>${r.paymentMethod}</td><td>${r.status}</td><td>${r.deliveryDate}</td></tr>`).join('')
- win.document.write(`<!doctype html><html><head><title>Bulk Print</title><style>body{font-family:sans-serif} table{width:100%; border-collapse:collapse} th,td{border:1px solid #ddd;padding:6px;font-size:12px} th{background:#f3f4f6}</style></head><body><h3>Sales History</h3><table><thead><tr><th>Date</th><th>Bill#</th><th>Customer</th><th>Order Type</th><th>Table</th><th>Waiter</th><th>Rider</th><th>Sale Total</th><th>Net Amount</th><th>Payment</th><th>Status</th><th>Delivery</th></tr></thead><tbody>${rowsHtml}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`)
+ win.document.write(`<!doctype html><html><head><title>Sales History - Print</title><style>body{font-family:Arial,Helvetica,sans-serif;margin:16px} h3{margin:0 0 8px} .widgets{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 20px} table{width:100%;border-collapse:collapse} th,td{border:1px solid #ddd;padding:6px;font-size:12px} th{background:#f3f4f6} .gen{font-size:11px;color:#666;margin-bottom:4px}</style></head><body><h3>Sales History</h3><div class="gen">Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}${fromDate||toDate?` | Period: ${fromDate||'...'} to ${toDate||'...'}`:''}</div><div class="widgets">${widgetsHtml}</div><table><thead><tr><th>Date</th><th>Bill#</th><th>Customer</th><th>Order Type</th><th>Table</th><th>Waiter</th><th>Rider</th><th>Sale Total</th><th>Net Amount</th><th>Payment</th><th>Status</th><th>Delivery</th></tr></thead><tbody>${rowsHtml}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`)
  win.document.close()
  }
 
@@ -407,7 +503,7 @@ export default function SalesHistory() {
  <div className="px-4 py-3 rounded-xl bg-yellow-50 border-2 border-yellow-200 text-yellow-900 text-sm flex items-center gap-2">Selected date is closed. Deleting sales for this date is disabled.
  </div>
  )}
- <div className="flex flex-row flex-nowrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800"><div className="flex gap-3 flex-shrink-0"><button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">PDF</button><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">CSV</button><button onClick={bulkPrint} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Bulk Print</button></div><div className="flex items-center gap-2 flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v => { setFromDate(v); setPage(1); }} /></div><div className="flex items-center gap-2 flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v => { setToDate(v); setPage(1); }} /></div><div className="flex items-center gap-2 flex-shrink-0"><label className="text-sm font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">Mode</label><select value={paymentFilter} onChange={e => { setPaymentFilter(e.target.value); setPage(1); }} className="px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Modes</option><option value="cash">Cash</option><option value="online">Online</option><option value="complimentary">Personal</option></select></div><div className="flex-1 min-w-0"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="w-full px-4 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div></div><div className="border-2 border-indigo-200 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Rider</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="flex flex-row flex-nowrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800"><div className="flex gap-3 flex-shrink-0"><button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">PDF</button><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">CSV</button><button onClick={bulkPrint} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Bulk Print</button></div><div className="flex items-center gap-2 flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v => { setFromDate(v); setPage(1); }} /></div><div className="flex items-center gap-2 flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v => { setToDate(v); setPage(1); }} /></div><div className="flex items-center gap-2 flex-shrink-0"><label className="text-sm font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">Mode</label><select value={paymentFilter} onChange={e => { setPaymentFilter(e.target.value); setPage(1); }} className="px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Modes</option><option value="cash">Cash</option><option value="online">Online</option><option value="complimentary">Personal</option></select></div><div className="flex-1 min-w-0"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="w-full px-4 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"><div className="p-4 rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Total Sales</div><div className="text-2xl font-bold mt-1 text-blue-900 dark:text-blue-100">{stats.totalSales}</div></div><div className="p-4 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Total Revenue</div><div className="text-2xl font-bold mt-1 text-emerald-900 dark:text-emerald-100">PKR {Math.round(stats.totalRevenue).toLocaleString()}</div></div><div className="p-4 rounded-xl border-2 border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Total Discount</div><div className="text-2xl font-bold mt-1 text-amber-900 dark:text-amber-100">PKR {Math.round(stats.totalDiscount).toLocaleString()}</div></div><div className="p-4 rounded-xl border-2 border-cyan-200 dark:border-cyan-800 bg-gradient-to-br from-cyan-50 to-white dark:from-cyan-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Cash Sales</div><div className="text-lg font-bold mt-1 text-cyan-900 dark:text-cyan-100">{stats.cashCount} <span className="text-sm font-normal">/ PKR {Math.round(stats.cashAmount).toLocaleString()}</span></div></div><div className="p-4 rounded-xl border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 to-white dark:from-purple-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">Card / Online</div><div className="text-lg font-bold mt-1 text-purple-900 dark:text-purple-100">{stats.cardCount} <span className="text-sm font-normal">/ PKR {Math.round(stats.cardAmount).toLocaleString()}</span></div></div><div className="p-4 rounded-xl border-2 border-rose-200 dark:border-rose-800 bg-gradient-to-br from-rose-50 to-white dark:from-rose-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Personal</div><div className="text-lg font-bold mt-1 text-rose-900 dark:text-rose-100">{stats.personalCount} <span className="text-sm font-normal">/ PKR {Math.round(stats.personalAmount).toLocaleString()}</span></div></div><div className="p-4 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Dine-in</div><div className="text-2xl font-bold mt-1 text-indigo-900 dark:text-indigo-100">{stats.dineInCount}</div></div><div className="p-4 rounded-xl border-2 border-teal-200 dark:border-teal-800 bg-gradient-to-br from-teal-50 to-white dark:from-teal-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">Take-away</div><div className="text-2xl font-bold mt-1 text-teal-900 dark:text-teal-100">{stats.takeAwayCount}</div></div><div className="p-4 rounded-xl border-2 border-orange-200 dark:border-orange-800 bg-gradient-to-br from-orange-50 to-white dark:from-orange-900/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">Delivery</div><div className="text-2xl font-bold mt-1 text-orange-900 dark:text-orange-100">{stats.deliveryCount}</div></div></div><div className="border-2 border-indigo-200 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Rider</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedRows.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300">{r.date}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.billNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.customer}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.orderType}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.tableNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.waiterName}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.riderName}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span></td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deliveryDate}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => reprintSale(r)} className="px-2 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600" title="Reprint Receipt">Print</button><button onClick={() => {
  if (closedDates.has(r.date)) return
