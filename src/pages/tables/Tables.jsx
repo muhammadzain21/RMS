@@ -31,7 +31,7 @@ export default function Tables() {
  const [toDate, setToDate] = useState('')
  const [summary, setSummary] = useState([])
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [jump, setJump] = useState(1)
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 

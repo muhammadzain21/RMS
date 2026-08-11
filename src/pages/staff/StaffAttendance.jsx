@@ -640,6 +640,9 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  API={API}
  token={token}
  toast={toast}
+ businessDate={businessDate}
+ month={month}
+ setMonth={setMonth}
  />
  )}
 

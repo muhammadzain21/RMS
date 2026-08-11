@@ -79,6 +79,7 @@ router.post('/', async (req, res) => {
         }
       } catch {}
     }
+
     const dateStr = payload.date || toYyyyMmDd(payload.createdAt) || toYyyyMmDd()
     let tokenNo = (payload.tokenNo || '').toString().trim()
     if (!tokenNo) {
@@ -230,9 +231,9 @@ router.post('/', async (req, res) => {
             // Use case-insensitive exact match with trimmed spaces
             const escaped = String(parsed.raw).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
             const rx = new RegExp(`^\\s*${escaped}\\s*$`, 'i')
-            ops.push({ updateOne: { filter: { name: rx }, update: { $inc: { qty: -Number(amt) } } } })
+            ops.push({ updateOne: { filter: { name: rx }, update: [{ $set: { qty: { $max: [{ $add: ['$qty', -Number(amt)] }, 0] } } }] } })
           } else {
-            ops.push({ updateOne: { filter: { name: String(k) }, update: { $inc: { qty: -Number(amt) } } } })
+            ops.push({ updateOne: { filter: { name: String(k) }, update: [{ $set: { qty: { $max: [{ $add: ['$qty', -Number(amt)] }, 0] } } }] } })
           }
         }
         if (ops.length) {
@@ -241,7 +242,7 @@ router.post('/', async (req, res) => {
       }
     } catch (invErr) {
       // Log and continue; do not fail the sale creation if inventory update fails
-      console.warn('[sales] inventory deduction failed:', invErr && invErr.message)
+      console.warn('[sales] inventory deduction failed:', invErr && invErr.message, invErr?.result)
     }
 
     // Take inventory snapshot after sale (post-deduction stock state)

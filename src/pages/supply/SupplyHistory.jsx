@@ -15,7 +15,7 @@ export default function SupplyHistory() {
  const [to, setTo] = useState(businessDate || '')
  const [search, setSearch] = useState('')
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [jump, setJump] = useState(1)
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  // Reload supplies on first render to ensure latest data

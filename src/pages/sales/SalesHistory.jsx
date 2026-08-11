@@ -24,7 +24,7 @@ export default function SalesHistory() {
  const [deleteBusy, setDeleteBusy] = useState(false)
  const [deleteErr, setDeleteErr] = useState('')
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [jump, setJump] = useState(1)
 
  // Tables can come either from state.tables or settings.tables
@@ -319,7 +319,7 @@ export default function SalesHistory() {
  const logoDataUrl = logoAbs ? await loadAsDataURL(logoAbs) : ''
  const effectiveLogo = logoDataUrl || logoCandidate
  // Show in-app preview with toolbar (Print and OK buttons)
- printSaleReceiptUtil({ ...saleData, autoPrint: true, previewInApp: false, logoUrl: effectiveLogo })
+ printSaleReceiptUtil({ ...saleData, autoPrint: false, previewInApp: true, logoUrl: effectiveLogo })
  } catch (error) {
  console.error(' Error reprinting sale:', error)
  toast.error('Error reprinting receipt. Please try again.')

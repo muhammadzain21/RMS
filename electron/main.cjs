@@ -1,7 +1,8 @@
 // Electron main process
 // Loads Vite dev server in development (VITE_DEV_SERVER_URL), or the built index.html in production.
 
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, nativeImage } = require('electron')
+const { execSync } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 const fsp = require('fs').promises
@@ -14,6 +15,8 @@ let mainWindow
 // License Validation System
 // =========================
 const LICENSE_SECRET = 'PizzaBar2024LicenseKey'
+const LICENSE_PREFIX = 'BJ' // constant prefix for simple keys like BJ-60 (60 days)
+const EXPIRY_WARN_DAYS = 7
 let licenseValid = false
 let licenseExpiryDate = null
 let licenseCheckInterval = null
@@ -39,119 +42,142 @@ function xorDecryptSimple(encryptedHex, key) {
 }
 
 // Read license key from file (decrypts if encrypted)
-function getLicenseKey() {
+function readRegValue(name) {
+  try {
+    if (process.platform !== 'win32') return null
+    const out = execSync(`reg query "HKCU\\Software\\PizzaBar" /v ${name}`, { encoding: 'utf8' })
+    const re = new RegExp(`${name}\\s+REG_\\w+\\s+(.+)$`, 'mi')
+    const m = out.match(re)
+    return m ? m[1].trim() : null
+  } catch { return null }
+}
+
+function writeRegValue(name, value) {
+  try {
+    if (process.platform !== 'win32') return false
+    execSync(`reg add "HKCU\\Software\\PizzaBar" /v ${name} /t REG_SZ /d "${String(value)}" /f`, { stdio: 'ignore' })
+    return true
+  } catch { return false }
+}
+
+// Keep for backward compatibility (legacy installs). Prefer registry values instead of file.
+function getLegacyLicenseKeyFromFile() {
   const possiblePaths = [
     path.join(__dirname, '..', 'resources', 'app', 'license.key'),
     path.join(__dirname, '..', 'license.key'),
     path.join(process.resourcesPath || '', 'app', 'license.key'),
     path.join(app.getAppPath(), 'license.key')
   ]
-  
   for (const licensePath of possiblePaths) {
     try {
       if (fs.existsSync(licensePath)) {
         const raw = fs.readFileSync(licensePath, 'utf8').trim()
-        
-        // Try to decrypt first (NSIS XOR encryption with secret "PIZZABAR2024")
         const decrypted = xorDecryptSimple(raw, 'PIZZABAR2024')
-        if (decrypted && decrypted.startsWith('PIZZA-')) {
-          return decrypted.toUpperCase()
-        }
-        
-        // Fallback: check if it's already plain text (legacy or dev)
-        if (raw.toUpperCase().startsWith('PIZZA-')) {
-          return raw.toUpperCase()
-        }
+        if (decrypted && decrypted.startsWith('PIZZA-')) return decrypted.toUpperCase()
+        if (raw.toUpperCase().startsWith('PIZZA-')) return raw.toUpperCase()
       }
     } catch {}
   }
-  
   return null
 }
 
+function getLicenseKey() {
+  // Primary source: registry value set by installer
+  const fromReg = readRegValue('LicenseKey')
+  if (fromReg) return String(fromReg).toUpperCase()
+  // Legacy fallback: file (discouraged, but keep for old builds)
+  const legacy = getLegacyLicenseKeyFromFile()
+  return legacy
+}
+
 // Validate license key
-function validateLicense(key) {
-  if (!key || typeof key !== 'string') {
-    return { valid: false, error: 'No license key' }
-  }
-  
-  key = key.trim().toUpperCase()
-  
-  // Check format
-  const parts = key.split('-')
-  if (parts.length !== 5 || parts[0] !== 'PIZZA') {
-    return { valid: false, error: 'Invalid format' }
-  }
-  
-  // Check demo keys with embedded dates
-  if (key === 'PIZZA-PERMANENT-LICENSE-KEY0') {
-    return { valid: true, expiryDate: null, daysRemaining: Infinity }
-  }
-  
-  // Extract date from keys like PIZZA-2025-0131-DEMO-7DAY
-  const year = parts[1]
-  const monthDay = parts[2]
-  if (year && monthDay && year.length === 4 && monthDay.length === 4) {
-    const expiryDate = new Date(`${year}-${monthDay.slice(0, 2)}-${monthDay.slice(2, 4)}T23:59:59`)
-    const now = new Date()
-    
-    if (now > expiryDate) {
-      return { valid: false, error: 'License expired', expired: true, expiryDate }
+function validateLegacyKey(key) {
+  try {
+    if (!key || typeof key !== 'string') return { valid: false, error: 'No license key' }
+    const up = key.trim().toUpperCase()
+    const parts = up.split('-')
+    if (up === 'PIZZA-PERMANENT-LICENSE-KEY0') return { valid: true, expiryDate: null, daysRemaining: Infinity }
+    if (parts.length === 5 && parts[0] === 'PIZZA') {
+      const year = parts[1]
+      const monthDay = parts[2]
+      if (year && monthDay && year.length === 4 && monthDay.length === 4) {
+        const expiryDate = new Date(`${year}-${monthDay.slice(0, 2)}-${monthDay.slice(2, 4)}T23:59:59`)
+        const now = new Date()
+        if (now > expiryDate) return { valid: false, error: 'License expired', expired: true, expiryDate }
+        const daysRemaining = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))
+        return { valid: true, expiryDate, daysRemaining }
+      }
     }
-    
-    const daysRemaining = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))
-    return { valid: true, expiryDate, daysRemaining }
+    if (up.length === 24) return { valid: true, expiryDate: null, daysRemaining: Infinity }
+    return { valid: false, error: 'Invalid key' }
+  } catch { return { valid: false, error: 'Invalid key' } }
+}
+
+function getLicenseInfo() {
+  // Preferred: days-based config from registry
+  const rawDays = readRegValue('LicenseDays')
+  let days = rawDays ? parseInt(String(rawDays).trim(), 10) : NaN
+  const prefix = readRegValue('LicensePrefix') || null
+  let installStr = readRegValue('LicenseInstallDate') || null
+
+  // If not configured, try to parse from simple key like BJ-60
+  if (!rawDays) {
+    const k = getLicenseKey()
+    if (k && typeof k === 'string') {
+      const m = k.trim().toUpperCase().match(/^([A-Z]{2,5})[-:](\d{1,4})$/)
+      if (m) {
+        if (!prefix) writeRegValue('LicensePrefix', m[1])
+        days = parseInt(m[2], 10)
+        writeRegValue('LicenseDays', String(days))
+      }
+    }
   }
-  
-  // For custom keys, check length and format only
-  if (key.length === 24) {
-    // Assume valid for now (production would decode expiry from last part)
-    return { valid: true, expiryDate: null, daysRemaining: Infinity }
+
+  // Ensure install date exists when days are configured
+  if (!installStr && Number.isFinite(days) && days > 0) {
+    const nowIso = new Date().toISOString().slice(0, 10)
+    writeRegValue('LicenseInstallDate', nowIso)
+    installStr = nowIso
   }
-  
-  return { valid: false, error: 'Invalid key length' }
+
+  if (Number.isFinite(days) && days > 0 && installStr) {
+    const [y, m, d] = String(installStr).split('-').map(n => parseInt(n, 10))
+    const start = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0)
+    const expiry = new Date(start.getTime() + days * 24 * 60 * 60 * 1000)
+    const now = new Date()
+    const remaining = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))
+    const valid = remaining >= 0
+    return { valid, expiryDate: expiry, daysRemaining: valid ? remaining : -1 }
+  }
+
+  // Fallback: legacy key logic
+  const legacy = validateLegacyKey(getLicenseKey())
+  return legacy
 }
 
 // Check license and show blocking dialog if invalid
 function checkLicenseBlocking() {
-  const key = getLicenseKey()
-  const result = validateLicense(key)
-  
-  licenseValid = result.valid
-  licenseExpiryDate = result.expiryDate
-  
+  const result = getLicenseInfo()
+  licenseValid = !!result.valid
+  licenseExpiryDate = result.expiryDate || null
   if (!result.valid) {
-    const message = result.expired 
+    const message = result.expired
       ? `License has expired on ${result.expiryDate?.toLocaleDateString?.() || 'unknown date'}.\n\nPlease contact support for a renewal.`
-      : 'No valid license key found or invalid format.\n\nPlease install the application with a valid license key.'
-    
+      : 'No valid license found. Please install with a valid prefix-days license (e.g., BJ-60).'
     dialog.showErrorBox('License Error', message)
     app.quit()
     return false
   }
-  
-  // Show warning if license expires soon
-  if (result.daysRemaining && result.daysRemaining < 7 && result.daysRemaining !== Infinity) {
-    dialog.showMessageBoxSync({
-      type: 'warning',
-      title: 'License Expiring Soon',
-      message: `Your license will expire in ${result.daysRemaining} day${result.daysRemaining === 1 ? '' : 's'}.`,
-      buttons: ['OK']
-    })
-  }
-  
+  // Do not show modal warning; renderer will display header banner
   return true
 }
 
 // Periodic license check
 function startPeriodicLicenseCheck() {
   if (licenseCheckInterval) clearInterval(licenseCheckInterval)
-  
-  // Check every hour
   licenseCheckInterval = setInterval(() => {
-    const key = getLicenseKey()
-    const result = validateLicense(key)
-    
+    const result = getLicenseInfo()
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('license:status', result) } catch {}
     if (!result.valid) {
       dialog.showErrorBox('License Expired', 'Your license has expired. The application will now close.')
       app.quit()
@@ -161,8 +187,7 @@ function startPeriodicLicenseCheck() {
 
 // IPC handlers for license
 ipcMain.handle('license:getStatus', async () => {
-  const key = getLicenseKey()
-  return validateLicense(key)
+  return getLicenseInfo()
 })
 
 ipcMain.handle('license:getKey', async () => {
@@ -207,11 +232,13 @@ try {
 
 function createWindow() {
   const isDev = !!process.env.VITE_DEV_SERVER_URL
+  const iconPath = path.join(__dirname, '..', 'icon.ico')
+  const appIcon = nativeImage.createFromPath(iconPath)
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "Burger Jeez",
-    icon: path.join(__dirname, '..', 'icon.ico'),
+    title: "Epic ePOS",
+    icon: appIcon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -264,14 +291,16 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
 })
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.setTitle("Burger Jeez")
+    mainWindow.setTitle("Epic ePOS")
+    try { mainWindow.setIcon(appIcon) } catch {}
     mainWindow.show()
+    try { mainWindow.webContents.send('license:status', getLicenseInfo()) } catch {}
   })
 
   // Prevent HTML page title from overriding window title
   mainWindow.webContents.on('page-title-updated', (e) => {
     e.preventDefault()
-    mainWindow.setTitle("Burger Jeez")
+    mainWindow.setTitle("Epic ePOS")
   })
 
   // Filter out DevTools-originated Autofill console noise
@@ -348,6 +377,8 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
 }
 
 app.on('ready', () => {
+  // Set AppUserModelID so Windows taskbar shows our icon instead of electron.exe default
+  try { app.setAppUserModelId('com.oresto.rms') } catch {}
   // Skip license check in development mode
   const isDev = !app.isPackaged || process.env.VITE_DEV_SERVER_URL
   if (!isDev) {

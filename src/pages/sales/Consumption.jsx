@@ -46,6 +46,10 @@ export default function Consumption() {
  // Build maps for quick lookup
  const menuById = useMemo(() => new Map(menu.map(m => [m.id, m])), [menu])
  const ingByName = useMemo(() => new Map(ingredients.map(i => [i.name, i])), [ingredients])
+ const norm = (s) => String(s||'').trim().toLowerCase().replace(/\s+/g, ' ')
+ const ingByNormName = useMemo(() => new Map(ingredients.map(i => [norm(i.name), i])), [ingredients])
+ const ingByNoSpace = useMemo(() => new Map(ingredients.map(i => [norm(i.name).replace(/\s+/g, ''), i])), [ingredients])
+ const findIng = (name) => ingByName.get(name) || ingByNormName.get(norm(name)) || ingByNoSpace.get(norm(name).replace(/\s+/g, ''))
 
  // Build lookup maps from snapshots
  const openingStockMap = useMemo(() => {
@@ -133,32 +137,37 @@ export default function Consumption() {
  const consumptionRows = useMemo(() => {
  const rows = []
  consumption.forEach((amt, ingName) => {
- const inv = ingByName.get(ingName)
+ const inv = findIng(ingName)
+ const displayName = inv?.name || ingName
  const unit = inv?.unit || ''
- // Closing = current live stock (after all sales/deductions/restorations)
- // Opening = closing + consumed (reverse-engineer the pre-sale stock)
+ // Use opening snapshot for opening stock; fall back to closing+consumed if no snapshot
+ const snapOpening = openingStockMap.get(displayName) || openingStockMap.get(ingName)
  const closingQty = Number(inv?.qty || 0)
- const openingQty = Number((closingQty + amt).toFixed(3))
- rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty, closingQty, unit })
+ const openingQty = snapOpening != null ? Number(snapOpening) : Number((closingQty + amt).toFixed(3))
+ rows.push({ name: displayName, consumed: Number(amt.toFixed(3)), openingQty, closingQty, unit })
  })
  // Include ingredients that had no consumption to help reconciliation
+ const consumedNames = new Set(consumption.keys())
  ingredients.forEach(inv => {
- if (!consumption.has(inv.name)) {
-   const qty = Number(inv.qty || 0)
-   rows.push({ name: inv.name, consumed: 0, openingQty: qty, closingQty: qty, unit: inv.unit || '' })
+ const matched = consumedNames.has(inv.name) || consumption.has(inv.name)
+ if (!matched) {
+ const qty = Number(inv.qty || 0)
+ const snapOpening = openingStockMap.get(inv.name)
+ const openingQty = snapOpening != null ? Number(snapOpening) : qty
+ rows.push({ name: inv.name, consumed: 0, openingQty, closingQty: qty, unit: inv.unit || '' })
  }
  })
  rows.sort((a,b) => String(a.name).localeCompare(String(b.name)))
  return rows
- }, [consumption, ingByName, ingredients])
+ }, [consumption, ingByName, findIng, ingredients, openingStockMap])
 
  const totalItems = itemRows.reduce((a,b)=>a + Number(b.qty||0), 0)
  // Pagination state
  const [itemsPage, setItemsPage] = useState(1)
- const [itemsPageSize, setItemsPageSize] = useState(15)
+ const [itemsPageSize, setItemsPageSize] = useState(100)
  const [itemsJump, setItemsJump] = useState(1)
  const [consPage, setConsPage] = useState(1)
- const [consPageSize, setConsPageSize] = useState(15)
+ const [consPageSize, setConsPageSize] = useState(100)
  const [consJump, setConsJump] = useState(1)
  // Item-wise filter
  const [itemFilter, setItemFilter] = useState('')
@@ -253,15 +262,17 @@ export default function Consumption() {
  // Map to rows like original
  const rows = []
  cons.forEach((amt, ingName) => {
- const inv = ingByName.get(ingName)
+ const inv = findIng(ingName)
+ const displayName = inv?.name || ingName
  const unit = inv?.unit || ''
  const closingQty = Number(inv?.qty || 0)
- const openingQty = Number((closingQty + amt).toFixed(3))
- rows.push({ name: ingName, consumed: Number(amt.toFixed(3)), openingQty, closingQty, unit })
+ const snapOpening = openingStockMap.get(displayName) || openingStockMap.get(ingName)
+ const openingQty = snapOpening != null ? Number(snapOpening) : Number((closingQty + amt).toFixed(3))
+ rows.push({ name: displayName, consumed: Number(amt.toFixed(3)), openingQty, closingQty, unit })
  })
  rows.sort((a,b)=> String(a.name).localeCompare(String(b.name)))
  return rows
- }, [applyFilterToConsumption, itemFilter, sales, menuById, modsConfig, ingByName])
+ }, [applyFilterToConsumption, itemFilter, sales, menuById, modsConfig, ingByName, findIng, openingStockMap])
 
  const consTotalPages = Math.max(1, Math.ceil(filteredConsumptionRows.length / consPageSize))
  const consStart = (consPage - 1) * consPageSize

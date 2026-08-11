@@ -10,6 +10,18 @@ contextBridge.exposeInMainWorld('theme', {
   }
 })
 
+// License status API for showing expiry banner in renderer
+contextBridge.exposeInMainWorld('license', {
+  getStatus: async () => {
+    try { return await ipcRenderer.invoke('license:getStatus') } catch { return { valid: true, daysRemaining: Infinity } }
+  },
+  onStatus: (cb) => {
+    const handler = (_event, status) => { try { cb && cb(status) } catch {} }
+    ipcRenderer.on('license:status', handler)
+    return () => ipcRenderer.removeListener('license:status', handler)
+  }
+})
+
 contextBridge.exposeInMainWorld('printing', {
   listPrinters: async () => {
     try { return await ipcRenderer.invoke('printing:list') } catch { return [] }

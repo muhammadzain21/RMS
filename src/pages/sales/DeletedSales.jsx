@@ -17,7 +17,7 @@ export default function DeletedSales() {
  const [selected, setSelected] = useState(null)
  const [drawerOpen, setDrawerOpen] = useState(false)
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [jump, setJump] = useState(1)
 
  // Fetch deleted sales from backend on mount and when date filter changes

@@ -14,16 +14,50 @@ export default function MonthlyViewTab({
  state,
  API,
  token,
- toast
+ toast,
+ businessDate,
+ month,
+ setMonth
 }) {
  const [monthlyStaffId, setMonthlyStaffId] = useState('');
- const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
  const [showPayDialog, setShowPayDialog] = useState(false);
 
- const monthRecords = useMemo(() => {
+ const rawRecords = useMemo(() => {
  if (!monthlyStaffId) return [];
  return attendance.filter(r => r.staffId === monthlyStaffId && r.date.startsWith(month));
  }, [attendance, monthlyStaffId, month]);
+
+ // Build allDates array using local date to avoid timezone off-by-one
+ const allDates = useMemo(() => {
+ const st = staff.find(s => s.id === monthlyStaffId);
+ if (!st) return [];
+ const join = st.joinDate || '0000-00-00';
+ const todayStr = businessDate ? String(businessDate).slice(0, 10) : (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; })();
+ const [y, m] = month.split('-').map(Number);
+ if (!y || !m) return [];
+ const dates = [];
+ const last = new Date(y, m, 0).getDate();
+ for (let day = 1; day <= last; day++) {
+ const ds = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+ if (ds >= join && ds <= todayStr) dates.push(ds);
+ }
+ return dates;
+ }, [month, monthlyStaffId, staff, businessDate]);
+
+ // Merge actual records with generated Absent entries for missing dates
+ const monthRecords = useMemo(() => {
+ const byDate = new Map();
+ rawRecords.forEach(r => byDate.set(r.date, r));
+ const result = [];
+ allDates.forEach(ds => {
+ if (byDate.has(ds)) {
+ result.push(byDate.get(ds));
+ } else {
+ result.push({ id: `absent-${ds}`, date: ds, status: 'Absent', checkIn: '', checkOut: '', lateMinutes: 0, earlyOutMinutes: 0 });
+ }
+ });
+ return result.sort((a, b) => a.date.localeCompare(b.date));
+ }, [rawRecords, allDates]);
 
  const counts = useMemo(() => {
  const c = { present: 0, absent: 0, late: 0, leave: 0, earlyOutDays: 0, totalLateMinutes: 0, totalEarlyOutMinutes: 0 };
@@ -35,33 +69,13 @@ export default function MonthlyViewTab({
  c.totalLateMinutes += Number(r.lateMinutes || 0);
  }
  else if (r.status === 'Leave') c.leave++;
- // Count days with early out minutes (for any status with check-out)
  if (r.earlyOutMinutes > 0) {
  c.earlyOutDays++;
  c.totalEarlyOutMinutes += Number(r.earlyOutMinutes || 0);
  }
  });
- 
- const st = staff.find(s => s.id === monthlyStaffId);
- if (!st) return c;
- 
- const join = st.joinDate || '0000-00-00';
- const todayStr = new Date().toISOString().slice(0, 10);
- const [y, m] = month.split('-').map(Number);
- if (!y || !m) return c;
- 
- const first = new Date(y, m - 1, 1);
- const last = new Date(y, m, 0);
- const allDates = [];
- for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
- const ds = d.toISOString().slice(0, 10);
- if (ds >= join && ds <= todayStr) allDates.push(ds);
- }
- const recordedByDate = new Set(monthRecords.map(r => r.date));
- const missingCount = allDates.filter(ds => !recordedByDate.has(ds)).length;
- c.absent += missingCount;
  return c;
- }, [monthRecords, month, monthlyStaffId, staff]);
+ }, [monthRecords]);
 
  const salaryCalc = useMemo(() => {
  const st = staff.find(s => s.id === monthlyStaffId);
@@ -141,7 +155,6 @@ export default function MonthlyViewTab({
  doc.setFontSize(12);
 
  const tableData = monthRecords
- .sort((a, b) => a.date.localeCompare(b.date))
  .map(r => [r.date, r.status, r.checkIn || '-', r.checkOut || '-', r.lateMinutes || '-', r.earlyOutMinutes || '-']);
 
  // Add totals row
@@ -292,7 +305,7 @@ export default function MonthlyViewTab({
  {monthRecords.length === 0 && (
  <tr><td colSpan={6} className="px-6 py-12 text-center"><div className="text-slate-400 dark:text-slate-500"><div className="text-4xl mb-2"></div><p>{monthlyStaffId ? 'No records for this month' : 'Select a staff member to view records'}</p></div></td></tr>
  )}
- {monthRecords.sort((a, b) => a.date.localeCompare(b.date)).map((r, idx) => (
+ {monthRecords.map((r, idx) => (
  <tr key={r.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}><td className="px-6 py-4"><span className="font-medium text-slate-700 dark:text-slate-300">{r.date}</span></td><td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
  r.status === 'Present' ? 'bg-green-100 text-green-700 dark:bg-green-900/30' :
  r.status === 'Late' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30' :

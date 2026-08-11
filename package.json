@@ -54,7 +54,7 @@
       "output": "release"
     },
     "appId": "com.oresto.rms",
-    "productName": "Burger Jeez",
+    "productName": "Epic ePOS",
     "compression": "maximum",
     "asar": true,
     "npmRebuild": false,
@@ -104,10 +104,10 @@
         }
       ],
       "icon": "icon.ico",
-      "publisherName": "Burger Jeez"
+      "publisherName": "Epic ePOS"
     },
     "nsis": {
-      "artifactName": "Burger Jeez-Setup-${version}.exe",
+      "artifactName": "Epic ePOS-Setup-${version}.exe",
       "include": "build/installer.nsh",
       "oneClick": false,
       "perMachine": false,

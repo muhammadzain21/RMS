@@ -26,7 +26,7 @@ export default function RecallDialog({
  const [typeFilter, setTypeFilter] = useState('') // '', 'Dine-in','Take-away','Delivery','Drive-thru'
 
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [pages, setPages] = useState(1)
  const [total, setTotal] = useState(0)
  const [jump, setJump] = useState(1)

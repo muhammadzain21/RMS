@@ -22,7 +22,7 @@ export default function CashOpening() {
  const [from, setFrom] = useState('')
  const [to, setTo] = useState('')
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [total, setTotal] = useState(0)
  const [jump, setJump] = useState(1)
  const [loading, setLoading] = useState(false)

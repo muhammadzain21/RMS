@@ -17,7 +17,7 @@ export default function Categories() {
  const [showDialog, setShowDialog] = useState(false)
  const [multiRows, setMultiRows] = useState([])
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [jump, setJump] = useState(1)
  const [search, setSearch] = useState('')
  const [categoryTilesPerRow, setCategoryTilesPerRow] = useState(4)

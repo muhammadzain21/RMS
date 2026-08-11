@@ -27,7 +27,7 @@ export default function PayInOut() {
  const [to, setTo] = useState(businessDate || '')
  const [search, setSearch] = useState('')
  const [page, setPage] = useState(1)
- const [limit, setLimit] = useState(20)
+ const [limit, setLimit] = useState(100)
  const [total, setTotal] = useState(0)
  const [totalPages, setTotalPages] = useState(1)
  const [jump, setJump] = useState(1)
