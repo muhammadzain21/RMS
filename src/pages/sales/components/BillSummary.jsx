@@ -54,7 +54,7 @@ export default function BillSummary({
   // Calculate change due
   const changeDue = Math.max(0, (Number(cashReceived)||0) - (Number(totalPayment)||0))
   return (
-    <div className="border-2 border-amber-200 rounded-lg p-2 space-y-2 bg-gradient-to-br from-amber-50/60 to-white dark:from-amber-950/30 dark:to-gray-900 dark:border-amber-800 shadow-sm">
+    <div className="border-2 border-amber-200 rounded-lg p-2 space-y-2 bg-gradient-to-br from-amber-50/60 to-white dark:from-amber-950/30 dark:to-gray-900 dark:border-amber-800 shadow-sm lg:overflow-y-auto lg:min-h-0">
       {/* Order Type buttons row */}
       <div className="flex flex-wrap gap-1.5">
         {['Dine-in','Take-away','Delivery','Drive-thru'].map((t)=> (

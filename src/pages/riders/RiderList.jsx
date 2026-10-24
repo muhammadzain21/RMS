@@ -6,6 +6,9 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import { Plus, X } from 'lucide-react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import { openPdfPreview } from '../../utils/pdfPreview.js'
 
 export default function RiderList() {
   const { state, businessDate } = useData()
@@ -123,18 +126,51 @@ export default function RiderList() {
  return
  }
  fetch(`${API}/api/rider-cash/export?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } })
- .then(r => r.blob())
+ .then(r => { if (!r.ok) throw new Error(`Export failed: ${r.status}`); return r.blob() })
  .then(blob => {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `rider_cash_${date}.csv`
+ a.download = `rider_cash_${fromDate || 'all'}_to_${toDate || 'all'}.csv`
  document.body.appendChild(a)
  a.click()
  a.remove()
  URL.revokeObjectURL(url)
  })
  .catch(() => toast.error('Export failed'))
+ }
+
+ const printReport = async () => {
+ try {
+ const doc = new jsPDF()
+ doc.setFontSize(14)
+ doc.text('Rider Cash Records', 14, 16)
+ doc.setFontSize(10)
+ doc.setTextColor(90, 90, 90)
+ doc.text(`Period: ${fromDate || '-'} to ${toDate || '-'}`, 14, 23)
+ autoTable(doc, {
+ startY: 28,
+ head: [['Date','Token No','Rider','Deliveries','Amount','Method','Settled','Note']],
+ body: filteredRecords.map(r => [
+ r.date || '-',
+ r.tokenNo || '-',
+ r.riderName || '-',
+ Number(r.deliveries || 0),
+ `PKR ${Number(r.amount || 0).toLocaleString()}`,
+ r.method === 'COD' ? 'Cash on Delivery' : 'Paid to Owner',
+ r.settled ? 'Settled' : 'Unsettled',
+ r.note || '-'
+ ]),
+ foot: [['','','Totals', totals.deliveries, `PKR ${Number(totals.amount || 0).toLocaleString()}`, '','','']],
+ styles: { fontSize: 8, cellPadding: 4 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 9, fontStyle: 'bold' },
+ footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
+ })
+ const ok = await openPdfPreview(doc, `Rider Cash ${fromDate || ''} to ${toDate || ''}.pdf`)
+ if (!ok) toast.error('Failed to open print preview')
+ } catch {
+ toast.error('Failed to open print preview')
+ }
  }
 
  const onAdd = async (e) => {
@@ -173,9 +209,9 @@ export default function RiderList() {
  }
 
  return (
- <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Rider Cash Records</h1><button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"><Plus size={18} /> Add Record</button></div><div className="p-4 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 border-2 border-cyan-200 dark:border-cyan-800"><div className="flex flex-row flex-nowrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v=>setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v=>setToDate(v)} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Rider</label><select value={filterRider} onChange={e=>setFilterRider(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[10rem]"><option value="">All Riders</option>
+ <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Rider Cash Records</h1><button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"><Plus size={18} /> Add Record</button></div><div className="p-4 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 border-2 border-cyan-200 dark:border-cyan-800"><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v=>setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v=>setToDate(v)} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Rider</label><select value={filterRider} onChange={e=>setFilterRider(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[10rem]"><option value="">All Riders</option>
  {riders.map(r =><option key={r.id} value={r.id}>{r.name}</option>)}
- </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Settled</label><select value={settledFilter} onChange={e=>setSettledFilter(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[8rem]"><option value="all">All</option><option value="settled">Settled</option><option value="unsettled">Unsettled</option></select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Search</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search records..." className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[12rem]" /></div><div className="flex items-end gap-3 flex-shrink-0"><button onClick={load} className="px-4 py-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Refresh</button><button onClick={()=>setShowRollup(s=>!s)} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">{showRollup ? 'Hide Rollup' : 'Show Rollup'}</button><button onClick={exportCsv} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Export CSV</button></div></div></div>
+ </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Settled</label><select value={settledFilter} onChange={e=>setSettledFilter(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[8rem]"><option value="all">All</option><option value="settled">Settled</option><option value="unsettled">Unsettled</option></select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Search</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search records..." className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[12rem]" /></div><div className="flex items-end gap-3 flex-shrink-0"><button onClick={load} className="px-4 py-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Refresh</button><button onClick={()=>setShowRollup(s=>!s)} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">{showRollup ? 'Hide Rollup' : 'Show Rollup'}</button><button onClick={exportCsv} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Export CSV</button><button onClick={printReport} className="px-4 py-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Print</button></div></div></div>
 
  {showAddDialog && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={(e) => { if (e.target === e.currentTarget) setShowAddDialog(false) }}><div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4"><div className="flex items-center justify-between mb-5"><h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Add Rider Record</h3><button onClick={() => setShowAddDialog(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X size={20} /></button></div>
@@ -198,10 +234,11 @@ export default function RiderList() {
  data={filteredRecords}
  searchable={false}
  showLimit={false}
+ exportable={false}
  /></div>
 
  {showRollup && rollup.length > 0 && (
- <div className="space-y-3 p-5 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50/60 to-white dark:from-emerald-950/30 dark:to-gray-900 shadow-sm"><h2 className="text-lg font-bold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">Day Close Rollup</h2><div className="border-2 border-emerald-200 dark:border-emerald-800 rounded-xl overflow-x-auto"><DataTable
+ <div className="space-y-3 p-5 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-gray-900 shadow-sm"><h2 className="text-lg font-bold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">Day Close Rollup</h2><div className="border-2 border-emerald-200 dark:border-emerald-800 rounded-xl overflow-x-auto"><DataTable
  columns={[
  { label: 'Rider', key: 'riderName' },
  { label: 'Token Nos', render: r => r.tokens?.length ? r.tokens.join(', ') : '—' },
@@ -223,7 +260,7 @@ export default function RiderList() {
  )}
 
  {/* Totals Summary (Bottom) */}
- <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div className="p-4 rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1"> Delivery Count</div><div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totals.deliveries}</div></div><div className="p-4 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1"> Total Amount</div><div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{Number(totals.amount||0).toFixed(2)}</div></div></div>
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-800 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1"> Delivery Count</div><div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{totals.deliveries}</div></div><div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1"> Total Amount</div><div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{Number(totals.amount||0).toFixed(2)}</div></div></div>
  {ConfirmDialog}
  </div>
  )

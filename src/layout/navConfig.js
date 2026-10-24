@@ -10,7 +10,7 @@ import {
   UtensilsCrossed, FolderTree, FlaskConical, BarChart3, Bike,
   CalendarCheck, UserPlus, CalendarDays, CalendarRange, Settings,
   Receipt, TrendingUp, ShieldCheck, Lock, ScrollText,
-  Fingerprint,
+  Fingerprint, ChefHat, Database,
 } from 'lucide-react'
 
 export const dashboardItem = { path: '/', label: 'Dashboard', icon: LayoutDashboard, order: 1 }
@@ -24,13 +24,14 @@ const salesSection = {
  { path: '/sales/deleted', label: 'Deleted Sales', icon: Trash2, order: 5 },
  { path: '/sales/return-history', label: 'Return history', icon: FileText, order: 6 },
  { path: '/sales/kot-history', label: 'KOT History', icon: FileText, order: 7 },
+ { path: '/sales/kds', label: 'KDS', icon: ChefHat, order: 7.5 },
  { path: '/sales/void-history', label: 'Void History', icon: XCircle, order: 8 },
- { path: '/sales/cash-opening', label: 'Cash Opening', icon: Wallet, order: 9 },
+ { path: '/sales/cash-opening', label: 'Day Opening', icon: Wallet, order: 9 },
  { path: '/sales/cash-handover', label: 'Cash Handover', icon: HandCoins, order: 10 },
   { path: '/customers', label: 'Customers', icon: Users, order: 19 },
 
  { path: '/sales/cash-count', label: 'Manager Cash Count', icon: Calculator, order: 11 },
- // { path: '/sales/advance-booking', label: 'Advance Booking', icon: CalendarCheck, order: 12 },
+ { path: '/sales/advance-booking', label: 'Advance Booking', icon: CalendarCheck, order: 12 },
  { path: '/sales/day-close', label: 'Day Close', icon: Moon, order: 13 },
  { path: '/sales/pay-in-out', label: 'Pay In/Out', icon: ArrowLeftRight, order: 14 },
  ]
@@ -40,7 +41,7 @@ const operationsSection = {
  label: 'Operations',
  items: [
  { path: '/inventory', label: 'Inventory', icon: PackageOpen, order: 15 },
- { path: '/supply/history', label: 'Supply', icon: Truck, order: 16 },
+ { path: '/supply/history', label: 'Purchase History', icon: Truck, order: 16 },
  { path: '/demands', label: 'Demands', icon: ClipboardList, order: 17 },
  { path: '/suppliers', label: 'Suppliers', icon: Factory, order: 18 },
  { path: '/tables', label: 'Tables', icon: Armchair, order: 20 },
@@ -59,6 +60,8 @@ const staffSection = {
  { path: '/staff/add', label: 'Add Staff', icon: UserPlus, order: 27 },
  { path: '/staff/daily', label: 'Daily View', icon: CalendarDays, order: 28 },
  { path: '/staff/monthly', label: 'Monthly View', icon: CalendarRange, order: 29 },
+ { path: '/staff/advances', label: 'Advances', icon: HandCoins, order: 29.5 },
+ { path: '/staff/payroll', label: 'Payroll', icon: Wallet, order: 29.6 },
  { path: '/staff/settings', label: 'Staff Settings', icon: Settings, order: 30 },
  ]
 }
@@ -79,6 +82,7 @@ const adminSection = {
  { path: '/audit', label: 'Audit', icon: ScrollText, order: 36 },
  { path: '/settings', label: 'Settings', icon: Settings, order: 37 },
  { path: '/biometric-settings', label: 'Biometric', icon: Fingerprint, order: 38 },
+ { path: '/data-manager', label: 'Data Manager', icon: Database, order: 39 },
  ]
 }
 

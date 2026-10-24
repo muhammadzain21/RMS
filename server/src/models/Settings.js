@@ -36,6 +36,9 @@ const SettingsSchema = new mongoose.Schema({
   // POS tile layout: number of tiles per row for category and item grids
   posCategoryTilesPerRow: { type: Number, default: 4 },
   posItemTilesPerRow: { type: Number, default: 4 },
+  // Feature access: array of enabled sidebar paths (null/empty = all enabled).
+  // Managed only by the SuperAdmin portal.
+  enabledPaths: { type: mongoose.Schema.Types.Mixed, default: null },
 }, { timestamps: true })
 
 export default mongoose.model('Settings', SettingsSchema)

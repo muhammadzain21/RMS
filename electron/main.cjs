@@ -1,7 +1,7 @@
 // Electron main process
 // Loads Vite dev server in development (VITE_DEV_SERVER_URL), or the built index.html in production.
 
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme, nativeImage } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, nativeImage, shell } = require('electron')
 const { execSync } = require('child_process')
 const path = require('path')
 const fs = require('fs')
@@ -21,27 +21,7 @@ let licenseValid = false
 let licenseExpiryDate = null
 let licenseCheckInterval = null
 
-// Simple XOR decrypt matching NSIS implementation (hex encoded)
-function xorDecryptSimple(encryptedHex, key) {
-  try {
-    // Convert hex string to bytes
-    const bytes = []
-    for (let i = 0; i < encryptedHex.length; i += 2) {
-      bytes.push(parseInt(encryptedHex.substr(i, 2), 16))
-    }
-    
-    // XOR with key
-    let result = ''
-    for (let i = 0; i < bytes.length; i++) {
-      result += String.fromCharCode(bytes[i] ^ key.charCodeAt(i % key.length))
-    }
-    return result
-  } catch {
-    return null
-  }
-}
-
-// Read license key from file (decrypts if encrypted)
+// Read license value from HKCU\Software\PizzaBar registry (set by installer or activation dialog)
 function readRegValue(name) {
   try {
     if (process.platform !== 'win32') return null
@@ -60,34 +40,19 @@ function writeRegValue(name, value) {
   } catch { return false }
 }
 
-// Keep for backward compatibility (legacy installs). Prefer registry values instead of file.
-function getLegacyLicenseKeyFromFile() {
-  const possiblePaths = [
-    path.join(__dirname, '..', 'resources', 'app', 'license.key'),
-    path.join(__dirname, '..', 'license.key'),
-    path.join(process.resourcesPath || '', 'app', 'license.key'),
-    path.join(app.getAppPath(), 'license.key')
-  ]
-  for (const licensePath of possiblePaths) {
-    try {
-      if (fs.existsSync(licensePath)) {
-        const raw = fs.readFileSync(licensePath, 'utf8').trim()
-        const decrypted = xorDecryptSimple(raw, 'PIZZABAR2024')
-        if (decrypted && decrypted.startsWith('PIZZA-')) return decrypted.toUpperCase()
-        if (raw.toUpperCase().startsWith('PIZZA-')) return raw.toUpperCase()
-      }
-    } catch {}
-  }
-  return null
+function deleteRegValue(name) {
+  try {
+    if (process.platform !== 'win32') return false
+    execSync(`reg delete "HKCU\\Software\\PizzaBar" /v ${name} /f`, { stdio: 'ignore' })
+    return true
+  } catch { return false }
 }
 
 function getLicenseKey() {
-  // Primary source: registry value set by installer
+  // Registry only — no license file is read from the app location
   const fromReg = readRegValue('LicenseKey')
   if (fromReg) return String(fromReg).toUpperCase()
-  // Legacy fallback: file (discouraged, but keep for old builds)
-  const legacy = getLegacyLicenseKeyFromFile()
-  return legacy
+  return null
 }
 
 // Validate license key
@@ -155,43 +120,64 @@ function getLicenseInfo() {
   return legacy
 }
 
-// Check license and show blocking dialog if invalid
+// Check license — never quits; renderer shows a blocking dialog to enter a new key
 function checkLicenseBlocking() {
   const result = getLicenseInfo()
   licenseValid = !!result.valid
   licenseExpiryDate = result.expiryDate || null
-  if (!result.valid) {
-    const message = result.expired
-      ? `License has expired on ${result.expiryDate?.toLocaleDateString?.() || 'unknown date'}.\n\nPlease contact support for a renewal.`
-      : 'No valid license found. Please install with a valid prefix-days license (e.g., BJ-60).'
-    dialog.showErrorBox('License Error', message)
-    app.quit()
-    return false
-  }
-  // Do not show modal warning; renderer will display header banner
   return true
 }
 
-// Periodic license check
+// Periodic license check — broadcasts status; expired state is handled by the
+// renderer's license gate (re-entry dialog) instead of force-quitting
 function startPeriodicLicenseCheck() {
   if (licenseCheckInterval) clearInterval(licenseCheckInterval)
   licenseCheckInterval = setInterval(() => {
     const result = getLicenseInfo()
     try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('license:status', result) } catch {}
-    if (!result.valid) {
-      dialog.showErrorBox('License Expired', 'Your license has expired. The application will now close.')
-      app.quit()
-    }
   }, 60 * 60 * 1000) // Every hour
 }
 
 // IPC handlers for license
 ipcMain.handle('license:getStatus', async () => {
-  return getLicenseInfo()
+  return { ...getLicenseInfo(), dev: !app.isPackaged }
 })
 
 ipcMain.handle('license:getKey', async () => {
   return getLicenseKey()
+})
+
+// Activate a new license key without reinstalling.
+// Accepts PREFIX-DAYS keys (e.g., BJ-60) and legacy PIZZA-* keys.
+ipcMain.handle('license:activate', async (_event, key) => {
+  try {
+    const k = String(key || '').trim().toUpperCase()
+    if (!k) return { ok: false, error: 'Enter a license key' }
+
+    const m = k.match(/^([A-Z]{2,5})[-:](\d{1,4})$/)
+    if (m) {
+      // PREFIX-DAYS: expiry counts from activation date
+      writeRegValue('LicenseKey', k)
+      writeRegValue('LicensePrefix', m[1])
+      writeRegValue('LicenseDays', m[2])
+      writeRegValue('LicenseInstallDate', new Date().toISOString().slice(0, 10))
+    } else {
+      // Legacy PIZZA-* key: clear days config so the key itself is authoritative
+      const v = validateLegacyKey(k)
+      if (!v.valid) return { ok: false, error: v.error || 'Invalid license key' }
+      writeRegValue('LicenseKey', k)
+      deleteRegValue('LicensePrefix')
+      deleteRegValue('LicenseDays')
+      deleteRegValue('LicenseInstallDate')
+    }
+
+    const status = { ...getLicenseInfo(), dev: !app.isPackaged }
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('license:status', status) } catch {}
+    if (!status.valid) return { ok: false, error: 'License expired or invalid', status }
+    return { ok: true, status }
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) }
+  }
 })
 
 // =========================
@@ -237,7 +223,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "Epic ePOS",
+    "title": "EpicSpire",
     icon: appIcon,
     webPreferences: {
       nodeIntegration: false,
@@ -291,7 +277,7 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
 })
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.setTitle("Epic ePOS")
+    mainWindow.setTitle("EpicSpire")
     try { mainWindow.setIcon(appIcon) } catch {}
     mainWindow.show()
     try { mainWindow.webContents.send('license:status', getLicenseInfo()) } catch {}
@@ -300,7 +286,7 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
   // Prevent HTML page title from overriding window title
   mainWindow.webContents.on('page-title-updated', (e) => {
     e.preventDefault()
-    mainWindow.setTitle("Epic ePOS")
+    mainWindow.setTitle("EpicSpire")
   })
 
   // Filter out DevTools-originated Autofill console noise
@@ -378,7 +364,7 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
 
 app.on('ready', () => {
   // Set AppUserModelID so Windows taskbar shows our icon instead of electron.exe default
-  try { app.setAppUserModelId('com.oresto.rms') } catch {}
+  try { app.setAppUserModelId('com.epicspire.rms') } catch {}
   // Skip license check in development mode
   const isDev = !app.isPackaged || process.env.VITE_DEV_SERVER_URL
   if (!isDev) {
@@ -450,19 +436,85 @@ ipcMain.handle('printing:list', async () => {
 
 // IPC: print provided HTML silently to a named device (no native deps)
 ipcMain.handle('printing:print-html', async (_event, { html, deviceName }) => {
+  const printWin = new BrowserWindow({
+    show: false,
+    webPreferences: { backgroundThrottling: false },
+  })
   try {
-    const printWin = new BrowserWindow({ show: false })
     await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || '')))
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    await new Promise((resolve, reject) => {
-      printWin.webContents.print({ silent: true, deviceName: deviceName || undefined }, (success, failureReason) => {
-        try { printWin.close() } catch {}
-        if (!success) reject(new Error(failureReason || 'print failed'))
-        else resolve()
-      })
+    const result = await new Promise((resolve) => {
+      printWin.webContents.print(
+        { silent: true, printBackground: true, margins: { marginType: 'none' }, deviceName: deviceName || undefined },
+        (success, failureReason) => resolve({ success, failureReason })
+      )
     })
+    if (!result.success) {
+      console.error('[print] silent print failed:', result.failureReason || 'unknown', '| device:', deviceName)
+      return { ok: false, error: result.failureReason || 'print failed' }
+    }
     return { ok: true }
   } catch (e) {
+    console.error('[print] silent print error:', e && e.message || e)
+    return { ok: false, error: String(e && e.message || e) }
+  } finally {
+    try { printWin.destroy() } catch {}
+  }
+})
+
+// IPC: preview a PDF (base64) in an in-app Chromium PDF viewer window;
+// falls back to the system default PDF viewer if the window can't render it
+ipcMain.handle('preview:open-pdf', async (_event, { name, data }) => {
+  try {
+    if (!data) throw new Error('No PDF data')
+    const fileName = /\.[Pp][Dd][Ff]$/.test(String(name || '')) ? String(name) : `preview-${Date.now()}.pdf`
+    const fullPath = path.join(app.getPath('temp'), fileName)
+    await fsp.writeFile(fullPath, Buffer.from(String(data), 'base64'))
+    const fileUrl = pathToFileURL(fullPath).toString()
+
+    const previewWin = new BrowserWindow({
+      width: 1000,
+      height: 800,
+      title: fileName,
+      autoHideMenuBar: true,
+      parent: mainWindow,
+      webPreferences: {
+        plugins: true,          // enables Chromium's built-in PDF viewer
+        sandbox: false,         // sandboxed renderers can't host the PDF extension (Electron 20+)
+        contextIsolation: false,
+        nodeIntegration: false,
+      },
+    })
+
+    const openExternal = async () => { try { await shell.openPath(fullPath) } catch {} }
+
+    // Never let a PDF navigation turn into a silent file download from this window
+    const onWillDownload = (_e, item, wc) => {
+      if (wc === previewWin.webContents) { try { item.cancel() } catch {} }
+    }
+    previewWin.webContents.session.on('will-download', onWillDownload)
+    setTimeout(() => {
+      try { previewWin.webContents.session.removeListener('will-download', onWillDownload) } catch {}
+    }, 30000)
+
+    previewWin.webContents.once('did-fail-load', async () => {
+      try { previewWin.destroy() } catch {}
+      await openExternal()
+    })
+    await previewWin.loadURL(fileUrl)
+
+    // If the PDF still ended up downloaded/blank instead of rendered,
+    // open it in the OS default PDF viewer instead
+    setTimeout(() => {
+      try {
+        if (previewWin.isDestroyed()) return
+        const url = previewWin.webContents.getURL()
+        if (!url || url === 'about:blank') { previewWin.destroy(); openExternal() }
+      } catch {}
+    }, 1500)
+
+    return { ok: true, path: fullPath }
+  } catch (e) {
+    console.error('[preview] open pdf failed:', e && e.message || e)
     return { ok: false, error: String(e && e.message || e) }
   }
 })

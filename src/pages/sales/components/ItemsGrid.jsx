@@ -14,7 +14,7 @@ export default function ItemsGrid({
   return (
     <>
       {/* Categories area */}
-      <div className="flex flex-wrap content-start gap-1.5 overflow-y-auto max-h-48 py-2 border rounded px-2 pr-2 bg-white dark:bg-gray-800 dark:border-gray-600">
+      <div className="flex flex-wrap content-start gap-1.5 overflow-y-auto max-h-[20vh] min-h-[120px] py-2 border rounded px-2 pr-2 bg-white dark:bg-gray-800 dark:border-gray-600">
         {(categories || []).map((cat, i) => {
           const label = String(cat)
           const isActive = String(selectedCategory || '') === label
@@ -36,7 +36,7 @@ export default function ItemsGrid({
         <input className="col-span-12 px-3 py-1.5 text-sm border rounded bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600" placeholder="search" value={search} onChange={e=>setSearch(e.target.value)} />
       </div>
 
-      <div className="h-52 md:h-64 lg:h-72 border rounded bg-white dark:bg-gray-800 dark:border-gray-600 p-2 overflow-y-auto">
+      <div className="h-[40vh] min-h-[208px] border rounded bg-white dark:bg-gray-800 dark:border-gray-600 p-2 overflow-y-auto">
         {selectedCategory ? (
           itemView === 'list' ? (
             <div className="divide-y">

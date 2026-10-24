@@ -29,7 +29,7 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
  };
 
  return (
- <div className="space-y-6">
+ <div className="space-y-4">
  {/* Header Card */}
  <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><div><h2 className="text-lg font-semibold"> Daily Attendance</h2><p className="text-blue-100 text-sm">View attendance records for a specific date</p>
  {/* DEBUG: Show date info to diagnose timezone issues */}

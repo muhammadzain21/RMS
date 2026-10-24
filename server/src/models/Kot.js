@@ -20,6 +20,8 @@ const KotSchema = new mongoose.Schema({
   tableNo: { type: String, index: true },
   remarks: { type: String },
   items: { type: [KotItemSchema], default: [] },
+  status: { type: String, default: 'new', index: true },
+  statusUpdatedAt: { type: Date, default: null },
   userId: { type: String },
   idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
 }, { timestamps: true })

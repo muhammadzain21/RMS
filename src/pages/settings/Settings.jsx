@@ -267,7 +267,7 @@ export default function Settings() {
  }
 
  return (
- <div className="max-w-6xl mx-auto space-y-6 pb-8">
+ <div className="max-w-6xl mx-auto space-y-4">
  {/* Header */}
  <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><span className="text-2xl text-white font-bold">S</span></div><div><h1 className="text-2xl font-bold text-gray-900">Settings</h1><p className="text-sm text-gray-500">Manage your restaurant and system preferences</p></div></div>
 
@@ -276,7 +276,7 @@ export default function Settings() {
 
  {/* Company Settings */}
  {tab === 'company' && (
- <div className="space-y-6"><Card><CardHeader
+ <div className="space-y-4"><Card><CardHeader
  title="Restaurant Information"
  subtitle="Configure your restaurant details that appear on receipts and reports"
  icon=""
@@ -325,7 +325,7 @@ export default function Settings() {
 
  {/* System Settings */}
  {tab === 'system' && (
- <div className="space-y-6"><Card><CardHeader
+ <div className="space-y-4"><Card><CardHeader
  title="Tax & Business Settings"
  subtitle="Configure tax rates and business day preferences"
  icon=""
@@ -401,7 +401,7 @@ export default function Settings() {
 
  {/* Backup & Security */}
  {tab === 'backup' && (
- <div className="space-y-6">
+ <div className="space-y-4">
  {/* Manual Backup */}
  <Card><CardHeader
  title="Manual Backup & Restore"

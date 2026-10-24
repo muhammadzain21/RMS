@@ -7,13 +7,12 @@ import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { toast } from 'react-hot-toast'
-import { useConfirm } from '../../components/useConfirm.jsx'
+import DeleteKeyModal from '../../components/DeleteKeyModal.jsx'
 import SlipDialog from '../../components/SlipDialog.jsx'
 
 export default function DayClose() {
  const { state, dispatch, businessDate } = useData()
  const { user, token } = useAuth()
- const { confirm, ConfirmDialog } = useConfirm()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  
  // Use businessDate from context as the primary date reference
@@ -163,6 +162,12 @@ export default function DayClose() {
  const [jump, setJump] = useState(1)
  const [slipHtml, setSlipHtml] = useState(null)
 
+ // Secret-key modal state (shared pattern with sale deletion)
+ const [deleteOpen, setDeleteOpen] = useState(false)
+ const [deleteTarget, setDeleteTarget] = useState(null)
+ const [deleteBusy, setDeleteBusy] = useState(false)
+ const [deleteErr, setDeleteErr] = useState('')
+
  useEffect(() => { setPage(1) }, [from, to])
 
  // Fetch from server whenever date range changes or on mount
@@ -224,6 +229,48 @@ export default function DayClose() {
  }
  }
 
+ const onDelete = (row) => {
+ setDeleteTarget(row)
+ setDeleteErr('')
+ setDeleteOpen(true)
+ }
+
+ const submitDelete = async (key) => {
+ if (!deleteTarget) return
+ const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'X-Delete-Key': key }
+ try {
+ setDeleteBusy(true)
+ setDeleteErr('')
+ const res = await fetch(`${API}/api/day-closes/${deleteTarget.id}`, { method: 'DELETE', headers })
+ if (!res.ok) {
+ const j = await res.json().catch(() => ({}))
+ setDeleteErr(j?.error || `Failed to delete (${res.status})`)
+ setDeleteBusy(false)
+ return
+ }
+ // Remove from history table
+ setServerRows(prev => prev.filter(x => x.id !== deleteTarget.id))
+ setTotal(prev => Math.max(0, prev - 1))
+ setDeleteBusy(false)
+ setDeleteOpen(false)
+ setDeleteTarget(null)
+ // Refresh closed dates so the day unlocks
+ try {
+ const listRes = await fetch(`${API}/api/day-closes`, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }, cache: 'no-store' })
+ if (listRes.ok) {
+ const list = await listRes.json()
+ const mapId = (x) => ({ ...x, id: x.id || x._id })
+ const arr = Array.isArray(list) ? list : (Array.isArray(list?.rows) ? list.rows : [])
+ dispatch({ type: 'HYDRATE', payload: { dayCloses: arr.map(mapId) } })
+ }
+ } catch {}
+ toast.success('Day close deleted')
+ } catch {
+ setDeleteErr('Network error')
+ setDeleteBusy(false)
+ }
+ }
+
  const exportCSV = () => {
  const header = ['Date','Opening','CashSales','OnlineSales','Returns','Handovers','PayIns','PayOuts','Expected','Counted','Variance','Note','User','ID']
  const lines = [header.join(',')]
@@ -240,6 +287,7 @@ export default function DayClose() {
  }
 
  const exportPDF = () => {
+ try {
  const doc = new jsPDF()
  doc.text('Day Close History', 14, 16)
  autoTable(doc, {
@@ -262,6 +310,11 @@ export default function DayClose() {
  ])
  })
  doc.save('day_close.pdf')
+ toast.success('PDF exported successfully')
+ } catch (err) {
+ console.error('PDF export error:', err)
+ toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+ }
  }
 
  const printSlip = (r) => {
@@ -328,19 +381,22 @@ export default function DayClose() {
  {variance !== 0 && <span className="ml-2 text-xs font-normal">({variance > 0 ? 'Over' : 'Short'})</span>}
  </div></div><div className="lg:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note</label><input value={note} onChange={e=>setNote(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-blue-500" placeholder="Optional note about day close..." /></div><div className="lg:col-span-4"><button disabled={isSelectedDateClosed} className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 text-white font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed dark:from-white dark:to-gray-200 dark:text-gray-900">
  {isSelectedDateClosed ? ' Day Already Closed' : ' Close Day & Generate Backup'}
- </button></div></form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Day Close History</h2><div className="flex flex-row flex-nowrap items-center gap-4 mb-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div><div className="flex-1 min-w-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input placeholder="Date, note, user..." value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex gap-3 flex-shrink-0"><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">CSV</button><button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">PDF</button></div>
+ </button></div></form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Day Close History</h2><div className="flex flex-wrap items-center gap-4 mb-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input placeholder="Date, note, user..." value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex gap-3 flex-shrink-0"><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">CSV</button><button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">PDF</button></div>
  {loading && <div className="text-xs text-gray-500"> Loading...</div>}
  </div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Opening</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Cash</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Online</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Personal</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Returns</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Handover</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay In</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay Out</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Expected</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Counted</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Variance</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Print</th></tr></thead><tbody>
  {rows.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-3 py-3 text-gray-700 dark:text-gray-300 font-medium">{r.date}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.openingCash).toLocaleString()}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.cashSales).toLocaleString()}</td><td className="px-3 py-3 text-blue-600 dark:text-blue-400">PKR {Number(r.onlineSales || r.cardSales).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.complimentarySales||0).toLocaleString()}</td><td className="px-3 py-3 text-orange-600 dark:text-orange-400">PKR {Number(r.returns||0).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.handovers).toLocaleString()}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.payIns).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.payOuts).toLocaleString()}</td><td className="px-3 py-3 font-semibold text-blue-700 dark:text-blue-300">PKR {Number(r.expectedCash).toLocaleString()}</td><td className="px-3 py-3 text-gray-700 dark:text-gray-300">PKR {Number(r.countedCash).toLocaleString()}</td><td className={`px-3 py-3 font-semibold ${Number(r.variance)!==0?'text-red-600 dark:text-red-400':'text-emerald-600 dark:text-emerald-400'}`}>
  {Number(r.variance) > 0 ? '+' : ''}PKR {Number(r.variance).toLocaleString()}
- </td><td className="px-3 py-3 text-gray-600 dark:text-gray-400 text-sm max-w-xs truncate" title={r.note}>{r.note || '-'}</td><td className="px-3 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-3 py-3"><button
+ </td><td className="px-3 py-3 text-gray-600 dark:text-gray-400 text-sm max-w-xs truncate" title={r.note}>{r.note || '-'}</td><td className="px-3 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-3 py-3"><div className="flex items-center gap-2"><button
  className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors font-medium text-sm border border-blue-200 dark:border-blue-700"
  onClick={() => printSlip(r)}
- > Print</button></td></tr>
+ > Print</button><button
+ className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium text-sm border border-red-200 dark:border-red-700"
+ onClick={() => onDelete(r)}
+ >Delete</button></div></td></tr>
  ))}
  {rows.length === 0 && (
- <tr><td className="px-3 py-8 text-center text-gray-500 dark:text-gray-400" colSpan={14}><div className="text-4xl mb-2"></div><div>No data.</div></td></tr>
+ <tr><td className="px-3 py-8 text-center text-gray-500 dark:text-gray-400" colSpan={15}><div className="text-4xl mb-2"></div><div>No data.</div></td></tr>
  )}
  </tbody></table></div>
 
@@ -349,7 +405,15 @@ export default function DayClose() {
  )}
  </div>
  {slipHtml && <SlipDialog html={slipHtml} title="Day Close Slip" onClose={() => setSlipHtml(null)} />}
- {ConfirmDialog}
+ <DeleteKeyModal
+ open={deleteOpen}
+ title="Delete Day Close"
+ description={<>Delete the day close record for <span className="font-medium">{deleteTarget?.date || '-'}</span>? This will re-open that day.</>}
+ busy={deleteBusy}
+ error={deleteErr}
+ onSubmit={submitDelete}
+ onClose={() => setDeleteOpen(false)}
+ />
  </div>
  )
 }

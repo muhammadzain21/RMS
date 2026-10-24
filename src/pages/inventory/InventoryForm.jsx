@@ -49,7 +49,7 @@ export default function InventoryForm() {
 
  return (
  <div className="max-w-2xl mx-auto"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-5 flex items-center gap-2"><span className="text-3xl"></span> {existing ? 'Edit' : 'Add'} Ingredient
- </h1><form onSubmit={submit} className="space-y-4 p-6 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50/60 to-white dark:from-emerald-950/30 dark:to-gray-900 shadow-sm"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Input label="Name" value={form.name} onChange={v => setForm({ ...form, name: v })} required icon="" /><Input label="Category" value={form.category} onChange={v => setForm({ ...form, category: v })} icon="" /><Input
+ </h1><form onSubmit={submit} className="space-y-4 p-6 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-gray-900 shadow-sm"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Input label="Name" value={form.name} onChange={v => setForm({ ...form, name: v })} required icon="" /><Input label="Category" value={form.category} onChange={v => setForm({ ...form, category: v })} icon="" /><Input
  label={"Quantity" + (form.unit ? ` (${form.unit})` : '')}
  type="number"
  step="0.001"

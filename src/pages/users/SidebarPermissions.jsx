@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useData } from '../../state/DataContext.jsx'
 import { toast } from 'react-hot-toast'
 import { sidebarItems, defaultPermissionItems } from '../../layout/navConfig.js'
 
@@ -34,7 +35,14 @@ function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, confirmText
 
 export default function SidebarPermissions() {
   const { token } = useAuth()
+  const { state } = useData()
   const getAPI = () => ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
+
+  // Pages disabled via the SuperAdmin portal are hidden from this list entirely
+  const enabledPaths = state?.settings?.enabledPaths
+  const isFeatureEnabled = (path) =>
+    !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
+  const hiddenBySuperAdmin = sidebarItems.filter(i => !i.hidden && !isFeatureEnabled(i.path)).length > 0
   
   const [roles, setRoles] = useState([])
   const [selectedRole, setSelectedRole] = useState(null)
@@ -50,10 +58,10 @@ export default function SidebarPermissions() {
     fetchRoles()
   }, [token])
 
-  const visiblePaths = new Set(sidebarItems.filter(i => !i.hidden).map(i => i.path))
+  const visiblePaths = new Set(sidebarItems.filter(i => !i.hidden && isFeatureEnabled(i.path)).map(i => i.path))
 
   const normalizePermissions = (perms) => {
-    if (!perms || !Array.isArray(perms)) return defaultPermissionItems()
+    if (!perms || !Array.isArray(perms)) return defaultPermissionItems().filter(p => visiblePaths.has(p.path))
     return perms
       .filter(p => visiblePaths.has(p.path))
       .map(p => {
@@ -108,7 +116,13 @@ export default function SidebarPermissions() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ permissions: rolePermissions })
+        body: JSON.stringify({
+          permissions: [
+            ...rolePermissions,
+            // Keep entries for superadmin-disabled paths so re-enabling restores prior role access
+            ...(selectedRole.permissions || []).filter(p => !visiblePaths.has(p.path))
+          ]
+        })
       })
       if (res.ok) {
         const updated = await res.json()
@@ -232,9 +246,14 @@ export default function SidebarPermissions() {
   }
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-4">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Sidebar Permissions</h1>
       <p className="text-gray-600 dark:text-gray-400">Manage which sidebar pages are visible to different user roles</p>
+      {hiddenBySuperAdmin && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          Some pages are disabled in the SuperAdmin portal and are hidden from this list.
+        </p>
+      )}
 
       {/* Role Selection */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
@@ -324,7 +343,7 @@ export default function SidebarPermissions() {
 
           {(() => {
             const grouped = {}
-            rolePermissions.forEach(item => {
+            rolePermissions.filter(item => visiblePaths.has(item.path)).forEach(item => {
               const s = item.section || 'Other'
               if (!grouped[s]) grouped[s] = []
               grouped[s].push(item)

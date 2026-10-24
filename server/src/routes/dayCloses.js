@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import DayClose from '../models/DayClose.js'
+import Settings from '../models/Settings.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
 import { takeSnapshot } from './inventorySnapshots.js'
@@ -7,6 +8,16 @@ import { takeSnapshot } from './inventorySnapshots.js'
 
 const router = Router()
 router.use(authRequired)
+
+// Same secret-key guard as sale deletion (settings.salesDeleteKey)
+async function requireDeleteKey(req, res) {
+  const provided = req.headers['x-delete-key'] || req.query.key || (req.body && req.body.key) || ''
+  const s = await Settings.findOne({}, {}, { sort: { updatedAt: -1, createdAt: -1 } }).lean()
+  const expected = String(s?.salesDeleteKey || '')
+  if (!expected) { res.status(403).json({ error: 'Delete key not set. Set it in Settings.' }); return false }
+  if (String(provided || '') !== expected) { res.status(403).json({ error: 'Invalid delete key' }); return false }
+  return true
+}
 
 // GET /api/day-closes?from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get('/', async (req, res, next) => {
@@ -71,6 +82,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
 // Re-open a closed day by date (Admin/Manager)
 router.post('/reopen', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
+    if (!(await requireDeleteKey(req, res))) return
     const date = String(req.body?.date || '')
     if (!date) return res.status(400).json({ error: 'date is required' })
     const existing = await DayClose.findOne({ date })
@@ -84,6 +96,7 @@ router.post('/reopen', requireRole('Admin','Manager'), async (req, res, next) =>
 // Delete a day close (admin only)
 router.delete('/:id', requireRole('Admin'), async (req, res, next) => {
   try {
+    if (!(await requireDeleteKey(req, res))) return
     const rec = await DayClose.findByIdAndDelete(req.params.id)
     await logAudit(req, 'day', `Deleted day close ${req.params.id}`, { id: req.params.id, date: rec?.date })
     res.json({ ok: true })

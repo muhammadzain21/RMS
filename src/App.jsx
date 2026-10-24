@@ -15,8 +15,10 @@ import CashHandover from './pages/sales/CashHandover.jsx'
 import CashCount from './pages/sales/CashCount.jsx'
 import AdvanceBooking from './pages/sales/AdvanceBooking.jsx'
 import DayClose from './pages/sales/DayClose.jsx'
+import DataManager from './pages/DataManager.jsx'
 import PayInOut from './pages/sales/PayInOut.jsx'
 import KotHistory from './pages/sales/KotHistory.jsx'
+import KDS from './pages/sales/KDS.jsx'
 import VoidHistory from './pages/sales/VoidHistory.jsx'
 import SupplyNew from './pages/supply/SupplyNew.jsx'
 import SupplyHistory from './pages/supply/SupplyHistory.jsx'
@@ -34,7 +36,11 @@ import AuditLog from './pages/AuditLog.jsx'
 import UserList from './pages/users/UserList.jsx'
 import SidebarPermissions from './pages/users/SidebarPermissions.jsx'
 import Login from './pages/users/Login.jsx'
+import ServerConfig from './pages/ServerConfig.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import SuperAdminPortal from './components/SuperAdminPortal.jsx'
+import LicenseGate from './components/LicenseGate.jsx'
+import { useState, useEffect } from 'react'
 import SupplierList from './pages/suppliers/SupplierList.jsx'
 import SupplierProfile from './pages/suppliers/SupplierProfile.jsx'
 import CustomerList from './pages/customers/CustomerList.jsx'
@@ -45,8 +51,33 @@ import Categories from './pages/menu/Categories.jsx'
 import Recipes from './pages/menu/Recipes.jsx'
 
 function App() {
+  const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent))
+  const [serverReady, setServerReady] = useState(() => {
+    if (!isCapacitor) return true
+    try { return !!localStorage.getItem('server_url') } catch { return false }
+  })
+
+  // Listen for server_url changes (e.g. user reconfigures)
+  useEffect(() => {
+    if (!isCapacitor) return
+    const handler = () => {
+      try { setServerReady(!!localStorage.getItem('server_url')) } catch {}
+    }
+    window.addEventListener('storage', handler)
+    return () => window.removeEventListener('storage', handler)
+  }, [isCapacitor])
+
+  // On Capacitor with no server URL configured, show the server config screen
+  if (isCapacitor && !serverReady) {
+    return <ServerConfig onSaved={() => setServerReady(true)} />
+  }
+
   return (
+    <>
+    <SuperAdminPortal />
+    <LicenseGate />
     <Routes>
+      <Route path="/server-config" element={<ServerConfig onSaved={() => setServerReady(true)} />} />
       <Route path="/login" element={<Login />} />
       <Route element={<Layout />}>
         <Route index element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><Dashboard /></ProtectedRoute>} />
@@ -63,12 +94,14 @@ function App() {
         <Route path="sales/summary" element={<ProtectedRoute roles={["Admin","Manager"]}><SalesSummary /></ProtectedRoute>} />
         <Route path="sales/consumption" element={<ProtectedRoute roles={["Admin","Manager"]}><Consumption /></ProtectedRoute>} />
         <Route path="sales/kot-history" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><KotHistory /></ProtectedRoute>} />
+        <Route path="sales/kds" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><KDS /></ProtectedRoute>} />
         <Route path="sales/void-history" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><VoidHistory /></ProtectedRoute>} />
         <Route path="sales/cash-opening" element={<ProtectedRoute roles={["Admin","Manager"]}><CashOpening /></ProtectedRoute>} />
         <Route path="sales/cash-handover" element={<ProtectedRoute roles={["Admin","Manager"]}><CashHandover /></ProtectedRoute>} />
         <Route path="sales/cash-count" element={<ProtectedRoute roles={["Admin","Manager"]}><CashCount /></ProtectedRoute>} />
         <Route path="sales/advance-booking" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><AdvanceBooking /></ProtectedRoute>} />
         <Route path="sales/day-close" element={<ProtectedRoute roles={["Admin","Manager"]}><DayClose /></ProtectedRoute>} />
+        <Route path="data-manager" element={<ProtectedRoute roles={["Admin"]}><DataManager /></ProtectedRoute>} />
         <Route path="sales/pay-in-out" element={<ProtectedRoute roles={["Admin","Manager"]}><PayInOut /></ProtectedRoute>} />
 
         <Route path="supply/new" element={<ProtectedRoute roles={["Admin","Manager"]}><SupplyNew /></ProtectedRoute>} />
@@ -92,6 +125,9 @@ function App() {
         <Route path="staff/add" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="addStaff" showTabs={false} /></ProtectedRoute>} />
         <Route path="staff/daily" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="daily" showTabs={false} /></ProtectedRoute>} />
         <Route path="staff/monthly" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="monthly" showTabs={false} /></ProtectedRoute>} />
+        <Route path="staff/advances" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="advances" showTabs={false} /></ProtectedRoute>} />
+        <Route path="staff/payroll" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="payroll" showTabs={false} /></ProtectedRoute>} />
+        <Route path="staff/payroll/summary/:staffId" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="payrollSummary" showTabs={false} /></ProtectedRoute>} />
         <Route path="staff/settings" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="settings" showTabs={false} /></ProtectedRoute>} />
         {/* Staff manage removed */}
 
@@ -113,6 +149,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </>
   )
 }
 

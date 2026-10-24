@@ -10,10 +10,12 @@ const router = Router()
 router.use(authRequired)
 
 // GET /api/users
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const users = await User.find().sort({ createdAt: -1 })
-    res.json(users.map(u => ({ id: u._id, username: u.username, role: u.role })))
+    // SuperAdmin accounts are invisible to regular admins
+    const filtered = req.user?.role === 'SuperAdmin' ? users : users.filter(u => u.role !== 'SuperAdmin')
+    res.json(filtered.map(u => ({ id: u._id, username: u.username, role: u.role })))
   } catch (e) { next(e) }
 })
 
@@ -22,6 +24,9 @@ router.post('/', async (req, res, next) => {
   try {
     const { username, password, role = 'Admin' } = req.body || {}
     if (!username || !password) return res.status(400).json({ error: 'username and password are required' })
+    if (role === 'SuperAdmin' && req.user?.role !== 'SuperAdmin') {
+      return res.status(403).json({ error: 'Only superadmin can create superadmin users' })
+    }
     const exists = await User.findOne({ username })
     if (exists) return res.status(409).json({ error: 'Username exists' })
     const passwordHash = await bcrypt.hash(password, 10)
@@ -35,6 +40,11 @@ router.post('/', async (req, res, next) => {
 router.patch('/:id', async (req, res, next) => {
   try {
     const { username, password, role } = req.body || {}
+    const target = await User.findById(req.params.id)
+    if (!target) return res.status(404).json({ error: 'Not found' })
+    if (req.user?.role !== 'SuperAdmin' && (target.role === 'SuperAdmin' || role === 'SuperAdmin')) {
+      return res.status(403).json({ error: 'Cannot modify superadmin account' })
+    }
     const updates = {}
     if (username !== undefined) updates.username = username
     if (role !== undefined) updates.role = role
@@ -49,6 +59,10 @@ router.patch('/:id', async (req, res, next) => {
 // DELETE /api/users/:id
 router.delete('/:id', async (req, res, next) => {
   try {
+    const target = await User.findById(req.params.id)
+    if (target?.role === 'SuperAdmin' && req.user?.role !== 'SuperAdmin') {
+      return res.status(403).json({ error: 'Cannot delete superadmin account' })
+    }
     await User.findByIdAndDelete(req.params.id)
     try { await Audit.create({ type: 'user', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Deleted user ${req.params.id}`, meta: { id: req.params.id } }) } catch {}
     res.json({ ok: true })

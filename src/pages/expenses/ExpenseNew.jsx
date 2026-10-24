@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
@@ -15,14 +15,13 @@ export default function ExpenseNew() {
 
  // UI State
  const [showForm, setShowForm] = useState(false)
- const [form, setForm] = useState({ description: '', category: 'Rent', amount: 0, date: businessDate || format(new Date(), 'yyyy-MM-dd'), note: '' })
- const noteRef = useRef(null)
+ const [form, setForm] = useState({ description: '', category: 'Rent', amount: 0, date: businessDate || format(new Date(), 'yyyy-MM-dd') })
  const [editingId, setEditingId] = useState('')
 
  const openDialog = () => { setShowForm(true) }
  const closeDialog = () => {
  setShowForm(false)
- setForm({ description: '', category: 'Rent', amount: 0, date: businessDate || format(new Date(), 'yyyy-MM-dd'), note: '' })
+ setForm({ description: '', category: 'Rent', amount: 0, date: businessDate || format(new Date(), 'yyyy-MM-dd') })
  setEditingId('')
  }
 
@@ -90,11 +89,9 @@ export default function ExpenseNew() {
  category: exp.category || 'Rent',
  amount: Number(exp.amount || 0),
  date: exp.date || businessDate || format(new Date(), 'yyyy-MM-dd'),
- note: exp.note || ''
  })
  setEditingId(exp.id)
  setShowForm(true)
- if (noteRef.current) noteRef.current.value = exp.note || ''
  }
 
  // Export CSV with current filters
@@ -158,6 +155,17 @@ export default function ExpenseNew() {
 
  const COLORS = ['#4F46E5', '#22C55E', '#F59E0B', '#EF4444', '#06B6D4', '#8B5CF6']
 
+ const categoryTotals = useMemo(() => {
+ const map = {}
+ expenses.forEach(e => { map[e.category] = (map[e.category] || 0) + Number(e.amount || 0) })
+ return map
+ }, [expenses])
+
+ const highestExpense = useMemo(() => {
+ if (!expenses.length) return 0
+ return Math.max(...expenses.map(e => Number(e.amount || 0)))
+ }, [expenses])
+
  const remove = async (id) => {
  try {
  const headers = token ? { Authorization: `Bearer ${token}` } : {}
@@ -180,26 +188,59 @@ export default function ExpenseNew() {
  {isSelectedDateClosed && (
  <div className="px-3 py-2 mb-3 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-sm">Selected date is closed. Adding expenses is disabled.</div>
  )}
- <form onSubmit={submit} className="space-y-3"><div className="grid grid-cols-1 md:grid-cols-3 gap-2"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" /><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className="px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+ <form onSubmit={submit} className="space-y-3"><div className="grid grid-cols-1 md:grid-cols-3 gap-3"><div className="flex flex-col gap-1"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Date</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" /></div><div className="flex flex-col gap-1"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Category</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className="px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
  {categories.map(c=><option key={c}>{c}</option>)}
- </select><input type="number" placeholder="Amount (PKR)" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} className="px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" /></div><input placeholder="Title/Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className="w-full px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" /><input ref={noteRef} placeholder="Notes..." onChange={e=>setForm({...form,note:e.target.value})} className="w-full px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" /><div className="flex gap-2 justify-end pt-2"><button type="button" onClick={closeDialog} className="px-3 py-2 border rounded border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button><button disabled={isSelectedDateClosed} className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded disabled:opacity-50">{editingId ? 'Update Expense' : 'Save Expense'}</button></div></form></div></div>
+ </select></div><div className="flex flex-col gap-1"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Amount (PKR)</label><input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} className="px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" /></div></div><div className="flex flex-col gap-1"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Title / Description</label><input placeholder="Enter expense title or description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className="w-full px-3 py-2 border rounded bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" /></div><div className="flex gap-2 justify-end pt-2"><button type="button" onClick={closeDialog} className="px-3 py-2 border rounded border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button><button disabled={isSelectedDateClosed} className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded disabled:opacity-50">{editingId ? 'Update Expense' : 'Save Expense'}</button></div></form></div></div>
  )}
 
  {/* Filters */}
- <div className="p-5 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-gradient-to-br from-indigo-50/60 to-white dark:from-indigo-950/30 dark:to-gray-900 shadow-sm"><div className="text-sm font-bold text-indigo-900 dark:text-indigo-100 mb-4">Filters</div><div className="flex flex-row flex-nowrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={startDate} onChange={v=>{ setStartDate(v); setPage(1); }} /></div><div className="flex-shrink-0"><DatePicker label="To" value={endDate} onChange={v=>{ setEndDate(v); setPage(1); }} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Category</label><select value={type} onChange={e=>{ setType(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Types</option>
+ <div className="p-5 rounded-xl border-2 border-indigo-300 dark:border-indigo-800 bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-950/40 dark:to-gray-900 shadow-sm"><div className="text-sm font-bold text-indigo-900 dark:text-indigo-100 mb-4">Filters</div><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={startDate} onChange={v=>{ setStartDate(v); setPage(1); }} /></div><div className="flex-shrink-0"><DatePicker label="To" value={endDate} onChange={v=>{ setEndDate(v); setPage(1); }} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Category</label><select value={type} onChange={e=>{ setType(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Types</option>
  {categories.map(c=><option key={c}>{c}</option>)}
- </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Min Amount</label><input type="number" value={minAmt} onChange={e=>{ setMinAmt(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all w-28" placeholder="0" /></div><div className="flex flex-col gap-1 flex-1 min-w-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><div className="flex gap-3"><input value={q} onChange={e=>{ setQ(e.target.value); setPage(1); }} className="flex-1 px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="Search expenses..." /><button onClick={onFilterChange} className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Apply</button></div></div></div></div>
+ </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Min Amount</label><input type="number" value={minAmt} onChange={e=>{ setMinAmt(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all w-28" placeholder="0" /></div><div className="flex flex-col gap-1 flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><div className="flex gap-3"><input value={q} onChange={e=>{ setQ(e.target.value); setPage(1); }} className="flex-1 px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="Search expenses..." /><button onClick={onFilterChange} className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Apply</button></div></div></div></div>
+
+ {/* Summary Widgets */}
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+ <div className="p-4 rounded-xl border-2 border-rose-300 dark:border-rose-800 bg-gradient-to-br from-rose-100 to-rose-50 dark:from-rose-900/40 dark:to-gray-900 shadow-sm">
+ <div className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Total Expenses</div>
+ <div className="text-2xl font-bold mt-1 text-rose-900 dark:text-rose-100">PKR {totalAmount.toLocaleString()}</div>
+ </div>
+ <div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-800 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/40 dark:to-gray-900 shadow-sm">
+ <div className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Entries</div>
+ <div className="text-2xl font-bold mt-1 text-blue-900 dark:text-blue-100">{expenses.length}</div>
+ </div>
+ <div className="p-4 rounded-xl border-2 border-amber-300 dark:border-amber-800 bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-gray-900 shadow-sm">
+ <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Highest Single</div>
+ <div className="text-2xl font-bold mt-1 text-amber-900 dark:text-amber-100">PKR {highestExpense.toLocaleString()}</div>
+ </div>
+ {categories.map((cat, i) => {
+ const amt = categoryTotals[cat] || 0
+ if (amt === 0) return null
+ const colorMap = [
+ { border: 'border-indigo-300 dark:border-indigo-800', bg: 'from-indigo-100 to-indigo-50 dark:from-indigo-900/40 dark:to-gray-900', text: 'text-indigo-700 dark:text-indigo-300', value: 'text-indigo-900 dark:text-indigo-100' },
+ { border: 'border-purple-300 dark:border-purple-800', bg: 'from-purple-100 to-purple-50 dark:from-purple-900/40 dark:to-gray-900', text: 'text-purple-700 dark:text-purple-300', value: 'text-purple-900 dark:text-purple-100' },
+ { border: 'border-cyan-300 dark:border-cyan-800', bg: 'from-cyan-100 to-cyan-50 dark:from-cyan-900/40 dark:to-gray-900', text: 'text-cyan-700 dark:text-cyan-300', value: 'text-cyan-900 dark:text-cyan-100' },
+ { border: 'border-orange-300 dark:border-orange-800', bg: 'from-orange-100 to-orange-50 dark:from-orange-900/40 dark:to-gray-900', text: 'text-orange-700 dark:text-orange-300', value: 'text-orange-900 dark:text-orange-100' },
+ ]
+ const c = colorMap[i % colorMap.length]
+ return (
+ <div key={cat} className={`p-4 rounded-xl border-2 ${c.border} bg-gradient-to-br ${c.bg} shadow-sm`}>
+ <div className={`text-xs font-semibold uppercase tracking-wide ${c.text}`}>{cat}</div>
+ <div className={`text-2xl font-bold mt-1 ${c.value}`}>PKR {amt.toLocaleString()}</div>
+ </div>
+ )
+ })}
+ </div>
 
  {/* Table */}
- <div className="p-5 rounded-xl border-2 border-rose-200 dark:border-rose-800 bg-gradient-to-br from-rose-50/40 to-white dark:from-rose-950/20 dark:to-gray-900 shadow-sm"><div className="flex items-center justify-between mb-4"><div className="text-sm font-bold text-rose-900 dark:text-rose-100 flex items-center gap-2"> Expenses</div><div className="text-lg font-bold text-rose-600 dark:text-rose-400">PKR {totalAmount.toLocaleString()}</div></div><div className="overflow-auto rounded-xl border border-rose-200 dark:border-rose-800"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-rose-100 to-rose-50 dark:from-rose-900/60 dark:to-rose-950/40"><tr><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Date</th><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Time</th><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Type</th><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Description</th><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Notes</th><th className="text-right p-3 font-bold text-rose-900 dark:text-rose-100">Amount</th><th className="text-center p-3 font-bold text-rose-900 dark:text-rose-100">Actions</th></tr></thead><tbody className="divide-y divide-rose-100 dark:divide-rose-800/50">
+ <div className="p-5 rounded-xl border-2 border-rose-300 dark:border-rose-800 bg-gradient-to-br from-rose-100 to-rose-50 dark:from-rose-950/30 dark:to-gray-900 shadow-sm"><div className="flex items-center justify-between mb-4"><div className="text-sm font-bold text-rose-900 dark:text-rose-100 flex items-center gap-2"> Expenses</div><div className="text-lg font-bold text-rose-600 dark:text-rose-400">PKR {totalAmount.toLocaleString()}</div></div><div className="overflow-auto rounded-xl border border-rose-200 dark:border-rose-800"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-rose-100 to-rose-50 dark:from-rose-900/60 dark:to-rose-950/40"><tr><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Date</th><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Time</th><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Type</th><th className="text-left p-3 font-bold text-rose-900 dark:text-rose-100">Description</th><th className="text-right p-3 font-bold text-rose-900 dark:text-rose-100">Amount</th><th className="text-center p-3 font-bold text-rose-900 dark:text-rose-100">Actions</th></tr></thead><tbody className="divide-y divide-rose-100 dark:divide-rose-800/50">
  {loading && (
- <tr><td colSpan={7} className="p-6 text-center text-gray-500"> Loading...</td></tr>
+ <tr><td colSpan={6} className="p-6 text-center text-gray-500"> Loading...</td></tr>
  )}
  {!loading && expenses.map(e => (
- <tr key={e.id} className="hover:bg-rose-50/50 dark:hover:bg-rose-900/20 transition-colors"><td className="p-3">{e.date || '-'}</td><td className="p-3">{e.createdAt ? new Date(e.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</td><td className="p-3"><span className="text-xs px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-amber-800/40 text-amber-800 dark:text-amber-200 font-medium border border-amber-200 dark:border-amber-700">{e.category}</span></td><td className="p-3">{e.description || '-'}</td><td className="p-3 text-gray-500">{e.note || '-'}</td><td className="p-3 text-right font-bold text-rose-600">PKR {Number(e.amount||0).toLocaleString()}</td><td className="p-3 text-center"><button onClick={()=>startEdit(e)} className="text-blue-600 hover:text-blue-800 font-medium mr-3 transition-colors">Edit</button><button onClick={()=>remove(e.id)} className="text-red-600 hover:text-red-800 font-medium transition-colors">Delete</button></td></tr>
+ <tr key={e.id} className="hover:bg-rose-50/50 dark:hover:bg-rose-900/20 transition-colors"><td className="p-3">{e.date || '-'}</td><td className="p-3">{e.createdAt ? new Date(e.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</td><td className="p-3"><span className="text-xs px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-amber-800/40 text-amber-800 dark:text-amber-200 font-medium border border-amber-200 dark:border-amber-700">{e.category}</span></td><td className="p-3">{e.description || '-'}</td><td className="p-3 text-right font-bold text-rose-600">PKR {Number(e.amount||0).toLocaleString()}</td><td className="p-3 text-center"><button onClick={()=>startEdit(e)} className="text-blue-600 hover:text-blue-800 font-medium mr-3 transition-colors">Edit</button><button onClick={()=>remove(e.id)} className="text-red-600 hover:text-red-800 font-medium transition-colors">Delete</button></td></tr>
  ))}
  {!loading && expenses.length === 0 && (
- <tr><td colSpan={7} className="p-8 text-center text-gray-500"><span className="text-4xl mb-2 block"></span><p>No expenses match the filters.</p></td></tr>
+ <tr><td colSpan={6} className="p-8 text-center text-gray-500"><span className="text-4xl mb-2 block"></span><p>No expenses match the filters.</p></td></tr>
  )}
  </tbody></table></div>
 

@@ -9,7 +9,7 @@ export default function CategoryBar({
   const gridStyle = { gridTemplateColumns: `repeat(${tilesPerRow}, minmax(0, 1fr))` }
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 overflow-y-auto h-52 md:h-64 lg:h-72 py-2 px-2 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 shadow-sm" style={gridStyle}>
+      <div className="grid gap-2 overflow-y-auto h-[34vh] min-h-[280px] lg:shrink-0 py-1.5 px-2 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 shadow-sm" style={gridStyle}>
         {(categories || []).map((cat, i) => {
           const isObj = cat && typeof cat === 'object'
           const name = String(isObj ? cat.name || '' : cat)

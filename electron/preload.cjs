@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('license', {
     const handler = (_event, status) => { try { cb && cb(status) } catch {} }
     ipcRenderer.on('license:status', handler)
     return () => ipcRenderer.removeListener('license:status', handler)
+  },
+  activate: async (key) => {
+    try { return await ipcRenderer.invoke('license:activate', key) } catch (e) { return { ok: false, error: String(e?.message || e) } }
   }
 })
 
@@ -31,6 +34,13 @@ contextBridge.exposeInMainWorld('printing', {
   },
   printHTML: async (html, deviceName) => {
     try { return await ipcRenderer.invoke('printing:print-html', { html, deviceName }) } catch (e) { return { ok: false, error: String(e) } }
+  }
+})
+
+// PDF preview: open a base64 PDF in the system default PDF viewer
+contextBridge.exposeInMainWorld('pdfPreview', {
+  open: async (base64, name) => {
+    try { return await ipcRenderer.invoke('preview:open-pdf', { name, data: base64 }) } catch (e) { return { ok: false, error: String(e && e.message || e) } }
   }
 })
 

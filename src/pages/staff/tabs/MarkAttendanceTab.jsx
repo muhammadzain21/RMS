@@ -68,7 +68,7 @@ export default function MarkAttendanceTab({
  };
 
  return (
- <div className="space-y-6">
+ <div className="space-y-4">
  {/* Biometric Status Bar */}
  <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><div className="flex items-center gap-3"><span className="text-2xl"></span><div><h3 className="font-semibold text-slate-800 dark:text-slate-200">Biometric Device (K70)</h3><p className="text-sm text-slate-500 dark:text-slate-400">
  {biometricStatus.deviceConnected 

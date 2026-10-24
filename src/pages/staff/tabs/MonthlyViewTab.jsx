@@ -9,6 +9,7 @@ export default function MonthlyViewTab({
  attendance,
  settings,
  payNotes,
+ advances = [],
  onDeletePayNote,
  onAddPayNote,
  state,
@@ -94,190 +95,144 @@ export default function MonthlyViewTab({
  const paid = payNotes
  .filter(n => n.staffId === monthlyStaffId && n.month === month)
  .reduce((s, n) => s + Number(n.amount || 0), 0);
- const netDue = Math.max(0, net - paid);
- return { base, perDay, bonus, ded, net, paid, netDue, lateDeduction, earlyOutDeduction, absentDeduction, totalLateMinutes: counts.totalLateMinutes, totalEarlyOutMinutes: counts.totalEarlyOutMinutes };
- }, [counts, monthlyStaffId, staff, settings, payNotes, month]);
+ const advTotal = (advances || [])
+ .filter(a => String(a.staffId) === String(monthlyStaffId) && a.month === month)
+ .reduce((s, a) => s + Number(a.amount || 0), 0);
+ const netDue = Math.max(0, net - paid - advTotal);
+ return { base, perDay, bonus, ded, net, paid, advTotal, netDue, lateDeduction, earlyOutDeduction, absentDeduction, totalLateMinutes: counts.totalLateMinutes, totalEarlyOutMinutes: counts.totalEarlyOutMinutes };
+ }, [counts, monthlyStaffId, staff, settings, payNotes, advances, month]);
 
  const downloadPDF = () => {
  if (!monthlyStaffId) { toast.error('Select staff'); return; }
- const doc = new jsPDF();
- const company = state?.settings?.companyName || 'Staff Report';
- const st = staff.find(s => s.id === monthlyStaffId);
- 
- doc.setFontSize(16);
- doc.text(company, 14, 20);
- doc.setFontSize(12);
- doc.text(`Monthly Report: ${st?.name || ''} - ${month}`, 14, 30);
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ const company = state?.settings?.companyName || 'Staff Report'
+ const st = staff.find(s => s.id === monthlyStaffId)
 
- // Attendance Summary Widgets
- doc.setFontSize(10);
- doc.setFillColor(220, 252, 231); // Green background
- doc.roundedRect(14, 38, 40, 18, 2, 2, 'F');
- doc.setTextColor(22, 163, 74);
- doc.text('Present', 17, 45);
- doc.setFontSize(14);
- doc.text(String(counts.present + counts.late), 17, 52);
+ doc.setFontSize(16)
+ doc.text(company, 40, 32)
+ doc.setFontSize(12)
+ doc.text(`Monthly Report: ${st?.name || ''} - ${month}`, 40, 48)
 
- doc.setFillColor(255, 237, 213); // Orange background
- doc.roundedRect(58, 38, 35, 18, 2, 2, 'F');
- doc.setFontSize(10);
- doc.setTextColor(234, 88, 12);
- doc.text('Late', 61, 45);
- doc.setFontSize(14);
- doc.text(String(counts.late), 61, 52);
+ // Summary stats as colored widget boxes (same pattern as SalesHistory)
+ const widgets = [
+ { label: 'Present', value: String(counts.present + counts.late), bg: [220, 252, 231], border: [22, 163, 74], text: [22, 163, 74] },
+ { label: 'Late', value: String(counts.late), bg: [255, 237, 213], border: [234, 88, 12], text: [234, 88, 12] },
+ { label: 'Leave', value: String(counts.leave), bg: [219, 234, 254], border: [37, 99, 235], text: [37, 99, 235] },
+ { label: 'Early Out', value: String(counts.earlyOutDays), bg: [254, 243, 199], border: [180, 83, 9], text: [180, 83, 9] },
+ { label: 'Absent', value: String(counts.absent), bg: [254, 226, 226], border: [220, 38, 38], text: [220, 38, 38] },
+ ]
+ const pageWidth = doc.internal.pageSize.getWidth()
+ const margin = 40
+ const gap = 8
+ const boxW = (pageWidth - 2 * margin - 4 * gap) / 5
+ const boxH = 52
+ let statY = 64
+ for (let i = 0; i < widgets.length; i++) {
+ const x = margin + i * (boxW + gap)
+ const y = statY
+ const w = widgets[i]
+ doc.setFillColor(w.bg[0], w.bg[1], w.bg[2])
+ doc.setDrawColor(w.border[0], w.border[1], w.border[2])
+ doc.setLineWidth(1.5)
+ doc.roundedRect(x, y, boxW, boxH, 6, 6, 'FD')
+ doc.setFontSize(7)
+ doc.setTextColor(w.text[0], w.text[1], w.text[2])
+ doc.setFont(undefined, 'bold')
+ doc.text(w.label.toUpperCase(), x + 10, y + 16)
+ doc.setFontSize(13)
+ doc.text(w.value, x + 10, y + 38)
+ doc.setTextColor(0, 0, 0)
+ doc.setFont(undefined, 'normal')
+ }
 
- doc.setFillColor(219, 234, 254); // Blue background
- doc.roundedRect(97, 38, 35, 18, 2, 2, 'F');
- doc.setFontSize(10);
- doc.setTextColor(37, 99, 235);
- doc.text('Leave', 100, 45);
- doc.setFontSize(14);
- doc.text(String(counts.leave), 100, 52);
-
- doc.setFillColor(254, 243, 199); // Amber/Yellow background for Early Out
- doc.roundedRect(136, 38, 35, 18, 2, 2, 'F');
- doc.setFontSize(10);
- doc.setTextColor(180, 83, 9);
- doc.text('Early', 139, 44);
- doc.text('Out', 139, 49);
- doc.setFontSize(14);
- doc.text(String(counts.earlyOutDays), 139, 55);
-
- doc.setFillColor(254, 226, 226); // Red background
- doc.roundedRect(175, 38, 32, 18, 2, 2, 'F');
- doc.setFontSize(10);
- doc.setTextColor(220, 38, 38);
- doc.text('Absent', 178, 45);
- doc.setFontSize(14);
- doc.text(String(counts.absent), 178, 52);
-
- doc.setTextColor(0, 0, 0);
- doc.setFontSize(12);
-
- const tableData = monthRecords
- .map(r => [r.date, r.status, r.checkIn || '-', r.checkOut || '-', r.lateMinutes || '-', r.earlyOutMinutes || '-']);
-
- // Add totals row
- tableData.push(['Total', '', '', '', counts.totalLateMinutes, counts.totalEarlyOutMinutes]);
+ // Attendance table
+ const tableStartY = statY + boxH + gap + 6
+ const tableData = monthRecords.map(r => [r.date, r.status, r.checkIn || '-', r.checkOut || '-', r.lateMinutes || '-', r.earlyOutMinutes || '-'])
+ tableData.push(['Total', '', '', '', counts.totalLateMinutes, counts.totalEarlyOutMinutes])
 
  doc.autoTable({
  head: [['Date', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Out Min']],
  body: tableData,
- startY: 62,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [20, 184, 166] }
- });
+ startY: tableStartY,
+ styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak', halign: 'left' },
+ headStyles: { fillColor: [20, 184, 166], textColor: 255, fontSize: 9, fontStyle: 'bold' },
+ columnStyles: {
+ 0: { cellWidth: 80 },
+ 1: { cellWidth: 70 },
+ 2: { cellWidth: 80 },
+ 3: { cellWidth: 80 },
+ 4: { cellWidth: 70 },
+ 5: { cellWidth: 70 },
+ },
+ margin: { left: 40, right: 40 },
+ tableWidth: 'auto'
+ })
 
- let y = doc.lastAutoTable?.finalY || 62;
- 
- y += 20;
- doc.setFontSize(12);
- doc.setTextColor(0, 0, 0);
- doc.text('Salary Calculation:', 14, y);
- y += 10;
- doc.setFontSize(10);
- 
- // Helper to draw a row with label left and value right
- const drawRow = (label, value, valueColor = [0, 0, 0], isBold = false) => {
- doc.setFont('helvetica', isBold ? 'bold' : 'normal');
- doc.setTextColor(0, 0, 0);
- doc.text(label, 14, y);
- doc.setTextColor(valueColor[0], valueColor[1], valueColor[2]);
- const valueWidth = doc.getTextWidth(value);
- doc.text(value, 200 - valueWidth, y); // Right align at x=200
- doc.setTextColor(0, 0, 0);
- doc.setFont('helvetica', 'normal');
- y += 6;
- };
- 
- // Helper for detail text (smaller, gray)
- const drawDetail = (text) => {
- doc.setFontSize(8);
- doc.setTextColor(100, 100, 100);
- doc.text(text, 14, y);
- y += 5;
- doc.setFontSize(10);
- doc.setTextColor(0, 0, 0);
- };
- 
- // Base Salary
- drawRow('Base Salary', `${salaryCalc.base.toLocaleString()} PKR`);
- 
- // Per Day Rate
- drawRow('Per Day Rate', `${salaryCalc.perDay.toFixed(2)} PKR`);
- 
- // Bonus
- drawRow(`Bonus (${(counts.present + counts.late).toFixed(1)} days)`, `+${salaryCalc.bonus.toFixed(2)} PKR`, [0, 150, 0]);
- 
- y += 2; // Small gap before deductions
- 
- // Absent
- drawRow('Absent', `-${salaryCalc.absentDeduction.toFixed(2)} PKR`, [220, 38, 38]);
- const absentDetail = settings.absentChargesEnabled
- ? `${counts.absent} days x ${salaryCalc.perDay.toFixed(0)} PKR`
- : `${counts.absent} days x ${settings.deductionPerAbsent || 0} PKR`;
- drawDetail(absentDetail);
- 
- // Late
- const lateAmount = salaryCalc.lateDeduction || 0;
- drawRow('Late', `-${lateAmount.toFixed(2)} PKR`, [220, 38, 38]);
- const lateDetail = salaryCalc.totalLateMinutes > 0
- ? `${counts.late} days (${salaryCalc.totalLateMinutes} min x ${settings.deductionPerMinute || 0} PKR)`
- : `${counts.late} days x ${settings.deductionPerLate || 0} PKR`;
- drawDetail(lateDetail);
- 
- // Early Out
- const earlyOutAmount = salaryCalc.earlyOutDeduction || 0;
- drawRow('Early Out', `-${earlyOutAmount.toFixed(2)} PKR`, [220, 38, 38]);
- const earlyOutDetail = salaryCalc.totalEarlyOutMinutes > 0
- ? `${counts.earlyOutDays} days (${salaryCalc.totalEarlyOutMinutes} min x ${settings.deductionPerMinuteEarlyOut || 0} PKR)`
- : `${counts.earlyOutDays} days`;
- drawDetail(earlyOutDetail);
- 
- // Total Deductions
- y += 1;
- drawRow('Total Deductions', `-${salaryCalc.ded.toFixed(2)} PKR`, [220, 38, 38], true);
- 
- // Paid This Month
- drawRow('Paid This Month', `-${Number(salaryCalc.paid || 0).toLocaleString()} PKR`, [234, 88, 12]);
- 
- y += 3;
- 
- // Net Salary Due (highlighted)
- doc.setFillColor(220, 252, 231); // Light green background
- doc.roundedRect(12, y - 5, 186, 12, 2, 2, 'F');
- doc.setFontSize(11);
- doc.setFont('helvetica', 'bold');
- doc.setTextColor(0, 0, 0);
- doc.text('Net Salary Due', 16, y + 1);
- doc.setTextColor(0, 150, 0);
- const netDueText = `${Number(salaryCalc.netDue || 0).toLocaleString()} PKR`;
- const netDueWidth = doc.getTextWidth(netDueText);
- doc.text(netDueText, 196 - netDueWidth, y + 1);
- doc.setTextColor(0, 0, 0);
- doc.setFont('helvetica', 'normal');
- doc.setFontSize(10);
- y += 12;
- 
- const staffPayNotes = payNotes.filter(n => n.staffId === monthlyStaffId && n.month === month);
+ // Salary calculation table
+ let y2 = doc.lastAutoTable?.finalY || tableStartY
+ y2 += 20
+ doc.setFontSize(12)
+ doc.setTextColor(0, 0, 0)
+ doc.text('Salary Calculation:', 40, y2)
+
+ const salaryData = [
+ ['Base Salary', `${salaryCalc.base.toLocaleString()} PKR`],
+ ['Per Day Rate', `${salaryCalc.perDay.toFixed(2)} PKR`],
+ ['Bonus', `+${salaryCalc.bonus.toFixed(2)} PKR`],
+ ['Absent Deduction', `-${salaryCalc.absentDeduction.toFixed(2)} PKR`],
+ ['Late Deduction', `-${salaryCalc.lateDeduction.toFixed(2)} PKR`],
+ ['Early Out Deduction', `-${salaryCalc.earlyOutDeduction.toFixed(2)} PKR`],
+ ['Total Deductions', `-${salaryCalc.ded.toFixed(2)} PKR`],
+ ['Advances Taken', `-${Number(salaryCalc.advTotal || 0).toLocaleString()} PKR`],
+ ['Paid This Month', `-${Number(salaryCalc.paid || 0).toLocaleString()} PKR`],
+ ['Net Salary Due', `${Number(salaryCalc.netDue || 0).toLocaleString()} PKR`],
+ ]
+
+ doc.autoTable({
+ head: [['Description', 'Amount']],
+ body: salaryData,
+ startY: y2 + 6,
+ styles: { fontSize: 9, cellPadding: 4 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+ columnStyles: {
+ 0: { cellWidth: 200 },
+ 1: { cellWidth: 120, halign: 'right' },
+ },
+ margin: { left: 40, right: 40 },
+ })
+
+ // Pay notes
+ const staffPayNotes = payNotes.filter(n => n.staffId === monthlyStaffId && n.month === month)
  if (staffPayNotes.length > 0) {
- y += 15;
- doc.setFontSize(11);
- doc.text('Pay Notes:', 14, y);
- y += 10;
- doc.setFontSize(10);
- staffPayNotes.forEach((n, idx) => {
- const date = n.date || new Date(n.createdAt).toLocaleDateString();
- doc.text(`${idx + 1}. ${n.notes || '(No note)'} - ${Number(n.amount).toLocaleString()} PKR (${date})`, 14, y);
- y += 7;
- });
+ let y3 = doc.lastAutoTable?.finalY || y2 + 6
+ y3 += 20
+ doc.setFontSize(11)
+ doc.text('Pay Notes:', 40, y3)
+ const noteData = staffPayNotes.map((n, idx) => {
+ const date = n.date || new Date(n.createdAt).toLocaleDateString()
+ return [`${idx + 1}. ${n.notes || '(No note)'}`, `${Number(n.amount).toLocaleString()} PKR`, date]
+ })
+ doc.autoTable({
+ head: [['Note', 'Amount', 'Date']],
+ body: noteData,
+ startY: y3 + 6,
+ styles: { fontSize: 9, cellPadding: 4 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
  }
- 
- doc.save(`${st?.name || 'staff'}_${month}_report.pdf`);
+
+ doc.save(`${st?.name || 'staff'}_${month}_report.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (err) {
+ console.error('PDF export error:', err)
+ toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+ }
  };
 
  return (
- <div className="space-y-6">
+ <div className="space-y-4">
  {/* Header Card */}
  <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><div><h2 className="text-lg font-semibold"> Monthly Report & Salary</h2><p className="text-blue-100 text-sm">View attendance records and calculate monthly salary</p></div></div></div>
 
@@ -366,7 +321,7 @@ export default function MonthlyViewTab({
  {counts.earlyOutDays} days {salaryCalc.totalEarlyOutMinutes > 0 ? `(${salaryCalc.totalEarlyOutMinutes} min × ${settings.deductionPerMinuteEarlyOut || 0} PKR)` : ``}
  </span></div><span className="font-semibold text-red-600">-{salaryCalc.earlyOutDeduction.toFixed(2)} PKR</span></div>
  {/* Total Deductions */}
- <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/30 rounded px-3 -mx-1"><span className="font-medium text-slate-700 dark:text-slate-300">Total Deductions</span><span className="font-bold text-red-600">-{salaryCalc.ded.toFixed(2)} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Paid This Month</span><span className="font-semibold text-orange-600">-{Number(salaryCalc.paid || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg px-4 -mx-2 mt-4"><span className="font-semibold text-slate-800 dark:text-slate-200">Net Salary Due</span><span className="text-2xl font-bold text-green-600">{Number(salaryCalc.netDue || 0).toLocaleString()} PKR</span></div></div><div className="px-6 pb-6 flex gap-3"><button
+ <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/30 rounded px-3 -mx-1"><span className="font-medium text-slate-700 dark:text-slate-300">Total Deductions</span><span className="font-bold text-red-600">-{salaryCalc.ded.toFixed(2)} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Advances Taken</span><span className="font-semibold text-purple-600">-{Number(salaryCalc.advTotal || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Paid This Month</span><span className="font-semibold text-orange-600">-{Number(salaryCalc.paid || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg px-4 -mx-2 mt-4"><span className="font-semibold text-slate-800 dark:text-slate-200">Net Salary Due</span><span className="text-2xl font-bold text-green-600">{Number(salaryCalc.netDue || 0).toLocaleString()} PKR</span></div></div><div className="px-6 pb-6 flex gap-3"><button
  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-teal-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
  onClick={() => { if (!monthlyStaffId) { toast.error('Select staff'); return; } setShowPayDialog(true); }}
  ><span>Pay Staff</span></button><button

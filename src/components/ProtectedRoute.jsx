@@ -1,11 +1,29 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../state/AuthContext.jsx'
+import { useData } from '../state/DataContext.jsx'
 
 export default function ProtectedRoute({ children, roles }) {
   const { user } = useAuth()
+  const { state } = useData()
   const location = useLocation()
   
   if (!user) return <Navigate to="/login" replace />
+
+  // SuperAdmin bypasses everything (including feature access)
+  if (user.role === 'SuperAdmin') return children
+
+  // Feature access: only superadmin-enabled paths are reachable
+  const enabledPaths = state?.settings?.enabledPaths
+  if (Array.isArray(enabledPaths) && enabledPaths.length > 0) {
+    const currentPath = location.pathname
+    const featureEnabled = enabledPaths.some(p =>
+      currentPath === p || currentPath.startsWith(p + '/') || (p === '/' && currentPath === '/')
+    )
+    if (!featureEnabled) {
+      const firstEnabled = enabledPaths.find(p => p !== '/') || enabledPaths[0]
+      return <Navigate to={firstEnabled || '/'} replace />
+    }
+  }
   
   // Admin always has access
   if (user.role === 'Admin') return children

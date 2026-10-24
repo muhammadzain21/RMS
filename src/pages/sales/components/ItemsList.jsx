@@ -9,7 +9,7 @@ export default function ItemsList({
 }) {
  const gridStyle = { gridTemplateColumns: `repeat(${tilesPerRow}, minmax(0, 1fr))` }
  return (
- <div className="h-52 md:h-64 lg:h-72 border rounded-lg bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-gray-900 dark:border-gray-600 p-2 overflow-y-auto shadow-sm">
+ <div className="h-[26vh] min-h-[140px] lg:h-auto lg:flex-1 lg:min-h-0 border rounded-lg bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-gray-900 dark:border-gray-600 p-2 overflow-y-auto shadow-sm">
  {selectedCategory ? (
  itemsInCategory.length > 0 ? (
  <div className="grid gap-2" style={gridStyle}>

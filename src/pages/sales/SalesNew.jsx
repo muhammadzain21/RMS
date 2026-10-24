@@ -1236,9 +1236,9 @@ export default function SalesNew() {
 
   return (
     <>
-    <form onSubmit={submit} className="p-2 sm:p-3 grid grid-cols-1 lg:grid-cols-12 gap-3">
+    <form onSubmit={submit} className="p-2 sm:p-3 grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-full lg:overflow-hidden">
       {/* Left: categories + search, then items list */}
-      <div className="lg:col-span-7 space-y-3">
+      <div className="lg:col-span-7 space-y-3 lg:flex lg:flex-col lg:min-h-0 lg:overflow-hidden">
         <CategoryBar
           categories={categories}
           selectedCategory={selectedCategory}
@@ -1287,7 +1287,7 @@ export default function SalesNew() {
       </div>
 
       {/* Right: cart table + bill summary */}
-      <div className="lg:col-span-5 space-y-3">
+      <div className="lg:col-span-5 space-y-3 lg:flex lg:flex-col lg:min-h-0 lg:overflow-hidden">
         <CartTable
           items={items}
           menu={menu}

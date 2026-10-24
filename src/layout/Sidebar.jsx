@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { dashboardItem, navSections } from './navConfig.js'
 import { LogOut, X, Menu as MenuIcon, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useData } from '../state/DataContext.jsx'
 
 // ─── Tailwind token strings ─────────────────────────────────────────────────
 const SB_BG = 'bg-slate-900 dark:bg-gray-950'
@@ -11,7 +12,13 @@ const SB_ITEM_ACTIVE = 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
 const SB_SECTION_LABEL = 'px-3 pt-3 pb-1 text-[10px] font-semibold tracking-widest uppercase text-slate-500 dark:text-gray-500 select-none'
 
 // ─── Permission helpers ───────────────────────────────────────────────────
-function isDashboardVisible(user) {
+// enabledPaths = superadmin-managed feature access (null/empty array = all enabled)
+const isEnabled = (enabledPaths, path) =>
+ !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
+
+export function isDashboardVisible(user, enabledPaths) {
+ if (user?.role === 'SuperAdmin') return true
+ if (!isEnabled(enabledPaths, '/')) return false
  if (user?.role === 'Admin') return true
  if (user?.permissions && Array.isArray(user.permissions)) {
  return user.permissions.some(p => p.path === '/' && p.visible)
@@ -19,24 +26,31 @@ function isDashboardVisible(user) {
  return false
 }
 
-function getVisibleSections(user) {
+export function getVisibleSections(user, enabledPaths) {
  const sections = navSections()
- if (user?.role === 'Admin') return sections
+ if (user?.role === 'SuperAdmin') return sections
+ if (user?.role === 'Admin') {
+ return sections
+ .map(s => ({ ...s, items: s.items.filter(i => isEnabled(enabledPaths, i.to)) }))
+ .filter(s => s.items.length > 0)
+ }
  if (user?.permissions && Array.isArray(user.permissions)) {
  const allowedPaths = new Set(user.permissions.filter(p => p.visible).map(p => p.path))
  return sections
- .map(s => ({ ...s, items: s.items.filter(i => allowedPaths.has(i.to)) }))
+ .map(s => ({ ...s, items: s.items.filter(i => allowedPaths.has(i.to) && isEnabled(enabledPaths, i.to)) }))
  .filter(s => s.items.length > 0)
  }
  return []
 }
 
 // ─── Sidebar component ────────────────────────────────────────────────────
-export default function Sidebar({ user, brand, collapsed, setCollapsed, mobileOpen, setMobileOpen, canSell, onBlockedSellClick, logout }) {
+export default function Sidebar({ user, brand, collapsed, setCollapsed, mobileOpen, setMobileOpen, canSell, onBlockedSellClick, logout, hidden }) {
  const navigate = useNavigate()
+ const { state } = useData()
+ const enabledPaths = state?.settings?.enabledPaths
 
- const dashboardVisible = isDashboardVisible(user)
- const visibleSections = getVisibleSections(user)
+ const dashboardVisible = isDashboardVisible(user, enabledPaths)
+ const visibleSections = getVisibleSections(user, enabledPaths)
 
  const Icon = ({ icon: Ic, size = 18 }) => Ic ? <Ic size={size} className="flex-shrink-0" /> : null
 
@@ -70,6 +84,7 @@ const NavItem = ({ item, onClick }) => {
  return (
  <>
  {/* ── DESKTOP SIDEBAR ── */}
+ {!hidden && (
  <aside
  className={`
  no-print hidden md:flex flex-none flex-col
@@ -114,19 +129,20 @@ const NavItem = ({ item, onClick }) => {
  <div className="flex flex-col items-center gap-2"><button
  onClick={() => { logout(); navigate('/login') }}
  title="Logout"
- className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+ className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-colors"
  ><LogOut size={18} /></button></div>
  ) : (
  <div className="flex items-center justify-between px-1"><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-semibold text-white">
  {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
- </div><span className="text-xs text-slate-300 dark:text-gray-300 truncate max-w-[80px]">{user?.name || user?.email || 'User'}</span></div><div className="flex items-center gap-2"><button
+ </div><span className="text-xs text-slate-300 dark:text-gray-300 truncate max-w-[80px]">{user?.name || user?.email || 'User'}</span></div><button
  onClick={() => { logout(); navigate('/login') }}
- className="text-xs text-red-400 hover:text-red-300 transition-colors font-medium"
- >
- Log Out
- </button></div></div>
+ className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors"
+>
+ <LogOut size={14} /> Log Out
+ </button></div>
  )}
  </div></aside>
+ )}
 
  {/* ── MOBILE DRAWER ── */}
  {mobileOpen && (
@@ -181,12 +197,12 @@ const NavItem = ({ item, onClick }) => {
  {/* Mobile footer */}
  <div className={`border-t ${SB_BORDER} px-3 py-3 flex items-center justify-between`}><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-full bg-stone-700 flex items-center justify-center text-xs font-semibold text-stone-300">
  {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
- </div><span className="text-xs text-stone-400">{user?.name || user?.email || 'User'}</span></div><div className="flex items-center gap-2"><button
+ </div><span className="text-xs text-stone-400">{user?.name || user?.email || 'User'}</span></div><button
  onClick={() => { setMobileOpen(false); logout(); navigate('/login') }}
- className="text-xs text-red-500 hover:text-red-400 font-medium transition-colors"
- >
- Logout
- </button></div></div></div></>
+ className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors"
+>
+ <LogOut size={14} /> Logout
+ </button></div></div></>
  )}
  </>
  )

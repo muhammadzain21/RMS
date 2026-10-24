@@ -3,6 +3,7 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useData } from '../../state/DataContext.jsx'
+import { Server } from 'lucide-react'
 
 export default function Login() {
  const { user, login } = useAuth()
@@ -170,6 +171,18 @@ export default function Login() {
  Having trouble?{' '}
  <span className="text-orange-500 font-semibold cursor-pointer hover:underline">
  Contact your administrator
- </span></div></div></div></div>
+ </span></div>
+ {/* Server config link for mobile/Capacitor */}
+ {typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent)) && (
+   <div className="mt-4 flex justify-center">
+     <button
+       onClick={() => navigate('/server-config')}
+       className="flex items-center gap-1.5 text-xs text-stone-500 dark:text-stone-400 hover:text-orange-500 dark:hover:text-orange-400 transition-colors"
+     >
+       <Server size={14} /> Change Server Settings
+     </button>
+   </div>
+ )}
+ </div></div></div>
  )
 }

@@ -3,6 +3,9 @@ import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import { openPdfPreview } from '../../utils/pdfPreview.js'
 
 export default function RiderDaily() {
   const { state, businessDate } = useData()
@@ -70,9 +73,36 @@ export default function RiderDaily() {
     } finally { setLoading(false) }
   }
 
+  const printReport = async () => {
+    try {
+      const doc = new jsPDF()
+      doc.setFontSize(14)
+      doc.text('Rider Daily Record', 14, 16)
+      doc.setFontSize(10)
+      doc.setTextColor(90, 90, 90)
+      doc.text(`Date: ${form.date}`, 14, 23)
+      autoTable(doc, {
+        startY: 28,
+        head: [['Date', 'Rider', 'Deliveries', 'Cash']],
+        body: rows.map(r => [r.date || '-', r.riderName || '-', Number(r.deliveries || 0), `PKR ${Number(r.amount || r.cash || 0).toLocaleString()}`]),
+        foot: [['', 'Totals', totals.deliveries, `PKR ${Number(totals.amount || 0).toLocaleString()}`]],
+        styles: { fontSize: 9, cellPadding: 4 },
+        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+        footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
+      })
+      const ok = await openPdfPreview(doc, `Rider Daily ${form.date}.pdf`)
+      if (!ok) toast.error('Failed to open print preview')
+    } catch {
+      toast.error('Failed to open print preview')
+    }
+  }
+
   return (
     <div className="space-y-3 max-w-3xl">
-      <h1 className="text-xl font-semibold">Rider Daily Record</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold">Rider Daily Record</h1>
+        <button onClick={printReport} className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Print</button>
+      </div>
       <form onSubmit={add} className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div>
           <label className="block text-xs mb-1">Rider</label>

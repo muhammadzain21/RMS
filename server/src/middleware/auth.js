@@ -19,7 +19,7 @@ export function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' })
     // If no specific roles required, or user is Admin, or user's role is in allowed roles -> allow
-    if (!roles.length || req.user.role === 'Admin' || roles.includes(req.user.role)) return next()
+    if (!roles.length || req.user.role === 'Admin' || req.user.role === 'SuperAdmin' || roles.includes(req.user.role)) return next()
     // For custom roles (not in the roles list), allow access - sidebar permissions will handle it
     return next()
   }

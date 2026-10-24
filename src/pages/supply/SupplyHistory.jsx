@@ -148,10 +148,10 @@ export default function SupplyHistory() {
  </div>
 
  {/* Filters */}
- <div className="flex flex-row flex-nowrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
+ <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
  <div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div>
  <div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div>
- <div className="flex-1 min-w-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Name, supplier, date, unit..." className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div>
+ <div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Name, supplier, date, unit..." className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div>
  <button type="button" onClick={reloadSupplies} className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Reload</button>
  {backfillCandidates.length > 0 && (
  <button type="button" onClick={generateFromIngredients} className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Generate from Ingredients ({backfillCandidates.length})</button>

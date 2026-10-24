@@ -8,6 +8,9 @@ import MarkAttendanceTab from './tabs/MarkAttendanceTab';
 import AddStaffTab from './tabs/AddStaffTab';
 import DailyViewTab from './tabs/DailyViewTab';
 import MonthlyViewTab from './tabs/MonthlyViewTab';
+import AdvancesTab from './tabs/AdvancesTab';
+import PayrollTab from './tabs/PayrollTab';
+import StaffMonthSummaryPage from './StaffMonthSummaryPage.jsx';
 import StaffSettingsTab from './tabs/StaffSettingsTab';
 
 export default function StaffAttendance({ initialTab = 'attendance', showTabs = true }) {
@@ -34,6 +37,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  absentChargesEnabled: false
  });
  const [payNotes, setPayNotes] = useState([]);
+ const [advances, setAdvances] = useState([]);
  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
  // Load staff with pagination
@@ -159,6 +163,31 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  createdAt: n.createdAt || new Date().toISOString()
  }));
  setPayNotes(mapped);
+ }
+ } catch {}
+ })();
+ }, [token, month, API]);
+
+ // Load staff advances
+ useEffect(() => {
+ if (!token) return;
+ (async () => {
+ try {
+ const res = await fetch(`${API}/api/staff-advances?month=${encodeURIComponent(month)}`, {
+ headers: { Authorization: `Bearer ${token}` }
+ });
+ if (res.ok) {
+ const rows = await res.json();
+ const mapped = (Array.isArray(rows) ? rows : []).map(n => ({
+ id: n._id || crypto.randomUUID(),
+ staffId: String(n.staffId || ''),
+ month: n.month,
+ date: n.date || '',
+ notes: n.notes || '',
+ amount: Number(n.amount || 0),
+ createdAt: n.createdAt || new Date().toISOString()
+ }));
+ setAdvances(mapped);
  }
  } catch {}
  })();
@@ -543,6 +572,85 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  }
  };
 
+ const addAdvance = async ({ staffId, month, date, notes, amount }) => {
+ try {
+ const res = await fetch(`${API}/api/staff-advances`, {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json',
+ Authorization: `Bearer ${token}`
+ },
+ body: JSON.stringify({ staffId, month, date: date || String(businessDate||'').slice(0,10), notes, amount })
+ });
+ if (res.ok) {
+ const n = await res.json();
+ setAdvances(prev => [{
+ id: n._id || crypto.randomUUID(),
+ staffId: String(n.staffId || staffId),
+ month: n.month || month,
+ date: n.date || date || '',
+ notes: n.notes || '',
+ amount: Number(n.amount || 0),
+ createdAt: n.createdAt || new Date().toISOString()
+ }, ...prev]);
+ toast.success('Advance saved');
+ } else {
+ const msg = await res.text();
+ toast.error(`Failed to save ${res.status}${msg ? `: ${msg}` : ''}`);
+ }
+ } catch {
+ toast.error('Network error while saving');
+ }
+ };
+
+ const updateAdvance = async ({ id, staffId, month, date, notes, amount }) => {
+ try {
+ const res = await fetch(`${API}/api/staff-advances/${id}`, {
+ method: 'PUT',
+ headers: {
+ 'Content-Type': 'application/json',
+ Authorization: `Bearer ${token}`
+ },
+ body: JSON.stringify({ staffId, month, date, notes, amount })
+ });
+ if (res.ok) {
+ const n = await res.json();
+ setAdvances(prev => prev.map(a => a.id === id ? {
+ ...a,
+ staffId: String(n.staffId || staffId),
+ month: n.month || month,
+ date: n.date || date || '',
+ notes: n.notes || '',
+ amount: Number(n.amount || 0)
+ } : a));
+ toast.success('Advance updated');
+ } else {
+ const msg = await res.text();
+ toast.error(`Failed to update ${res.status}${msg ? `: ${msg}` : ''}`);
+ }
+ } catch {
+ toast.error('Network error while updating');
+ }
+ };
+
+ const deleteAdvance = async (id) => {
+ try {
+ const res = await fetch(`${API}/api/staff-advances/${id}`, {
+ method: 'DELETE',
+ headers: { Authorization: `Bearer ${token}` }
+ });
+ if (res.ok) {
+ setAdvances(prev => prev.filter(n => n.id !== id));
+ toast.success('Advance removed');
+ } else {
+ const msg = await res.text();
+ toast.error(`Failed to delete ${res.status}${msg ? `: ${msg}` : ''}`);
+ }
+ } catch {
+ toast.error('Network error while deleting');
+ }
+ };
+
  const fmt12 = (t) => {
  if (!t) return '-';
  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
@@ -560,11 +668,13 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  { id: 'addStaff', label: 'Add Staff', icon: '' },
  { id: 'daily', label: 'Daily View', icon: '' },
  { id: 'monthly', label: 'Monthly View', icon: '' },
+ { id: 'advances', label: 'Advances', icon: '' },
+ { id: 'payroll', label: 'Payroll', icon: '' },
  { id: 'settings', label: 'Staff Settings', icon: '' }
  ];
 
  return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-teal-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900"><div className="w-full space-y-6 px-6 py-8">
+ <div className="space-y-4 w-full">
  {/* Header Card removed */}
 
  {showTabs && (
@@ -634,6 +744,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  attendance={attendance}
  settings={settings}
  payNotes={payNotes}
+ advances={advances}
  onDeletePayNote={deletePayNote}
  onAddPayNote={addPayNote}
  state={state}
@@ -646,6 +757,54 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  />
  )}
 
+ {tab === 'advances' && (
+ <AdvancesTab
+ staff={staff}
+ advances={advances}
+ attendance={attendance}
+ settings={settings}
+ payNotes={payNotes}
+ onAddAdvance={addAdvance}
+ onUpdateAdvance={updateAdvance}
+ onDeleteAdvance={deleteAdvance}
+ month={month}
+ setMonth={setMonth}
+ toast={toast}
+ businessDate={businessDate}
+ confirm={confirm}
+ />
+ )}
+
+ {tab === 'payroll' && (
+ <PayrollTab
+ staff={staff}
+ attendance={attendance}
+ settings={settings}
+ payNotes={payNotes}
+ advances={advances}
+ onAddPayNote={addPayNote}
+ onAddAdvance={addAdvance}
+ month={month}
+ setMonth={setMonth}
+ toast={toast}
+ businessDate={businessDate}
+ />
+ )}
+
+ {tab === 'payrollSummary' && (
+ <StaffMonthSummaryPage
+ staff={staff}
+ attendance={attendance}
+ settings={settings}
+ payNotes={payNotes}
+ advances={advances}
+ month={month}
+ setMonth={setMonth}
+ businessDate={businessDate}
+ state={state}
+ />
+ )}
+
  {tab === 'settings' && (
  <StaffSettingsTab
  settings={settings}
@@ -655,6 +814,6 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  )}
 
  {ConfirmDialog}
- </div></div>
+ </div>
  );
 }

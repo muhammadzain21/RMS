@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import CashOpening from '../models/CashOpening.js'
+import Settings from '../models/Settings.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
 
@@ -57,6 +58,12 @@ router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
 
 router.delete('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
+    // Same secret-key guard as sale deletion
+    const provided = req.headers['x-delete-key'] || req.query.key || (req.body && req.body.key) || ''
+    const s = await Settings.findOne({}, {}, { sort: { updatedAt: -1, createdAt: -1 } }).lean()
+    const expected = String(s?.salesDeleteKey || '')
+    if (!expected) return res.status(403).json({ error: 'Delete key not set. Set it in Settings.' })
+    if (String(provided || '') !== expected) return res.status(403).json({ error: 'Invalid delete key' })
     await CashOpening.findByIdAndDelete(req.params.id)
     await logAudit(req, 'day', `Deleted cash opening ${req.params.id}`, { id: req.params.id })
     res.json({ ok: true })

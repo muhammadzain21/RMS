@@ -20,9 +20,10 @@ async function honorIdempotency(req, res) {
 
 router.get('/', async (req, res, next) => {
   try {
-    const { from, to, type, limit = 200, skip = 0 } = req.query
+    const { from, to, type, status, limit = 200, skip = 0 } = req.query
     const q = {}
     if (type) q.orderType = type
+    if (status) q.status = String(status)
     if (from || to) {
       q.date = {
         ...(from ? { $gte: String(from) } : {}),
@@ -62,6 +63,25 @@ router.post('/', async (req, res, next) => {
     const saved = await Kot.create(doc)
     try { await logAudit(req, 'kot', `Created KOT ${saved.id || saved._id || ''}`, { id: saved.id || saved._id, tokenNo: saved.tokenNo, orderType: saved.orderType, tableNo: saved.tableNo, itemsCount: (saved.items||[]).length }) } catch {}
     res.status(201).json({ ...saved.toObject(), id: saved.id })
+  } catch (e) { next(e) }
+})
+
+// PATCH /api/kots/:id — update KOT status
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const { status } = req.body || {}
+    const valid = ['new', 'preparing', 'ready', 'completed']
+    if (!valid.includes(String(status))) {
+      return res.status(400).json({ error: 'Invalid status' })
+    }
+    const updated = await Kot.findByIdAndUpdate(
+      req.params.id,
+      { status: String(status), statusUpdatedAt: new Date() },
+      { new: true }
+    )
+    if (!updated) return res.status(404).json({ error: 'KOT not found' })
+    try { await logAudit(req, 'kot', `KOT ${updated.id} status → ${status}`, { id: updated.id, status }) } catch {}
+    res.json({ ...updated.toObject(), id: updated.id })
   } catch (e) { next(e) }
 })
 

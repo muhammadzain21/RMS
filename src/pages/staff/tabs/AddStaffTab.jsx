@@ -193,7 +193,7 @@ export default function AddStaffTab({
  };
 
  return (
- <div className="space-y-6">
+ <div className="space-y-4">
  {/* Header Card */}
  <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><div><h2 className="text-lg font-semibold"> Staff Directory</h2><p className="text-blue-100 text-sm">Manage your team members and their details</p></div><div className="text-right"><div className="text-3xl font-bold">{staff.length}</div><div className="text-sm text-blue-100">Total Staff</div></div></div></div>
 

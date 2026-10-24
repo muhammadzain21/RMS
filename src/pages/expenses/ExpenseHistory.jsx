@@ -13,7 +13,7 @@ export default function ExpenseHistory() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Expenses</h1>
-      <div className="flex flex-row flex-nowrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
+      <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
         <div className="flex-shrink-0">
           <DatePicker label="Date" value={date} onChange={v=>setDate(v)} />
         </div>

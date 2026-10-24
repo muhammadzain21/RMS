@@ -8,16 +8,23 @@ import { AuthProvider } from './state/AuthContext.jsx'
 import { DataProvider } from './state/DataContext.jsx'
 
 const isElectron = /Electron/i.test(navigator.userAgent)
-const Router = isElectron ? HashRouter : BrowserRouter
+const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent))
+// Use HashRouter for Electron and Capacitor (file:// / capacitor:// origins)
+const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
 
 // Runtime API base discovery and fetch rewrite
 ;(function(){
   try{
+    // Check for a user-configured server URL (mobile app / cloud)
+    const savedBase = typeof localStorage !== 'undefined' ? localStorage.getItem('server_url') : null
     const envBase = import.meta.env.VITE_API_BASE
     const host = window.location.hostname || 'localhost'
     const guessBase = `http://${host}:5000`
     const isLocal = (u) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(String(u||''))
     const pickBase = () => {
+      // Priority: saved server URL (mobile) > env base > guessed base
+      const s = String(savedBase||'').trim()
+      if (s) return s
       const e = String(envBase||'').trim()
       if (!e) return guessBase
       if (isLocal(e) && host !== 'localhost' && host !== '127.0.0.1') return guessBase
@@ -39,19 +46,21 @@ const Router = isElectron ? HashRouter : BrowserRouter
       }catch{}
       return orig(input, init)
     }
-    const tryDiscover = async () => {
-      try{
-        // Always try the server at current hostname (fallback to localhost in packaged app)
-        const discoverHost = window.location.hostname || 'localhost'
-        const discoverBase = `http://${discoverHost}:5000`
-        const res = await fetch(`${discoverBase}/api/client-config`, { cache: 'no-store' })
-        if (res.ok) {
-          const j = await res.json()
-          if (j && j.apiBase) g.API_BASE = String(j.apiBase)
-        }
-      }catch{}
+    // Skip auto-discovery on Capacitor — user manually configures the server URL
+    if (!isCapacitor) {
+      const tryDiscover = async () => {
+        try{
+          const discoverHost = window.location.hostname || 'localhost'
+          const discoverBase = `http://${discoverHost}:5000`
+          const res = await fetch(`${discoverBase}/api/client-config`, { cache: 'no-store' })
+          if (res.ok) {
+            const j = await res.json()
+            if (j && j.apiBase) g.API_BASE = String(j.apiBase)
+          }
+        }catch{}
+      }
+      tryDiscover()
     }
-    tryDiscover()
   }catch{}
 })()
 

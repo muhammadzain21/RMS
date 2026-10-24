@@ -44,6 +44,24 @@ async function tryServerPrint(html, type = 'bill', printerName = '') {
   }
 }
 
+// Silent print chain: Electron native silent print first (same Chromium engine as
+// manual printing, so thermal drivers render identically), then server-side
+// pdf-to-printer (SumatraPDF) as fallback for browser/dev mode.
+// Returns true when the job was accepted by the printer.
+async function trySilentPrint(html, type, deviceName) {
+  try {
+    if (window && window.printing && window.printing.printHTML) {
+      const out = await window.printing.printHTML(html, deviceName)
+      if (out && out.ok) return true
+      if (out && out.error) console.warn('[trySilentPrint] Electron print failed:', out.error)
+    }
+  } catch (e) {
+    console.warn('[trySilentPrint] Electron print error:', e)
+  }
+  if (await tryServerPrint(html, type, deviceName)) return true
+  return false
+}
+
 export async function openKotPrintUtil(opts = {}) {
   try {
     const state = opts.state || {}
@@ -54,15 +72,7 @@ export async function openKotPrintUtil(opts = {}) {
     
     // If auto print mode and printer configured, try silent/server print first (no dialog)
     if (auto && deviceName) {
-      // Try server-side printing first
-      if (await tryServerPrint(html, 'kot', deviceName)) return
-      // Try Electron silent printing
-      if (window && window.printing) {
-        try {
-          const out = await window.printing.printHTML(html, deviceName)
-          if (out && out.ok) return
-        } catch {}
-      }
+      if (await trySilentPrint(html, 'kot', deviceName)) return
     }
     
     // Show preview dialog for manual printing or when silent printing not available
@@ -98,20 +108,17 @@ export async function openKotPrintUtil(opts = {}) {
       if (doc) { doc.open(); doc.write(html); doc.close() }
       const doPrint = () => { try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch {} }
       const cleanup = () => { try { document.body.removeChild(overlay) } catch {} }
-      // Try server-side printing with saved KOT printer first (more reliable than Electron silent print)
-      // Falls back to browser print dialog if server print fails
+      // Silent-print to the configured KOT printer; if every silent path fails,
+      // fall back to the system print dialog so the job is never silently lost
       btnPrint.onclick = () => {
         if (deviceName) {
-          // Fire server print in background, then close dialog
-          tryServerPrint(html, 'kot', deviceName).catch(() => {})
-          cleanup()
+          trySilentPrint(html, 'kot', deviceName)
+            .then(ok => { if (!ok) doPrint() })
+            .catch(() => doPrint())
+            .finally(cleanup)
           return
         }
-        // Print directly from iframe (opens system print dialog), then close
-        try {
-          iframe.contentWindow?.focus()
-          iframe.contentWindow?.print()
-        } catch {}
+        doPrint()
         cleanup()
       }
       btnClose.onclick = cleanup
@@ -229,9 +236,8 @@ export async function printSaleReceiptUtil(opts = {}) {
       </tr>`
     }).join('')
 
-    // Prefer Electron silent printing when a Bill/Customer Bill printer is configured
+    // Prefer silent printing when a Bill/Customer Bill printer is configured
     const deviceName = opts.deviceName || state?.settings?.billPrinterName || ''
-    const preferDevice = Boolean(window && window.printing && deviceName)
     const auto = opts.autoPrint !== false
     const toAbsolute = (u)=>{
       try {
@@ -335,7 +341,6 @@ export async function printSaleReceiptUtil(opts = {}) {
   <div class="kv"><span>Cash Paid :</span><span>${fmt(cashPaid)}</span></div>
   <div class="kv"><span>Cash Balance :</span><span>${fmt(balance)}</span></div>
 
-  <div class="center block">Thank you for coming</div>
   ${state?.settings?.billingFooter ? `<div class="center muted emph" style="margin-top:4px; white-space:pre-wrap"><b>${escapeHtml(state.settings.billingFooter)}</b></div>` : ''}
 
   <script>
@@ -363,17 +368,7 @@ export async function printSaleReceiptUtil(opts = {}) {
 
     // If auto print mode and printer configured, try silent/server print first (no dialog)
     if (auto && deviceName) {
-      // Attempt server-side printing first (more reliable)
-      const ok = await tryServerPrint(html, 'bill', deviceName)
-      if (ok) return
-      
-      // Try Electron silent printing
-      if (preferDevice) {
-        try {
-          const out = await window.printing.printHTML(html, deviceName)
-          if (out && out.ok) return
-        } catch {}
-      }
+      if (await trySilentPrint(html, 'bill', deviceName)) return
     }
 
     // Show preview dialog for manual printing or when silent printing not available
@@ -409,20 +404,17 @@ export async function printSaleReceiptUtil(opts = {}) {
         try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch {}
       }
       const cleanup = () => { try { document.body.removeChild(overlay) } catch {} }
-      // Try server-side printing with saved Bill printer first (more reliable than Electron silent print)
-      // Falls back to browser print dialog if server print fails
+      // Silent-print to the configured Bill printer; if every silent path fails,
+      // fall back to the system print dialog so the job is never silently lost
       btnPrint.onclick = () => {
         if (deviceName) {
-          // Fire server print in background, then close dialog
-          tryServerPrint(html, 'bill', deviceName).catch(() => {})
-          cleanup()
+          trySilentPrint(html, 'bill', deviceName)
+            .then(ok => { if (!ok) doPrint() })
+            .catch(() => doPrint())
+            .finally(cleanup)
           return
         }
-        // Print directly from iframe (opens system print dialog), then close
-        try {
-          iframe.contentWindow?.focus()
-          iframe.contentWindow?.print()
-        } catch {}
+        doPrint()
         cleanup()
       }
       btnClose.onclick = cleanup

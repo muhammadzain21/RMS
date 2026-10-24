@@ -6,6 +6,7 @@ import { useConfirm } from '../components/useConfirm.jsx'
 import DemandModal from '../components/DemandModal.jsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { openPdfPreview } from '../utils/pdfPreview.js'
 import { format } from 'date-fns'
 import DatePicker from '../components/DatePicker.jsx'
 import Pagination from '../components/Pagination.jsx'
@@ -161,18 +162,12 @@ export default function DemandList() {
  }
  }
 
- const printAllPDF = () => {
+ const printAllPDF = async () => {
  try {
  const doc = buildAllPDF()
- const blobUrl = doc.output('bloburl')
- const printWindow = window.open(blobUrl, '_blank')
- if (printWindow) {
- printWindow.addEventListener('load', () => {
- printWindow.focus()
- printWindow.print()
- })
- }
- toast.success('PDF opened for printing')
+ const ok = await openPdfPreview(doc, `demands-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ if (ok) toast.success('PDF opened for printing')
+ else toast.error('Failed to open print preview')
  } catch {
  toast.error('Failed to open print preview')
  }
@@ -188,18 +183,12 @@ export default function DemandList() {
  }
  }
 
- const printSinglePDF = (demand) => {
+ const printSinglePDF = async (demand) => {
  try {
  const doc = buildSinglePDF(demand)
- const blobUrl = doc.output('bloburl')
- const printWindow = window.open(blobUrl, '_blank')
- if (printWindow) {
- printWindow.addEventListener('load', () => {
- printWindow.focus()
- printWindow.print()
- })
- }
- toast.success('PDF opened for printing')
+ const ok = await openPdfPreview(doc, `demand-${demand.date}-${demand.id?.slice(-6) || 'single'}.pdf`)
+ if (ok) toast.success('PDF opened for printing')
+ else toast.error('Failed to open print preview')
  } catch {
  toast.error('Failed to open print preview')
  }
@@ -239,17 +228,17 @@ export default function DemandList() {
  }
 
  return (
- <div className="space-y-5"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Demand Management
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Demand Management
  </h1><button
  onClick={() => { setEditingDemand(null); setModalOpen(true) }}
  className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all hover:scale-105"
  >
  + Create Demand
- </button></div><div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4"><div className="flex flex-row flex-nowrap items-center gap-4"><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Status</label><select
+ </button></div><div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4"><div className="flex flex-wrap items-center gap-4"><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Status</label><select
  value={statusFilter}
  onChange={e => setStatusFilter(e.target.value)}
  className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"
- ><option value="all">All Status</option><option value="pending">Pending</option><option value="sent">Sent</option><option value="completed">Completed</option></select></div><div className="flex-shrink-0"><DatePicker label="From" value={dateFrom} onChange={v => setDateFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={dateTo} onChange={v => setDateTo(v)} /></div><div className="flex-1 min-w-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Filter by item (name or category)</label><input value={search} onChange={e => setSearch(e.target.value)} placeholder="e.g., Pizza, Midnight Deal, Zinger" className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex items-end gap-3 flex-shrink-0"><button
+ ><option value="all">All Status</option><option value="pending">Pending</option><option value="sent">Sent</option><option value="completed">Completed</option></select></div><div className="flex-shrink-0"><DatePicker label="From" value={dateFrom} onChange={v => setDateFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={dateTo} onChange={v => setDateTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Filter by item (name or category)</label><input value={search} onChange={e => setSearch(e.target.value)} placeholder="e.g., Pizza, Midnight Deal, Zinger" className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex items-end gap-3 flex-shrink-0"><button
  onClick={() => refreshDemands()}
  className="px-4 py-2 bg-gradient-to-br from-cyan-500 to-cyan-600 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
  >

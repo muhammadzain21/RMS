@@ -258,12 +258,12 @@ export default function InventoryList() {
 
 function StatCard({ title, value, variant = 'slate', icon = '' }) {
  const variants = {
- blue: { bg: 'bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/30 dark:to-gray-900 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-100', iconBg: 'bg-blue-500/20 text-blue-600 dark:text-blue-300' },
- amber: { bg: 'bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/30 dark:to-gray-900 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100', iconBg: 'bg-amber-500/20 text-amber-600 dark:text-amber-300' },
- orange: { bg: 'bg-gradient-to-br from-orange-50 to-white dark:from-orange-900/30 dark:to-gray-900 border-orange-200 dark:border-orange-800 text-orange-900 dark:text-orange-100', iconBg: 'bg-orange-500/20 text-orange-600 dark:text-orange-300' },
- red: { bg: 'bg-gradient-to-br from-red-50 to-white dark:from-red-900/30 dark:to-gray-900 border-red-200 dark:border-red-800 text-red-900 dark:text-red-100', iconBg: 'bg-red-500/20 text-red-600 dark:text-red-300' },
- emerald: { bg: 'bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/30 dark:to-gray-900 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100', iconBg: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300' },
- slate: { bg: 'bg-gradient-to-br from-gray-50 to-white dark:from-gray-900/50 dark:to-gray-950 border-gray-200 dark:border-gray-700', iconBg: 'bg-gray-500/20 text-gray-600 dark:text-gray-300' },
+ blue: { bg: 'bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/40 dark:to-gray-900 border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-100', iconBg: 'bg-blue-600/20 text-blue-700 dark:text-blue-300' },
+ amber: { bg: 'bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-gray-900 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-100', iconBg: 'bg-amber-600/20 text-amber-700 dark:text-amber-300' },
+ orange: { bg: 'bg-gradient-to-br from-orange-100 to-orange-50 dark:from-orange-900/40 dark:to-gray-900 border-orange-300 dark:border-orange-800 text-orange-900 dark:text-orange-100', iconBg: 'bg-orange-600/20 text-orange-700 dark:text-orange-300' },
+ red: { bg: 'bg-gradient-to-br from-red-100 to-red-50 dark:from-red-900/40 dark:to-gray-900 border-red-300 dark:border-red-800 text-red-900 dark:text-red-100', iconBg: 'bg-red-600/20 text-red-700 dark:text-red-300' },
+ emerald: { bg: 'bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-gray-900 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100', iconBg: 'bg-emerald-600/20 text-emerald-700 dark:text-emerald-300' },
+ slate: { bg: 'bg-gradient-to-br from-gray-100 to-gray-50 dark:from-gray-900/50 dark:to-gray-950 border-gray-300 dark:border-gray-700', iconBg: 'bg-gray-600/20 text-gray-700 dark:text-gray-300' },
  }
  const v = variants[variant] || variants.slate
  return (

@@ -32,7 +32,7 @@ export default function StaffSettingsTab({ settings, setSettings, onSave }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header Card */}
       <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

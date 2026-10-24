@@ -32,6 +32,7 @@ import ingredientsRouter from './routes/ingredients.js'
 import suppliesRouter from './routes/supplies.js'
 import demandsRouter from './routes/demands.js'
 import staffPayNotesRouter from './routes/staffPayNotes.js'
+import staffAdvancesRouter from './routes/staffAdvances.js'
 import kotsRouter from './routes/kots.js'
 import voidsRouter from './routes/voids.js'
 import recallsRouter from './routes/recalls.js'
@@ -40,7 +41,10 @@ import printRouter from './routes/print.js'
 import biometricRouter from './biometric/routes/index.js'
 import biometricConfigRouter from './routes/biometricConfig.js'
 import inventorySnapshotsRouter, { takeSnapshot } from './routes/inventorySnapshots.js'
+import dataManagerRouter from './routes/dataManager.js'
 import { startBiometricPoller } from './biometric/jobs/poller.js'
+import bcrypt from 'bcryptjs'
+import User from './models/User.js'
 
 dotenv.config()
 
@@ -106,6 +110,7 @@ app.use('/api/supplies', suppliesRouter)
 app.use('/api/demands', demandsRouter)
 app.use('/api/cash-counts', cashCountsRouter)
 app.use('/api/staff-pay-notes', staffPayNotesRouter)
+app.use('/api/staff-advances', staffAdvancesRouter)
 app.use('/api/kots', kotsRouter)
 app.use('/api/voids', voidsRouter)
 app.use('/api/recalls', recallsRouter)
@@ -114,11 +119,25 @@ app.use('/api/print', printRouter)
 app.use('/api/biometric', biometricRouter)
 app.use('/api/biometric-config', biometricConfigRouter)
 app.use('/api/inventory-snapshots', inventorySnapshotsRouter)
+app.use('/api/data-manager', dataManagerRouter)
 
 async function start() {
   try {
     await mongoose.connect(MONGO_URI, { autoIndex: true, dbName: DB_NAME })
     console.log('MongoDB connected:', MONGO_URI, 'db:', DB_NAME)
+
+    // Seed the hidden SuperAdmin account (owner of the feature-access portal)
+    try {
+      const saUser = process.env.SUPERADMIN_USERNAME || 'superadmin'
+      const saPass = process.env.SUPERADMIN_PASSWORD || 'epicspire@123'
+      const existing = await User.findOne({ username: saUser })
+      if (!existing) {
+        const passwordHash = await bcrypt.hash(saPass, 10)
+        await User.create({ username: saUser, passwordHash, role: 'SuperAdmin' })
+        console.log('Seeded superadmin account:', saUser)
+      }
+    } catch (e) { console.error('SuperAdmin seed failed:', e?.message) }
+
     app.listen(PORT, '0.0.0.0', () => console.log(`Server listening on http://localhost:${PORT}`))
 
     // Start biometric attendance poller

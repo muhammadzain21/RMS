@@ -287,8 +287,8 @@ export default function Dashboard() {
   const todaysPreDiscountTotal = todaysSalesAmount + todaysBillDiscounts + todaysItemsDiscountAmount
   const todaysComplimentary = todaysSalesList.filter(s => s.paymentMethod === 'complimentary').reduce((a,b) => a + Number(b.total||0), 0)
   const todaysReturns = todaysReturnsList.reduce((a,b) => a + Number(b.refund || 0), 0)
-  // "TOTAL BILL AFTER DISCOUNT" = TODAY'S TOTAL SALE AMOUNT - TOTAL BILL DISCOUNTS TODAY - COMPLIMENTARY - RETURNS
-  const todaysBillAfterDiscount = Math.max(0, todaysPreDiscountTotal - todaysBillDiscounts - todaysComplimentary - todaysReturns)
+  // "TOTAL BILL AFTER DISCOUNT" = TODAY'S TOTAL SALE AMOUNT - ALL DISCOUNTS (item + bill) - COMPLIMENTARY - RETURNS
+  const todaysBillAfterDiscount = Math.max(0, todaysPreDiscountTotal - todaysBillDiscounts - todaysItemsDiscountAmount - todaysComplimentary - todaysReturns)
   const yesterdayReturnsList = state.returns?.filter(r => r.date === yesterdayDate) || []
   const yesterdayReturns = yesterdayReturnsList.reduce((a,b) => a + Number(b.refund || 0), 0)
   const todaysByMethod = todaysSalesList.reduce((acc, s) => {
@@ -331,7 +331,7 @@ export default function Dashboard() {
   }
   const yesterdayPreDiscountTotal = ySalesAmt + yesterdayBillDiscounts + yesterdayItemsDiscountAmount
   const yesterdayComplimentary = state.sales.filter(s => s.date === yesterdayDate && s.paymentMethod === 'complimentary').reduce((a,b) => a + Number(b.total||0), 0)
-  const yesterdayBillAfterDiscount = Math.max(0, yesterdayPreDiscountTotal - yesterdayBillDiscounts - yesterdayComplimentary - yesterdayReturns)
+  const yesterdayBillAfterDiscount = Math.max(0, yesterdayPreDiscountTotal - yesterdayBillDiscounts - yesterdayItemsDiscountAmount - yesterdayComplimentary - yesterdayReturns)
 
   // === Item-wise aggregation for last N days (own selector) ===
   const itemNDays = rangeToDays(itemTableRange)
@@ -411,7 +411,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-4">
       {/* Sales Statistics panel */}
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50 to-white dark:from-gray-800/40 dark:to-gray-900 shadow-sm">
+      <div className="p-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-gradient-to-br from-gray-100 to-gray-50 dark:from-gray-800/50 dark:to-gray-900 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div className="text-base font-semibold text-gray-900 dark:text-gray-100">Dashboard Summary</div>
           <button
@@ -440,14 +440,14 @@ export default function Dashboard() {
           <StatsCard variant="blue" title="TODAY'S TOTAL SALE AMOUNT" value={`PKR ${todaysPreDiscountTotal.toLocaleString()}`} />
           <StatsCard variant="green" title="TOTAL SALES TODAY" value={todaysSalesCount} />
           <StatsCard variant="red" title="ITEMS DISCOUNTED TODAY" value={`${todaysItemsDiscountCount}`} />
-          <StatsCard variant="red" title="TOTAL BILL DISCOUNTS" value={`PKR ${todaysBillDiscounts.toLocaleString()}`} />
+          <StatsCard variant="red" title="TOTAL DISCOUNTS" value={`PKR ${(todaysBillDiscounts + todaysItemsDiscountAmount).toLocaleString()}`} />
           <StatsCard variant="red" title="PERSONAL TODAY" value={`PKR ${todaysComplimentary.toLocaleString()}`} />
           <StatsCard variant="orange" title="RETURNS TODAY" value={`PKR ${todaysReturns.toLocaleString()}`} />
           <StatsCard variant="blue" title="TOTAL BILL AFTER DISCOUNT" value={`PKR ${todaysBillAfterDiscount.toLocaleString()}`} />
           <StatsCard variant="slate" title="YESTERDAY'S TOTAL SALE" value={`PKR ${yesterdayPreDiscountTotal.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
           <StatsCard variant="slate" title="TOTAL SALES YESTERDAY" value={yesterdaySalesCount} sub={`Yesterday: ${yesterdayDate}`} />
           <StatsCard variant="slate" title="ITEMS DISCOUNTED YESTERDAY" value={`${yesterdayItemsDiscountCount}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" title="BILL DISCOUNTS YESTERDAY" value={`PKR ${yesterdayBillDiscounts.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
+          <StatsCard variant="slate" title="TOTAL DISCOUNTS YESTERDAY" value={`PKR ${(yesterdayBillDiscounts + yesterdayItemsDiscountAmount).toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
           <StatsCard variant="slate" title="PERSONAL YESTERDAY" value={`PKR ${yesterdayComplimentary.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
           <StatsCard variant="slate" title="RETURNS YESTERDAY" value={`PKR ${yesterdayReturns.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
           <StatsCard variant="slate" title="BILL AFTER DISCOUNT YESTERDAY" value={`PKR ${yesterdayBillAfterDiscount.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />

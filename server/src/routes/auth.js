@@ -16,7 +16,7 @@ async function getUserWithPermissions(user) {
   }
   
   // If user has a custom role (not Admin), fetch permissions from Role collection
-  if (user.role && user.role !== 'Admin') {
+  if (user.role && user.role !== 'Admin' && user.role !== 'SuperAdmin') {
     const role = await Role.findOne({ name: user.role })
     if (role) {
       userData.permissions = role.permissions

@@ -26,6 +26,10 @@ router.get('/', async (_req, res, next) => {
 // PATCH update settings
 router.patch('/', authRequired, requireRole('admin','manager','Admin','Manager'), async (req, res, next) => {
   try {
+    // Feature access (enabledPaths) is managed exclusively by the SuperAdmin portal
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'enabledPaths') && req.user?.role !== 'SuperAdmin') {
+      return res.status(403).json({ error: 'Only superadmin can change feature access' })
+    }
     const s = await getSingleton()
     Object.assign(s, req.body)
     await s.save()

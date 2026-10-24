@@ -24,17 +24,6 @@ export default function ProfitLoss() {
  return { sales, returns, discount, complimentary, purchases, expenses, profit }
  }, [state, month])
 
- const todays = useMemo(() => {
- const sales = state.sales.filter(s => s.date === todayKey).reduce((a,b)=>a+Number(b.total||0),0)
- const returns = (state.returns || []).filter(r => r.date === todayKey).reduce((a,b)=>a+Number(b.refund||0),0)
- const discount = (state.sales||[]).filter(s => s.date === todayKey).reduce((a,b)=>a+Number(b.itemsDiscount||0)+Number(b.billDiscount||b.discount||0),0)
- const complimentary = (state.sales||[]).filter(s => s.date === todayKey && s.paymentMethod === 'complimentary').reduce((a,b)=>a+Number(b.total||0),0)
- const purchases = state.supplies.filter(s => s.date === todayKey).reduce((a,b)=>a+Number(b.cost||0),0)
- const expenses = state.expenses.filter(e => e.date === todayKey).reduce((a,b)=>a+Number(b.amount||0),0)
- const profit = Math.max(0, sales - returns - complimentary) - (purchases + expenses)
- return { sales, returns, discount, complimentary, purchases, expenses, profit }
- }, [state, todayKey])
-
  const chartData = [
  { name:'Sales', value: monthly.sales },
  { name:'Returns', value: monthly.returns },
@@ -96,42 +85,8 @@ export default function ProfitLoss() {
  }
 
  return (
- <div className="space-y-5">
+ <div className="space-y-4">
  <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Profit &amp; Loss</h1>
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
- {/* Today's Summary */}
- <div className="p-5 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50/80 to-white dark:from-emerald-950/30 dark:to-gray-900 shadow-sm">
- <div className="mb-4"><div className="font-bold text-lg text-emerald-900 dark:text-emerald-100">Today's Summary ({todayKey})</div></div>
- <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
- <SummaryCard title="Sales" value={todays.sales} variant="emerald" />
- <SummaryCard title="Returns" value={todays.returns} variant="orange" />
- <SummaryCard title="Discount" value={todays.discount} variant="amber" />
- <SummaryCard title="Personal" value={todays.complimentary} variant="rose" />
- <SummaryCard title="Purchases" value={todays.purchases} variant="amber" />
- <SummaryCard title="Expenses" value={todays.expenses} variant="purple" />
- <SummaryCard title="Net Profit" value={todays.profit} variant={todays.profit >= 0 ? 'green' : 'red'} />
- </div>
- </div>
- {/* This Month Summary */}
- <div className="p-5 rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50/80 to-white dark:from-blue-950/30 dark:to-gray-900 shadow-sm">
- <div className="flex items-center justify-between mb-4">
- <div className="font-bold text-lg text-blue-900 dark:text-blue-100">This Month Summary</div>
- <div className="flex items-center gap-2">
- <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Month</span>
- <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="px-3 py-1.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg text-sm bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500" />
- </div>
- </div>
- <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
- <SummaryCard title="Sales" value={monthly.sales} variant="emerald" />
- <SummaryCard title="Returns" value={monthly.returns} variant="orange" />
- <SummaryCard title="Discount" value={monthly.discount} variant="amber" />
- <SummaryCard title="Personal" value={monthly.complimentary} variant="rose" />
- <SummaryCard title="Purchases" value={monthly.purchases} variant="amber" />
- <SummaryCard title="Expenses" value={monthly.expenses} variant="purple" />
- <SummaryCard title="Net Profit" value={monthly.profit} variant={monthly.profit >= 0 ? 'green' : 'red'} />
- </div>
- </div>
- </div>
  {/* Charts Row */}
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
  {/* Yearly Profit Trend */}
@@ -181,7 +136,7 @@ export default function ProfitLoss() {
  </AreaChart>
  </ChartCard>
  {/* Yearly View */}
- <div className="p-5 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-gradient-to-br from-indigo-50/60 to-white dark:from-indigo-950/30 dark:to-gray-900 shadow-sm space-y-4">
+ <div className="p-5 rounded-xl border-2 border-indigo-300 dark:border-indigo-800 bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-950/40 dark:to-gray-900 shadow-sm space-y-4">
  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
  <div className="font-bold text-lg text-indigo-900 dark:text-indigo-100">Yearly View</div>
  <div className="flex items-center gap-2">
@@ -231,22 +186,5 @@ export default function ProfitLoss() {
  </div>
  </div>
  </div>
- )
-}
-
-function SummaryCard({ title, value, variant = 'slate' }) {
- const variants = {
- emerald: { bg: 'bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/30 dark:to-gray-900 border-emerald-200 dark:border-emerald-800', value: 'text-emerald-600 dark:text-emerald-400' },
- amber: { bg: 'bg-gradient-to-br from-amber-50 to-white dark:from-amber-900/30 dark:to-gray-900 border-amber-200 dark:border-amber-800', value: 'text-amber-600 dark:text-amber-400' },
- orange: { bg: 'bg-gradient-to-br from-orange-50 to-white dark:from-orange-900/30 dark:to-gray-900 border-orange-200 dark:border-orange-800', value: 'text-orange-600 dark:text-orange-400' },
- rose: { bg: 'bg-gradient-to-br from-rose-50 to-white dark:from-rose-900/30 dark:to-gray-900 border-rose-200 dark:border-rose-800', value: 'text-rose-600 dark:text-rose-400' },
- purple: { bg: 'bg-gradient-to-br from-purple-50 to-white dark:from-purple-900/30 dark:to-gray-900 border-purple-200 dark:border-purple-800', value: 'text-purple-600 dark:text-purple-400' },
- green: { bg: 'bg-gradient-to-br from-green-50 to-white dark:from-green-900/30 dark:to-gray-900 border-green-200 dark:border-green-800', value: 'text-green-600 dark:text-green-400' },
- red: { bg: 'bg-gradient-to-br from-red-50 to-white dark:from-red-900/30 dark:to-gray-900 border-red-200 dark:border-red-800', value: 'text-red-600 dark:text-red-400' },
- slate: { bg: 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700', value: 'text-gray-600 dark:text-gray-400' },
- }
- const v = variants[variant] || variants.slate
- return (
- <div className={`p-4 rounded-xl border shadow-sm ${v.bg}`}><div className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">{title}</div><div className={`text-xl font-bold ${v.value}`}>{value.toFixed(2)}</div></div>
  )
 }

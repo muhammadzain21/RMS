@@ -186,6 +186,7 @@ export default function AdvanceBooking() {
  }
 
  const exportPDF = () => {
+ try {
  const doc = new jsPDF('l', 'pt', 'a4')
  doc.setFontSize(16)
  doc.text('Advance Bookings', 40, 32)
@@ -203,6 +204,10 @@ export default function AdvanceBooking() {
  })
  doc.save(`advance_bookings_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
  toast.success('PDF exported successfully')
+ } catch (err) {
+ console.error('PDF export error:', err)
+ toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+ }
  }
 
  return (
