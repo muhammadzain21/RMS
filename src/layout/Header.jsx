@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useData } from '../state/DataContext.jsx'
 import ThemeToggle from '../components/ThemeToggle.jsx'
-import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelLeftDashed, ChevronDown, LogOut } from 'lucide-react'
+import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelLeftDashed, ChevronDown, LogOut, KeyRound } from 'lucide-react'
 import { dashboardItem } from './navConfig.js'
 import { isDashboardVisible, getVisibleSections } from './Sidebar.jsx'
 
@@ -71,7 +71,12 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  }, [])
 
  const showLicenseWarn = !!licenseInfo?.valid && licenseInfo?.daysRemaining !== Infinity && Number(licenseInfo.daysRemaining) <= 14
- const warnText = showLicenseWarn ? `License expires in ${Number(licenseInfo.daysRemaining)} day${Number(licenseInfo.daysRemaining)===1?'':'s'}. Contact administrator.` : ''
+ const warnText = showLicenseWarn ? `License expires in ${Number(licenseInfo.daysRemaining)} day${Number(licenseInfo.daysRemaining)===1?'':'s'}. Click to renew.` : ''
+ const showLicenseBtn = typeof window !== 'undefined' && !!window.license && licenseInfo && !licenseInfo.dev
+ const licenseBtnTitle = licenseInfo?.daysRemaining === Infinity
+  ? 'License: permanent — click to update'
+  : `License: ${Number(licenseInfo?.daysRemaining)} day${Number(licenseInfo?.daysRemaining)===1?'':'s'} remaining — click to update`
+ const openLicenseDialog = () => window.dispatchEvent(new CustomEvent('app:open-license-dialog'))
 
  return (
  <header className="no-print sticky top-0 z-20 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-white shadow-lg px-3 sm:px-5 py-3">
@@ -103,9 +108,22 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  {state?.daybook?.open ? ' Open' : ' Closed'}
  </span></div>
  {showLicenseWarn && (
-   <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/30 backdrop-blur text-xs border border-amber-300 text-white/95 font-semibold">
+   <button
+     onClick={openLicenseDialog}
+     title={licenseBtnTitle}
+     className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/30 backdrop-blur text-xs border border-amber-300 text-white/95 font-semibold hover:bg-amber-500/50 transition-colors"
+   >
      {warnText}
-   </div>
+   </button>
+ )}
+ {showLicenseBtn && (
+   <button
+     onClick={openLicenseDialog}
+     title={licenseBtnTitle}
+     className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
+   >
+     <KeyRound size={16} />
+   </button>
  )}
  <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs" title="System Time"><span className="font-mono font-bold text-white">
  {currentTime.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
