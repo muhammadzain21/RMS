@@ -7,9 +7,14 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import DataTable from '../../components/DataTable.jsx'
 import Pagination from '../../components/Pagination.jsx'
+import { format } from 'date-fns'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function SupplierList() {
- const { dispatch } = useData()
+ const { state } = useData()
  const navigate = useNavigate()
  const { token } = useAuth()
  const { confirm, ConfirmDialog } = useConfirm()
@@ -74,9 +79,101 @@ export default function SupplierList() {
  const onAdd = () => { setEditing(null); setModalOpen(true) }
  const onEdit = (s) => { setEditing(s); setModalOpen(true) }
 
+ const fetchFilteredSuppliers = async () => {
+ const headers = token ? { Authorization: `Bearer ${token}` } : {}
+ const params = new URLSearchParams({ page: '1', limit: '50000' })
+ if (search) params.set('q', search)
+ const res = await fetch(`${API}/api/suppliers?${params.toString()}`, { headers })
+ const data = await res.json()
+ const mapId = (x) => ({ ...x, id: x.id || x._id })
+ return (data.rows || []).map(mapId)
+ }
+
+ const supplierReportRows = (list) => list.map(r => [
+   r.name || r.company || '',
+   r.company || '',
+   r.phone || '',
+   r.address || '',
+   r.status || 'Active',
+ ])
+
+ const openPrintPreview = async () => {
+ try {
+ const list = await fetchFilteredSuppliers()
+ const body =
+ reportSummary([{ label: 'Suppliers', amount: String(list.length) }]) +
+ reportSec(`Suppliers (${list.length})`) +
+ reportTable({
+ headers: ['Name', 'Company', 'Phone', 'Address', 'Status'],
+ numbered: true,
+ rows: list.map(r => [
+ r.name || r.company || '-',
+ r.company || '-',
+ r.phone || '-',
+ r.address || '-',
+ r.status || 'Active',
+ ]),
+ emptyText: 'No suppliers match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Suppliers',
+ reportLabel: 'Supplier List',
+ reportNo: `Rpt #: SUP-${format(new Date(), 'yyyy-MM-dd')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+ metaRight: [['Records', String(list.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Suppliers-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportPDF = async () => {
+ try {
+ const list = await fetchFilteredSuppliers()
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Suppliers', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${list.length} suppliers`, 40, 46)
+ doc.autoTable({
+ head: [['Name', 'Company', 'Phone', 'Address', 'Status']],
+ body: supplierReportRows(list),
+ startY: 54,
+ styles: { fontSize: 7, cellPadding: 3 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`suppliers_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
+
+ const exportCSV = async () => {
+ try {
+ const list = await fetchFilteredSuppliers()
+ downloadCsvFile(
+ `suppliers_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ ['Name', 'Company', 'Phone', 'Address', 'Status'],
+ supplierReportRows(list)
+ )
+ toast.success('CSV exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export CSV')
+ }
+ }
+
  return (
  <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Suppliers
- </h1><div className="flex flex-wrap items-center gap-2"><input value={search} onChange={onSearchChange} placeholder="Search by name/company..." className="px-4 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all" /><button onClick={onAdd} className="px-4 py-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Add Supplier</button></div></div><DataTable
+ </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><input value={search} onChange={onSearchChange} placeholder="Search by name/company..." className="px-4 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all" /><button onClick={onAdd} className="ui-btn ui-btn-primary">Add Supplier</button></div></div><DataTable
  columns={[
  { label: 'SR No', key: 'srNo', render: (_, idx) =><span className="text-gray-500 dark:text-gray-400">{(page - 1) * limit + idx + 1}</span> },
  { label: 'Name', key: 'name', render: r => (

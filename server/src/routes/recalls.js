@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import Recall from '../models/Recall.js'
+import Kot from '../models/Kot.js'
 import { authRequired } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
 import Counter from '../models/Counter.js'
@@ -14,6 +15,34 @@ function sanitizeRecall(r) {
   const obj = typeof r.toObject === 'function' ? r.toObject() : r
   const { riderId, riderName, ...rest } = obj || {}
   return { ...rest, id: obj.id || obj._id }
+}
+
+// Attach the latest kitchen status (from KOT docs, matched on date+tokenNo)
+// to each recall row so the UI can show order progress.
+async function withOrderStatus(rows) {
+  const list = Array.isArray(rows) ? rows : []
+  const pairs = list
+    .map(r => ({ date: String(r.date || ''), tokenNo: String(r.tokenNo || '') }))
+    .filter(p => p.tokenNo)
+  if (!pairs.length) return list.map(r => ({ ...r, orderStatus: 'ordered' }))
+  const or = [...new Map(pairs.map(p => [`${p.date}|${p.tokenNo}`, p])).values()]
+    .map(p => ({ date: p.date, tokenNo: p.tokenNo }))
+  const kots = await Kot.find({ $or: or }).lean()
+  // Order is 'completed' only when EVERY KOT for the token is completed —
+  // an add-on KOT still at 'new'/'preparing' means the order is in progress.
+  const RANK = { new: 0, preparing: 1, ready: 2, completed: 3 }
+  const minRank = new Map()
+  for (const k of kots) {
+    const key = `${String(k.date || '')}|${String(k.tokenNo || '')}`
+    const rank = RANK[String(k.status || 'new')] ?? 0
+    minRank.set(key, Math.min(minRank.get(key) ?? 3, rank))
+  }
+  const RANK_LABEL = ['new', 'preparing', 'ready', 'completed']
+  return list.map(r => {
+    const key = `${String(r.date || '')}|${String(r.tokenNo || '')}`
+    const rank = minRank.get(key)
+    return { ...r, orderStatus: rank == null ? 'ordered' : RANK_LABEL[rank] }
+  })
 }
 
 // Helper: honor X-Idempotency-Key for create/update to avoid duplicates
@@ -53,7 +82,8 @@ router.get('/', async (req, res, next) => {
 
     if (!hasPagination) {
       const rows = await Recall.find(q).sort({ createdAt: 1 }).lean()
-      res.json(rows.map(r => sanitizeRecall(r)))
+      const annotated = await withOrderStatus(rows.map(r => sanitizeRecall(r)))
+      res.json(annotated)
       return
     }
 
@@ -67,7 +97,7 @@ router.get('/', async (req, res, next) => {
     ])
 
     res.json({
-      data: rows.map(r => sanitizeRecall(r)),
+      data: await withOrderStatus(rows.map(r => sanitizeRecall(r))),
       page,
       limit,
       total,

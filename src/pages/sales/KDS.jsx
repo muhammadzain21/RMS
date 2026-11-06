@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import {
   ChefHat, CheckCircle2, Clock, Flame, PackageCheck,
-  Bell, ArrowRight, ArrowLeft, RefreshCw, Volume2, VolumeX,
-  Timer, Utensils, Bike, ShoppingBag, Car,
+  Bell, ArrowRight, RefreshCw, Volume2, VolumeX,
+  Timer, Utensils, Bike, ShoppingBag, Car, Printer,
 } from 'lucide-react'
+import DatePicker from '../../components/DatePicker.jsx'
+import { previewHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '../../utils/reportDoc'
 
 const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
@@ -29,6 +32,7 @@ const orderTypeIcon = (type) => {
     case 'Dine-in': return Utensils
     case 'Delivery': return Bike
     case 'Take-away': return ShoppingBag
+    case 'Foodpanda':
     case 'Drive-thru': return Car
     default: return ShoppingBag
   }
@@ -50,9 +54,40 @@ function elapsedSeconds(date) {
   return Math.floor((Date.now() - new Date(date).getTime()) / 1000)
 }
 
+function fmtClock(date) {
+  if (!date) return '—'
+  try {
+    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch {
+    return '—'
+  }
+}
+
+function durationLabel(start, end) {
+  if (!start || !end) return '—'
+  const ms = new Date(end).getTime() - new Date(start).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  const totalSec = Math.floor(ms / 1000)
+  const hrs = Math.floor(totalSec / 3600)
+  const mins = Math.floor((totalSec % 3600) / 60)
+  const secs = totalSec % 60
+  if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`
+  if (mins > 0) return `${mins}m ${secs}s`
+  return `${secs}s`
+}
+
+function kotCompletedAt(kot) {
+  if (!kot) return null
+  if (kot.completedAt) return kot.completedAt
+  if ((kot.status || '') === 'completed') return kot.statusUpdatedAt || null
+  return null
+}
+
 export default function KDS() {
   const { state, businessDate } = useData()
-  const { token } = useAuth()
+  const { token, user } = useAuth()
+  const [selectedDate, setSelectedDate] = useState(businessDate || format(new Date(), 'yyyy-MM-dd'))
+  const [dateTouched, setDateTouched] = useState(false)
   const [kots, setKots] = useState([])
   const [loading, setLoading] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
@@ -60,6 +95,10 @@ export default function KDS() {
   const [lastNewCount, setLastNewCount] = useState(0)
   const audioRef = useRef(null)
   const pollRef = useRef(null)
+
+  useEffect(() => {
+    if (!dateTouched && businessDate) setSelectedDate(businessDate)
+  }, [businessDate, dateTouched])
 
   const authHeaders = useMemo(() => ({
     'Content-Type': 'application/json',
@@ -71,16 +110,20 @@ export default function KDS() {
       if (!silent) setLoading(true)
       const params = new URLSearchParams()
       params.set('limit', '500')
-      if (businessDate) {
-        params.set('from', businessDate)
-        params.set('to', businessDate)
+      if (selectedDate) {
+        params.set('from', selectedDate)
+        params.set('to', selectedDate)
       }
       const res = await fetch(`${API}/api/kots?${params.toString()}`, { headers: authHeaders })
       if (res.ok) {
         const data = await res.json()
         const list = Array.isArray(data?.rows) ? data.rows : (Array.isArray(data) ? data : [])
-        setKots(list)
-        const newCount = list.filter(k => (k.status || 'new') === 'new').length
+        // Keep only KOTs for the selected business date (API already filters; belt-and-suspenders)
+        const filtered = selectedDate
+          ? list.filter(k => String(k.date || '').slice(0, 10) === String(selectedDate))
+          : list
+        setKots(filtered)
+        const newCount = filtered.filter(k => (k.status || 'new') === 'new').length
         if (newCount > lastNewCount && lastNewCount > 0 && soundOn) {
           playBell()
         }
@@ -88,7 +131,7 @@ export default function KDS() {
       }
     } catch {}
     if (!silent) setLoading(false)
-  }, [authHeaders, businessDate, lastNewCount, soundOn])
+  }, [authHeaders, selectedDate, lastNewCount, soundOn])
 
   const playBell = useCallback(() => {
     try {
@@ -117,7 +160,26 @@ export default function KDS() {
         body: JSON.stringify({ status }),
       })
       if (res.ok) {
-        setKots(prev => prev.map(k => k.id === id || k._id === id ? { ...k, status, statusUpdatedAt: new Date().toISOString() } : k))
+        const updated = await res.json().catch(() => null)
+        setKots(prev => prev.map(k => {
+          if (k.id !== id && k._id !== id) return k
+          if (updated && typeof updated === 'object') {
+            return {
+              ...k,
+              ...updated,
+              id: updated.id || k.id || k._id,
+              status: updated.status || status,
+              statusUpdatedAt: updated.statusUpdatedAt || new Date().toISOString(),
+              completedAt: updated.completedAt || (status === 'completed' ? new Date().toISOString() : null),
+            }
+          }
+          return {
+            ...k,
+            status,
+            statusUpdatedAt: new Date().toISOString(),
+            completedAt: status === 'completed' ? new Date().toISOString() : null,
+          }
+        }))
       } else {
         toast.error('Failed to update order status')
       }
@@ -168,6 +230,91 @@ export default function KDS() {
 
   const waiterName = (id) => staffById[id]?.name || '-'
 
+  const openPrintPreview = async () => {
+    try {
+      const statusLabel = (s) => {
+        const col = COLUMNS.find(c => c.key === s)
+        return col?.label || s || 'New'
+      }
+      const sorted = [...kots].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+      const completed = sorted.filter(k => (k.status || '') === 'completed')
+      const avgMs = completed.length
+        ? completed.reduce((acc, k) => {
+            const end = kotCompletedAt(k)
+            if (!k.createdAt || !end) return acc
+            return acc + Math.max(0, new Date(end) - new Date(k.createdAt))
+          }, 0) / completed.length
+        : 0
+      const avgDur = avgMs
+        ? durationLabel(new Date(0), new Date(avgMs))
+        : '—'
+
+      const body =
+        reportSummary([
+          { label: 'Total KOTs', amount: String(sorted.length) },
+          { label: 'New', amount: String(groupedByStatus.new?.length || 0) },
+          { label: 'Preparing', amount: String(groupedByStatus.preparing?.length || 0) },
+          { label: 'Ready', amount: String(groupedByStatus.ready?.length || 0) },
+          { label: 'Completed', amount: String(groupedByStatus.completed?.length || 0) },
+          { label: 'Avg cook time (completed)', amount: avgDur },
+        ]) +
+        reportSec(`Kitchen Orders (${sorted.length})`) +
+        reportTable({
+          headers: [
+            'Token',
+            'Type',
+            'Table',
+            'Status',
+            'KOT Time',
+            'Completed',
+            'Duration',
+            { t: 'Items', align: 'r' },
+            'Waiter',
+          ],
+          numbered: true,
+          rows: sorted.map(k => {
+            const doneAt = kotCompletedAt(k)
+            const endForDur = doneAt || ((k.status || '') !== 'completed' ? new Date() : null)
+            return [
+              `#${k.tokenNo || '-'}`,
+              k.orderType || 'Dine-in',
+              k.tableNo ? `${k.tableNo}${k.floor ? ` (${k.floor})` : ''}` : '—',
+              statusLabel(k.status || 'new'),
+              fmtClock(k.createdAt),
+              doneAt ? fmtClock(doneAt) : '—',
+              durationLabel(k.createdAt, endForDur),
+              { v: (k.items || []).length, align: 'r' },
+              waiterName(k.waiterId),
+            ]
+          }),
+          emptyText: 'No KOTs for this date',
+        })
+
+      const company = state?.settings?.companyName || 'Restaurant POS'
+      const html = wrapReportDoc({
+        settings: state?.settings || {},
+        title: 'Kitchen Display Report',
+        reportLabel: 'KDS Report',
+        reportNo: `Rpt #: KDS-${selectedDate || 'today'}`,
+        metaLeft: [
+          ['Business Date:', selectedDate || 'Today', true],
+          ['Generated:', new Date().toLocaleString()],
+          ['Prepared by:', user?.username || user?.name || 'staff'],
+        ],
+        metaRight: [
+          ['Total KOTs:', String(sorted.length), true],
+          ['Completed:', String(completed.length), true],
+          ['Status:', 'FINAL'],
+        ],
+        body,
+        footNote: `Duration = Completed time − KOT time (live elapsed shown for open orders). ${company} · ${selectedDate || 'Today'}`,
+      })
+      await previewHtmlReport(html, `KDS-Report-${selectedDate || 'today'}.pdf`)
+    } catch {
+      toast.error('Print preview failed')
+    }
+  }
+
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col bg-gray-100 dark:bg-gray-950">
       {/* Hidden audio element for bell sound */}
@@ -184,13 +331,26 @@ export default function KDS() {
             </div>
             <div className="min-w-0">
               <h1 className="text-base sm:text-xl font-bold text-gray-800 dark:text-gray-100 truncate">Kitchen Display</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{businessDate || 'Today'}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Orders for {selectedDate || 'Today'}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <div className="h-9 w-[10.5rem] sm:w-[11.5rem] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-visible">
+              <DatePicker
+                value={selectedDate}
+                onChange={(v) => {
+                  if (!v) return
+                  setDateTouched(true)
+                  setSelectedDate(v)
+                }}
+                className="h-full w-full gap-0"
+                compact
+                allowClear={false}
+              />
+            </div>
             {/* Stats badges - desktop */}
-            <div className="hidden sm:flex items-center gap-2 mr-2">
+            <div className="hidden lg:flex items-center gap-2 mr-2">
               {COLUMNS.map(col => {
                 const c = colorMap[col.color]
                 const count = groupedByStatus[col.key]?.length || 0
@@ -232,6 +392,16 @@ export default function KDS() {
               className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${autoRefresh ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}
             >
               <RefreshCw size={18} className={autoRefresh ? 'animate-spin-slow' : ''} />
+            </button>
+
+            {/* Print A4 preview */}
+            <button
+              onClick={openPrintPreview}
+              className="ui-btn ui-btn-print text-sm flex items-center gap-1.5"
+              title="Print A4 report"
+            >
+              <Printer size={16} />
+              <span className="hidden sm:inline">Print</span>
             </button>
 
             {/* Manual refresh */}
@@ -285,6 +455,9 @@ export default function KDS() {
                     const elapsed = elapsedSeconds(kot.createdAt)
                     const isUrgent = col.key === 'new' && elapsed > 300
                     const isVeryUrgent = col.key === 'new' && elapsed > 600
+                    const doneAt = kotCompletedAt(kot)
+                    const durationEnd = doneAt || (col.key !== 'completed' ? new Date() : null)
+                    const duration = durationLabel(kot.createdAt, durationEnd)
 
                     return (
                       <div
@@ -305,9 +478,12 @@ export default function KDS() {
                               <span className="text-sm font-bold text-gray-800 dark:text-gray-100">
                                 #{kot.tokenNo || '-'}
                               </span>
+                              <span className="ml-1.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                                {kot.orderType || 'Dine-in'}
+                              </span>
                               {kot.tableNo && (
-                                <span className="ml-1.5 text-xs text-gray-500 dark:text-gray-400">
-                                  Table {kot.tableNo}
+                                <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                                  · Table {kot.tableNo}{kot.floor ? ` (${kot.floor})` : ''}
                                 </span>
                               )}
                             </div>
@@ -319,6 +495,36 @@ export default function KDS() {
                           }`}>
                             <Timer size={10} />
                             {timeAgo(kot.createdAt)}
+                          </div>
+                        </div>
+
+                        {/* Timing strip: KOT / Completed / Duration */}
+                        <div className="px-3 py-2 grid grid-cols-3 gap-1.5 border-b border-gray-100 dark:border-gray-700 bg-slate-50/80 dark:bg-slate-900/40">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                              <Clock size={9} /> KOT
+                            </div>
+                            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate tabular-nums">
+                              {fmtClock(kot.createdAt)}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                              <CheckCircle2 size={9} /> Done
+                            </div>
+                            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate tabular-nums">
+                              {doneAt ? fmtClock(doneAt) : '—'}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                              <Timer size={9} /> Time
+                            </div>
+                            <div className={`text-[11px] font-bold truncate tabular-nums ${
+                              doneAt ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                            }`}>
+                              {duration}
+                            </div>
                           </div>
                         </div>
 
@@ -345,6 +551,29 @@ export default function KDS() {
                           })}
                         </div>
 
+                        {/* Customer / delivery details */}
+                        {(kot.customerName || kot.customerPhone || kot.customerAddress) && (
+                          <div className="px-3 pb-2">
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-2 py-1.5 space-y-0.5">
+                              {kot.customerName && (
+                                <p className="text-[10px] text-blue-700 dark:text-blue-300 font-medium">
+                                  <span className="font-bold">Customer:</span> {kot.customerName}
+                                </p>
+                              )}
+                              {kot.customerPhone && (
+                                <p className="text-[10px] text-blue-700 dark:text-blue-300 font-medium">
+                                  <span className="font-bold">Phone:</span> {kot.customerPhone}
+                                </p>
+                              )}
+                              {kot.customerAddress && (
+                                <p className="text-[10px] text-blue-700 dark:text-blue-300 font-medium">
+                                  <span className="font-bold">Address:</span> {kot.customerAddress}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Remarks */}
                         {kot.remarks && (
                           <div className="px-3 pb-2">
@@ -359,7 +588,7 @@ export default function KDS() {
                         {/* Footer: waiter + action button */}
                         <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
                           <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                            {waiterName(kot.waiterId)}
+                            {(kot.items || []).length} item{(kot.items || []).length === 1 ? '' : 's'} · {waiterName(kot.waiterId)}
                           </span>
                           {col.next && (
                             <button

@@ -2,12 +2,15 @@ import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { addDays, format } from 'date-fns'
 import { useMemo, useState, useEffect } from 'react'
-import * as XLSX from 'xlsx'
 import UpdateStockDialog from '../../components/UpdateStockDialog.jsx'
 import IngredientModal from '../../components/IngredientModal.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function InventoryList() {
  const { state, dispatch, businessDate } = useData()
@@ -148,32 +151,117 @@ export default function InventoryList() {
  const pages = Math.ceil(filteredItems.length / limit) || 1
  const paginatedItems = filteredItems.slice((page - 1) * limit, page * limit)
 
+ const supplierName = (i) => {
+ const s = (state.suppliers || []).find(x => x.id === i.supplierId)
+ return s?.name || s?.company || ''
+ }
+
+ const stockStatusLabel = (row) => {
+ const qty = Number(row.qty)
+ const threshold = Number(row.lowStock || 5)
+ if (qty === 0) return 'Out of Stock'
+ if (qty <= threshold) return 'Low Stock'
+ return 'In Stock'
+ }
+
+ const inventoryReportRows = () => filteredItems.map(i => [
+   i.name || '',
+   i.category || '',
+   Number(i.qty || 0),
+   stockStatusLabel(i),
+   Number(i.lowStock || 5),
+   i.unit || '',
+   i.expiry ? format(new Date(i.expiry), 'yyyy-MM-dd') : '',
+   Number(i.price || 0),
+   Number(i.qty || 0) * Number(i.price || 0),
+   supplierName(i),
+ ])
+
+ const tabLabel = { all: 'All Items', low: 'Low Stock', expiring: 'Expiring Soon', out: 'Out of Stock' }[tab] || tab
+
+ const openPrintPreview = async () => {
+ try {
+ const totalValue = filteredItems.reduce((a, i) => a + Number(i.qty || 0) * Number(i.price || 0), 0)
+ const body =
+ reportSummary([
+ { label: 'Items', amount: String(filteredItems.length) },
+ { label: 'Total value (PKR)', amount: totalValue.toLocaleString() },
+ ]) +
+ reportSec(`Inventory (${filteredItems.length})`) +
+ reportTable({
+ headers: ['Name', 'Category', { t: 'Qty', align: 'r' }, 'Status', { t: 'Threshold', align: 'r' }, 'Unit', 'Expiry', { t: 'Price/Unit', align: 'r' }, { t: 'Value', align: 'r' }, 'Supplier'],
+ numbered: true,
+ rows: filteredItems.map(i => [
+ i.name,
+ i.category || '-',
+ { v: Number(i.qty || 0), align: 'r' },
+ stockStatusLabel(i),
+ { v: Number(i.lowStock || 5), align: 'r' },
+ i.unit || '',
+ i.expiry ? format(new Date(i.expiry), 'yyyy-MM-dd') : '-',
+ { v: Number(i.price || 0).toLocaleString(), align: 'r' },
+ { v: (Number(i.qty || 0) * Number(i.price || 0)).toLocaleString(), align: 'r' },
+ supplierName(i) || '-',
+ ]),
+ emptyText: 'No inventory items match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Inventory',
+ reportLabel: 'Inventory Report',
+ reportNo: `Rpt #: INV-${format(new Date(), 'yyyy-MM-dd')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Tab', tabLabel], ['Search', search.trim() || 'All']],
+ metaRight: [['Records', String(filteredItems.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Inventory-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportPDF = () => {
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Inventory', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${tabLabel} · ${filteredItems.length} items`, 40, 46)
+ doc.autoTable({
+ head: [['Name', 'Category', 'Qty', 'Status', 'Threshold', 'Unit', 'Expiry', 'Price/Unit', 'Value', 'Supplier']],
+ body: inventoryReportRows(),
+ startY: 54,
+ styles: { fontSize: 7, cellPadding: 2 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`inventory_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
+
  const exportCSV = () => {
  try {
- const rows = filteredItems.map(i => ({
- Name: i.name,
- Category: i.category,
- Quantity: i.qty,
- Unit: i.unit,
- 'Price Per Unit (PKR)': i.price || 0,
- 'Total Value (PKR)': (Number(i.qty || 0) * Number(i.price || 0)),
- Expiry: i.expiry || '',
- Supplier: (state.suppliers||[]).find(x => x.id === i.supplierId)?.name || ''
- }))
- const ws = XLSX.utils.json_to_sheet(rows)
- const wb = XLSX.utils.book_new()
- XLSX.utils.book_append_sheet(wb, ws, 'Inventory')
- XLSX.writeFile(wb, `inventory-${format(new Date(), 'yyyy-MM-dd')}.csv`, { bookType: 'csv' })
- toast.success('Inventory exported successfully')
+ downloadCsvFile(
+ `inventory_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ ['Name', 'Category', 'Qty', 'Status', 'Threshold', 'Unit', 'Expiry', 'Price Per Unit (PKR)', 'Total Value (PKR)', 'Supplier'],
+ inventoryReportRows()
+ )
+ toast.success('CSV exported successfully')
  } catch (e) {
- console.error('Export failed', e)
- toast.error('Export failed')
+ console.error(e)
+ toast.error('Failed to export CSV')
  }
  }
 
  return (
  <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Inventory
- </h1><div className="flex flex-wrap gap-2"><button onClick={refreshIngredients} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Refresh</button><button onClick={() => { setUpdateOpen(true) }} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Update Stock</button><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-slate-500 to-slate-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Export CSV</button><button onClick={() => setIngModalOpen(true)} className="px-4 py-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 font-semibold">Add Ingredient</button></div></div><div className="grid grid-cols-2 md:grid-cols-5 gap-4"><StatCard title="Total Items" value={totalItems} variant="blue" icon="" /><StatCard title="Low Stock" value={lowStockCount} variant="amber" icon="" /><StatCard title="Expiry Soon" value={expirySoonCount} variant="orange" icon="" /><StatCard title="Out of Stock" value={outOfStockCount} variant="red" icon="" /><StatCard title="Total Value" value={`PKR ${totalInventoryValue.toLocaleString()}`} variant="emerald" icon="" /></div>
+ </h1><div className="flex flex-wrap gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button onClick={refreshIngredients} className="ui-btn ui-btn-secondary">Refresh</button><button onClick={() => { setUpdateOpen(true) }} className="ui-btn ui-btn-secondary">Update Stock</button><button onClick={() => setIngModalOpen(true)} className="ui-btn ui-btn-primary">Add Ingredient</button></div></div><div className="grid grid-cols-2 md:grid-cols-5 gap-4"><StatCard title="Total Items" value={totalItems} variant="blue" icon="" /><StatCard title="Low Stock" value={lowStockCount} variant="amber" icon="" /><StatCard title="Expiry Soon" value={expirySoonCount} variant="orange" icon="" /><StatCard title="Out of Stock" value={outOfStockCount} variant="red" icon="" /><StatCard title="Total Value" value={`PKR ${totalInventoryValue.toLocaleString()}`} variant="emerald" icon="" /></div>
  {/* Search */}
  <div className="relative">
  <input
@@ -193,7 +281,7 @@ export default function InventoryList() {
  </div>
 
  {/* Tabs */}
- <div className="flex flex-wrap gap-2 p-2 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700"><button onClick={()=>setTab('all')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='all' ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-200 dark:border-gray-600'}`}> All Items ({totalItems})</button><button onClick={()=>setTab('low')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='low' ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 border border-gray-200 dark:border-gray-600'}`}> Low Stock ({lowStockCount})</button><button onClick={()=>setTab('expiring')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='expiring' ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-gray-200 dark:border-gray-600'}`}> Expiring Soon ({expirySoonCount})</button><button onClick={()=>setTab('out')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='out' ? 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 border border-gray-200 dark:border-gray-600'}`}> Out of Stock ({outOfStockCount})</button></div><div className="border-2 border-blue-200 dark:border-blue-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sr No</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Qty</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Stock Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Threshold</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Expiry</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price/Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Value</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Supplier</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="flex flex-wrap gap-2 p-2 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700"><button onClick={()=>setTab('all')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='all' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}> All Items ({totalItems})</button><button onClick={()=>setTab('low')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='low' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}> Low Stock ({lowStockCount})</button><button onClick={()=>setTab('expiring')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='expiring' ? 'ui-btn ui-btn-primary shadow-lg scale-105' : 'ui-btn ui-btn-secondary'}`}> Expiring Soon ({expirySoonCount})</button><button onClick={()=>setTab('out')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='out' ? 'ui-btn ui-btn-pdf shadow-lg scale-105' : 'ui-btn ui-btn-secondary'}`}> Out of Stock ({outOfStockCount})</button></div><div className="border-2 border-blue-200 dark:border-blue-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sr No</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Qty</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Stock Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Threshold</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Expiry</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price/Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Value</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Supplier</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedItems.map((row, idx) => (
  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-500">{idx + 1}</td><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{row.name}</td><td className="p-3"><span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">{row.category}</span></td><td className="p-3">
  {(() => {
@@ -258,7 +346,7 @@ export default function InventoryList() {
 
 function StatCard({ title, value, variant = 'slate', icon = '' }) {
  const variants = {
- blue: { bg: 'bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/40 dark:to-gray-900 border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-100', iconBg: 'bg-blue-600/20 text-blue-700 dark:text-blue-300' },
+ blue: { bg: 'bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/40 dark:to-gray-900 border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-100', iconBg: 'bg-blue-600/20 text-[var(--color-text-muted)]' },
  amber: { bg: 'bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-gray-900 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-100', iconBg: 'bg-amber-600/20 text-amber-700 dark:text-amber-300' },
  orange: { bg: 'bg-gradient-to-br from-orange-100 to-orange-50 dark:from-orange-900/40 dark:to-gray-900 border-orange-300 dark:border-orange-800 text-orange-900 dark:text-orange-100', iconBg: 'bg-orange-600/20 text-orange-700 dark:text-orange-300' },
  red: { bg: 'bg-gradient-to-br from-red-100 to-red-50 dark:from-red-900/40 dark:to-gray-900 border-red-300 dark:border-red-800 text-red-900 dark:text-red-100', iconBg: 'bg-red-600/20 text-red-700 dark:text-red-300' },

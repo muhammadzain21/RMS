@@ -1,0 +1,12 @@
+{
+  "appId": "com.yourrestaurant.staffportal",
+  "appName": "Staff Portal",
+  "webDir": "public",
+  "server": {
+    "url": "https://YOUR-SERVER-URL/staff",
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

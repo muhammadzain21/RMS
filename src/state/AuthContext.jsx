@@ -18,25 +18,36 @@ export function AuthProvider({ children }) {
 
   // No localStorage persistence; token and user live in memory only
 
-  // Restore current user from token on load
+  // Refresh current user from token on load — stored sessionStorage user is
+  // only a first-paint hint; server response is the source of truth for
+  // permissions (roles, per-staff toggles can change between sessions).
   useEffect(() => {
+    if (!token) return
+    let cancelled = false
     const restore = async () => {
-      if (!token || user) return
       try {
         const res = await fetch(`${getAPI()}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         if (res.ok) {
           const data = await res.json()
-          if (data?.user) setUser(data.user)
+          if (!cancelled && data?.user) setUser(data.user)
+        } else if (res.status === 401 && !cancelled) {
+          // Stale/invalid token — force re-login
+          setUser(null)
+          setToken('')
+          sessionStorage.removeItem('auth_token')
+          sessionStorage.removeItem('auth_user')
         }
       } catch {}
     }
     restore()
-  }, [token, user])
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
 
   // Hydrate users from backend for Admin when token is present
   useEffect(() => {
     const fetchUsers = async () => {
-      if (!token || user?.role !== 'Admin') return
+      if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return
       try {
         const res = await fetch(`${getAPI()}/api/users`, { headers: { Authorization: `Bearer ${token}` } })
         if (res.ok) {
@@ -83,7 +94,7 @@ export function AuthProvider({ children }) {
   }
 
   const addUser = async (u) => {
-    if (!token || user?.role !== 'Admin') return { ok: false, error: 'Unauthorized' }
+    if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return { ok: false, error: 'Unauthorized' }
     try {
       const res = await fetch(`${getAPI()}/api/users`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(u) })
       if (res.ok) {
@@ -106,7 +117,7 @@ export function AuthProvider({ children }) {
   }
 
   const removeUser = async (id) => {
-    if (!token || user?.role !== 'Admin') return { ok: false, error: 'Unauthorized' }
+    if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return { ok: false, error: 'Unauthorized' }
     try {
       const res = await fetch(`${getAPI()}/api/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       if (res.ok) {
@@ -124,7 +135,7 @@ export function AuthProvider({ children }) {
 
   const updateUser = async (id, data) => {
     // data may contain: name, role, password
-    if (!token || user?.role !== 'Admin') return { ok: false, error: 'Unauthorized' }
+    if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return { ok: false, error: 'Unauthorized' }
     try {
       const res = await fetch(`${getAPI()}/api/users/${id}`, {
         method: 'PATCH',

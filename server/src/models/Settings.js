@@ -14,6 +14,8 @@ const SettingsSchema = new mongoose.Schema({
   address: { type: String, default: '' },
   logo: { type: String, default: '' }, // base64 data URL
   taxRate: { type: Number, default: 0 },
+  // Sell page: show Personal (complimentary) payment option
+  showPersonalPayment: { type: Boolean, default: false },
   // Dashboard behavior: whether 'Today' widgets should use business day (tied to day close)
   useBusinessDayForToday: { type: Boolean, default: true },
   // Business day cutoff hour (0-23). If now < cutoff, "business today" is yesterday.
@@ -39,6 +41,11 @@ const SettingsSchema = new mongoose.Schema({
   // Feature access: array of enabled sidebar paths (null/empty = all enabled).
   // Managed only by the SuperAdmin portal.
   enabledPaths: { type: mongoose.Schema.Types.Mixed, default: null },
+  // Chart of expense heads (categories) used on Expenses page
+  expenseHeads: {
+    type: [String],
+    default: ['Rent', 'Utilities', 'Wages', 'Salaries', 'Supplies', 'Transport', 'Marketing', 'Maintenance', 'Misc'],
+  },
 }, { timestamps: true })
 
 export default mongoose.model('Settings', SettingsSchema)

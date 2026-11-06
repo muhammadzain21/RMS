@@ -24,7 +24,28 @@ export default function Layout() {
     })
   }
 
-  if (!user) return <Outlet />
+  const toaster = (
+    <Toaster
+      position="top-right"
+      toastOptions={{
+        className: 'dark:bg-slate-800 dark:text-slate-100',
+        style: {
+          background: 'var(--color-surface)',
+          color: 'var(--color-text-primary)',
+          border: '1px solid var(--color-border)',
+        },
+      }}
+    />
+  )
+
+  if (!user) {
+    return (
+      <>
+        <Outlet />
+        {toaster}
+      </>
+    )
+  }
 
   const canSell = Boolean(state?.daybook?.open)
   const onBlockedSellClick = (e) => {
@@ -33,7 +54,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-[100dvh] flex bg-transparent">
       <Sidebar
         user={user}
         brand={brand}
@@ -47,7 +68,7 @@ export default function Layout() {
         hidden={sidebarHidden}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 min-h-[100dvh] h-[100dvh] overflow-y-auto bg-transparent">
         <Header
           brand={brand}
           onMenuClick={() => setMobileOpen(true)}
@@ -60,12 +81,12 @@ export default function Layout() {
           sidebarHidden={sidebarHidden}
           onToggleSidebarHidden={toggleSidebarHidden}
         />
-        <main className="p-2 sm:p-3 overflow-x-auto flex-1">
+        <main className="px-4 py-4 sm:px-6 sm:py-6 overflow-x-auto flex-1 bg-transparent pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           <Outlet />
         </main>
       </div>
 
-      <Toaster position="top-right" />
+      {toaster}
     </div>
   )
 }

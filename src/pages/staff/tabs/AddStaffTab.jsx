@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import StaffFormDialog from '../components/StaffFormDialog';
+import StaffEarningsDialog from '../components/StaffEarningsDialog.jsx';
 import { formatTime12 } from '../../../utils/dateUtils.js';
 import Pagination from '../../../components/Pagination.jsx';
 
@@ -16,10 +18,13 @@ export default function AddStaffTab({
  confirm,
  token,
  API,
- shifts = []
+ shifts = [],
+ onMappingsChange
 }) {
+ const navigate = useNavigate();
  const [showDialog, setShowDialog] = useState(false);
  const [editingId, setEditingId] = useState(null);
+ const [earningStaff, setEarningStaff] = useState(null);
  const [formData, setFormData] = useState({
  id: '',
  name: '',
@@ -28,12 +33,30 @@ export default function AddStaffTab({
  cnic: '',
  address: '',
  salary: undefined,
+ advanceLimit: 0,
  joinDate: new Date().toLocaleDateString('en-CA'),
  status: 'active',
- shiftId: ''
+ shiftId: '',
+ username: '',
+ password: '',
+ role: 'Staff',
+ myWorkAccess: true
  });
  const [customPos, setCustomPos] = useState('');
  const [jump, setJump] = useState(1);
+ const [roles, setRoles] = useState([]);
+
+ // Roles for the login-account dropdown
+ useEffect(() => {
+ let dead = false;
+ (async () => {
+ try {
+ const res = await fetch(`${API}/api/roles`, { headers: { Authorization: `Bearer ${token}` } });
+ if (res.ok && !dead) setRoles(await res.json());
+ } catch {}
+ })();
+ return () => { dead = true };
+ }, [API, token]);
 
  // Biometric device state
  const [deviceUsers, setDeviceUsers] = useState([]);
@@ -42,13 +65,27 @@ export default function AddStaffTab({
  const [mappings, setMappings] = useState([]);
  const [showBiometricPanel, setShowBiometricPanel] = useState(false);
  const [selectedMapping, setSelectedMapping] = useState({ enrollId: '', staffId: '' });
+ const [biometricDeviceId, setBiometricDeviceId] = useState('ZK-01');
 
  // Fetch device users and mappings
  useEffect(() => {
  if (!token || !showBiometricPanel) return;
+ fetchBiometricDeviceId();
  fetchDeviceUsers();
  fetchMappings();
  }, [token, showBiometricPanel]);
+
+ const fetchBiometricDeviceId = async () => {
+ try {
+ const res = await fetch(`${API}/api/biometric-config`, {
+ headers: { Authorization: `Bearer ${token}` }
+ });
+ if (res.ok) {
+ const data = await res.json();
+ if (data.deviceId) setBiometricDeviceId(String(data.deviceId));
+ }
+ } catch {}
+ };
 
  const fetchDeviceUsers = async () => {
  setDeviceLoading(true);
@@ -62,7 +99,7 @@ export default function AddStaffTab({
  setDeviceUsers(data.users || []);
  } else {
  const err = await res.json();
- setDeviceError(err.message || 'Failed to fetch device users');
+ setDeviceError([err.message, err.error].filter(Boolean).join(' — ') || 'Failed to fetch device users');
  }
  } catch (e) {
  setDeviceError('Network error - device unreachable');
@@ -95,14 +132,16 @@ export default function AddStaffTab({
  Authorization: `Bearer ${token}`
  },
  body: JSON.stringify({
- deviceId: 'ZK-K70-01',
- enrollId: selectedMapping.enrollId,
+ // Server always uses Device ID from Biometric Settings; send it for clarity only
+ deviceId: biometricDeviceId || 'ZK-01',
+ enrollId: String(selectedMapping.enrollId).trim(),
  staffId: selectedMapping.staffId,
  active: true
  })
  });
  if (res.ok) {
  await fetchMappings();
+ try { await onMappingsChange?.() } catch {}
  setSelectedMapping({ enrollId: '', staffId: '' });
  }
  } catch (e) {
@@ -120,6 +159,7 @@ export default function AddStaffTab({
  });
  if (res.ok) {
  await fetchMappings();
+ try { await onMappingsChange?.() } catch {}
  }
  } catch (e) {
  console.error('Failed to delete mapping:', e);
@@ -146,9 +186,14 @@ export default function AddStaffTab({
  cnic: s.cnic || '',
  address: s.address || '',
  salary: s.salary,
+ advanceLimit: s.advanceLimit || 0,
  joinDate: s.joinDate,
  status: s.status || 'active',
- shiftId: s.shiftId || ''
+ shiftId: s.shiftId || '',
+ username: s.loginUsername || '',
+ password: '',
+ role: s.loginRole || 'Staff',
+ myWorkAccess: s.myWorkAccess !== false
  });
  setCustomPos('');
  setShowDialog(true);
@@ -164,9 +209,14 @@ export default function AddStaffTab({
  cnic: '',
  address: '',
  salary: undefined,
+ advanceLimit: 0,
  joinDate: new Date().toLocaleDateString('en-CA'),
  status: 'active',
- shiftId: ''
+ shiftId: '',
+ username: '',
+ password: '',
+ role: 'Staff',
+ myWorkAccess: true
  });
  setCustomPos('');
  setShowDialog(true);
@@ -175,7 +225,7 @@ export default function AddStaffTab({
  const handleSave = () => {
  const pos = formData.position === 'Other' ? (customPos.trim() || 'Other') : formData.position;
  const payload = { ...formData, position: pos };
- 
+ if (!payload.username && !payload.password) { delete payload.username; delete payload.password; delete payload.role } // no login change
  if (editingId) {
  onUpdateStaff(editingId, payload);
  } else {
@@ -319,11 +369,14 @@ export default function AddStaffTab({
  </div><div><h3 className="font-semibold text-slate-800 dark:text-slate-200">{s.name}</h3><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${s.status === 'inactive' ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-green-700'}`}>
  {s.status === 'inactive' ? 'Inactive' : 'Active'}
  </span></div></div>
- {/* Biometric indicator */}
- {mappings.some(m => m.staffId === s.id) && (
- <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full" title="Fingerprint mapped"></span>
+ {(s.biometricId || mappings.some(m => String(m.staffId) === String(s.id))) && (
+ <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-1 rounded-full font-mono" title="Mapped biometric enroll ID">
+ ID {s.biometricId || mappings.find(m => String(m.staffId) === String(s.id))?.enrollId}
+ </span>
  )}
- </div><div className="space-y-2 mb-4"><div className="flex items-center gap-2 text-sm"><span className="text-slate-400"></span><span className="text-slate-600 dark:text-slate-400">{s.position}</span></div><div className="flex items-center gap-2 text-sm"><span className="text-slate-400"></span><span className="text-slate-600 dark:text-slate-400">{s.phone || 'No phone'}</span></div><div className="flex items-center gap-2 text-sm"><span className="text-slate-400"></span><span className="text-slate-600 dark:text-slate-400 font-medium">
+ </div><div className="space-y-2 mb-4"><div className="flex items-center gap-2 text-sm"><span className="text-slate-400"></span><span className="text-slate-600 dark:text-slate-400">{s.position}</span></div><div className="flex items-center gap-2 text-sm"><span className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wide w-20">Biometric</span><span className={`text-sm font-mono ${s.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>
+ {s.biometricId || 'Not mapped'}
+ </span></div><div className="flex items-center gap-2 text-sm"><span className="text-slate-400"></span><span className="text-slate-600 dark:text-slate-400">{s.phone || 'No phone'}</span></div><div className="flex items-center gap-2 text-sm"><span className="text-slate-400"></span><span className="text-slate-600 dark:text-slate-400 font-medium">
  {s.salary ? `${s.salary.toLocaleString()} PKR` : 'Salary not set'}
  </span></div><div className="flex items-center gap-2 text-sm"><span className="text-slate-400"></span><span className="text-slate-600 dark:text-slate-400">
  {(() => {
@@ -331,13 +384,23 @@ export default function AddStaffTab({
  if (!shift) return 'No shift assigned';
  return `${shift.name} (${formatTime12(shift.checkIn)} - ${formatTime12(shift.checkOut)})`;
  })()}
- </span></div></div><div className="flex gap-2 pt-4 border-t border-slate-100 dark:border-slate-700"><button 
- className="flex-1 px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium text-sm hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+ </span></div></div><div className="flex flex-wrap gap-2 pt-4 border-t border-slate-100 dark:border-slate-700"><button 
+ className="flex-1 min-w-[68px] px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium text-sm hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
  onClick={() => handleEdit(s)}
  >
  Edit
  </button><button 
- className="flex-1 px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium text-sm hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+ className="flex-1 min-w-[68px] px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-medium text-sm hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+ onClick={() => setEarningStaff(s)}
+ >
+ Earnings
+ </button><button 
+ className="flex-1 min-w-[68px] px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+ onClick={() => navigate(`/staff/history/${s.id}`)}
+ >
+ History
+ </button><button 
+ className="flex-1 min-w-[68px] px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium text-sm hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
  onClick={() => handleDelete(s.id)}
  >
  Delete
@@ -361,6 +424,15 @@ export default function AddStaffTab({
  setCustomPos={setCustomPos}
  isEditing={!!editingId}
  shifts={shifts}
+ roles={roles}
+ />
+
+ <StaffEarningsDialog
+ open={!!earningStaff}
+ onClose={() => setEarningStaff(null)}
+ staff={earningStaff}
+ API={API}
+ token={token}
  /></div>
  );
 }

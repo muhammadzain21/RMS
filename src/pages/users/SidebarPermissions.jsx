@@ -58,7 +58,7 @@ export default function SidebarPermissions() {
     fetchRoles()
   }, [token])
 
-  const visiblePaths = new Set(sidebarItems.filter(i => !i.hidden && isFeatureEnabled(i.path)).map(i => i.path))
+  const visiblePaths = new Set(sidebarItems.filter(i => !i.hidden && i.path !== '/my' && isFeatureEnabled(i.path)).map(i => i.path))
 
   const normalizePermissions = (perms) => {
     if (!perms || !Array.isArray(perms)) return defaultPermissionItems().filter(p => visiblePaths.has(p.path))
@@ -247,8 +247,12 @@ export default function SidebarPermissions() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Sidebar Permissions</h1>
-      <p className="text-gray-600 dark:text-gray-400">Manage which sidebar pages are visible to different user roles</p>
+      <div className="page-hero-compact">
+        <div>
+          <h1 className="page-title">Sidebar Permissions</h1>
+          <p className="page-sub">Manage which sidebar pages are visible to different user roles. My Work is not listed here — it is controlled per staff member.</p>
+        </div>
+      </div>
       {hiddenBySuperAdmin && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           Some pages are disabled in the SuperAdmin portal and are hidden from this list.
@@ -400,7 +404,7 @@ export default function SidebarPermissions() {
                             <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                               item.visible ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
                             }`}>
-                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#ffffff] transition-transform ${
                                 item.visible ? 'translate-x-4' : 'translate-x-1'
                               }`} />
                             </span>

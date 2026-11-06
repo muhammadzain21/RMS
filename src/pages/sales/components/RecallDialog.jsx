@@ -1,6 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Pagination from '../../../components/Pagination.jsx'
 
+const ORDER_STATUS_CHIP = {
+  ordered: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
+  new: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  preparing: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  ready: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  completed: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+}
+const ORDER_STATUS_LABEL = {
+  ordered: 'Ordered', new: 'KOT Sent', preparing: 'Preparing', ready: 'Ready', completed: 'Served',
+}
+
 export default function RecallDialog({
  open,
  onClose,
@@ -18,12 +29,12 @@ export default function RecallDialog({
  if (t === 'dine-in' || t === 'dine in') return 'Dine-in'
  if (t === 'take-away' || t === 'takeaway' || t === 'take away') return 'Take-away'
  if (t === 'delivery') return 'Delivery'
- if (t === 'drive-thru' || t === 'drivethru' || t === 'drive thru' || t === 'drive-through') return 'Drive-thru'
+ if (t === 'drive-thru' || t === 'drivethru' || t === 'drive thru' || t === 'drive-through' || t === 'foodpanda') return 'Foodpanda'
  return String(v||'')
  }
  const [waiterFilter, setWaiterFilter] = useState('')
  const [search, setSearch] = useState('')
- const [typeFilter, setTypeFilter] = useState('') // '', 'Dine-in','Take-away','Delivery','Drive-thru'
+ const [typeFilter, setTypeFilter] = useState('') // '', 'Dine-in','Take-away','Delivery','Foodpanda'
 
  const [page, setPage] = useState(1)
  const [limit, setLimit] = useState(100)
@@ -95,7 +106,7 @@ export default function RecallDialog({
  }, [canFetch, effectiveRows, waiterFilter, typeFilter, search])
 
  const counts = useMemo(() => {
- const c = { 'Dine-in': 0, 'Take-away': 0, 'Delivery': 0, 'Drive-thru': 0 }
+ const c = { 'Dine-in': 0, 'Take-away': 0, 'Delivery': 0, 'Foodpanda': 0 }
  for (const r of (effectiveRows||[])) {
  const ct = canonicalType(r.orderType)
  if (Object.prototype.hasOwnProperty.call(c, ct)) c[ct]++
@@ -110,7 +121,7 @@ export default function RecallDialog({
  <option key={w.id} value={w.id}>{w.name}</option>
  ))}
  </select></div><div className="col-span-12 sm:col-span-6 flex gap-2 flex-wrap">
- {['Dine-in','Take-away','Delivery','Drive-thru'].map(t => (
+ {['Dine-in','Take-away','Delivery','Foodpanda'].map(t => (
  <button
  key={t}
  type="button"
@@ -122,16 +133,16 @@ export default function RecallDialog({
  {showLoading && (
  <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 z-10 flex items-center justify-center"><span className="text-gray-500">Loading...</span></div>
  )}
- <table className="min-w-full text-sm"><thead><tr className="text-left bg-gray-50 dark:bg-gray-800 sticky top-0"><th className="px-3 py-2 dark:text-gray-300">ORDER TIME</th><th className="px-3 py-2 dark:text-gray-300">TOKEN NO</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER NAME</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER ADDRESS</th><th className="px-3 py-2 dark:text-gray-300">WAITER</th><th className="px-3 py-2 dark:text-gray-300">TABLE</th><th className="px-3 py-2 dark:text-gray-300">FLOOR</th><th className="px-3 py-2 dark:text-gray-300">ORDER TYPE</th><th className="px-3 py-2 dark:text-gray-300">RECALL</th><th className="px-3 py-2 dark:text-gray-300">PAY</th><th className="px-3 py-2 dark:text-gray-300">TOTAL AMOUNT</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER BILL</th></tr></thead><tbody>
+ <table className="min-w-full text-sm"><thead><tr className="text-left bg-gray-50 dark:bg-gray-800 sticky top-0"><th className="px-3 py-2 dark:text-gray-300">ORDER TIME</th><th className="px-3 py-2 dark:text-gray-300">TOKEN NO</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER NAME</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER ADDRESS</th><th className="px-3 py-2 dark:text-gray-300">WAITER</th><th className="px-3 py-2 dark:text-gray-300">TABLE</th><th className="px-3 py-2 dark:text-gray-300">FLOOR</th><th className="px-3 py-2 dark:text-gray-300">ORDER TYPE</th><th className="px-3 py-2 dark:text-gray-300">STATUS</th><th className="px-3 py-2 dark:text-gray-300">RECALL</th><th className="px-3 py-2 dark:text-gray-300">PAY</th><th className="px-3 py-2 dark:text-gray-300">TOTAL AMOUNT</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER BILL</th></tr></thead><tbody>
  {filtered.map((r) => (
  <tr key={r.id} className="border-t dark:border-gray-700"><td className="px-3 py-2 dark:text-gray-300">{r.createdAt ? new Date(r.createdAt).toLocaleString() : '-'}</td><td className="px-3 py-2 font-medium text-blue-600 dark:text-blue-400">{r.tokenNo || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.customer?.name || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.customer?.address || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.waiterName || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.tableNo || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{(() => {
  if (!r.tableNo) return '-'
  const tableObj = tables.find(t => (t.name || t.label || t.code || String(t)) === r.tableNo)
  return tableObj?.floor || '-'
- })()}</td><td className="px-3 py-2 dark:text-gray-300">{r.orderType || '-'}</td><td className="px-3 py-2"><button className="px-2 py-1 rounded bg-blue-600 text-white" onClick={()=>onRecall(r)} title="Recall">⟲</button></td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-green-600 text-white text-xs font-medium" onClick={()=>onPay(r)} title="Pay">Pay</button></td><td className="px-3 py-2 dark:text-gray-300">{Number(r.totalAmount||0).toLocaleString()}</td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-sky-600 text-white text-xs font-medium" onClick={()=>onCustomerBill(r)} title="Customer Bill">Bill</button></td></tr>
+ })()}</td><td className="px-3 py-2 dark:text-gray-300">{r.orderType || '-'}</td><td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ORDER_STATUS_CHIP[r.orderStatus] || ORDER_STATUS_CHIP.ordered}`}>{ORDER_STATUS_LABEL[r.orderStatus] || 'Ordered'}</span></td><td className="px-3 py-2"><button className="px-2 py-1 rounded bg-blue-600 text-white" onClick={()=>onRecall(r)} title="Recall">⟲</button></td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-green-600 text-white text-xs font-medium" onClick={()=>onPay(r)} title="Pay">Pay</button></td><td className="px-3 py-2 dark:text-gray-300">{Number(r.totalAmount||0).toLocaleString()}</td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-sky-600 text-white text-xs font-medium" onClick={()=>onCustomerBill(r)} title="Customer Bill">Bill</button></td></tr>
  ))}
  {!showLoading && hasLoaded && filtered.length === 0 && (
- <tr><td className="px-3 py-8 text-center text-gray-500 dark:text-gray-400" colSpan={12}>No recalled orders</td></tr>
+ <tr><td className="px-3 py-8 text-center text-gray-500 dark:text-gray-400" colSpan={13}>No recalled orders</td></tr>
  )}
  </tbody></table></div><div className="flex items-center justify-between mt-4"><Pagination page={page} pages={pages} total={canFetch ? total : (recalls||[]).length} limit={limit} onLimitChange={n=>{ setLimit(n); setJump(1); }} onPageChange={setPage} loading={loading} /><button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 font-medium transition-all dark:text-gray-100 ml-2">Close</button></div></div></div>
  )

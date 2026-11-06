@@ -85,6 +85,7 @@ export default function Settings() {
  taxRate: s.taxRate ?? 0,
  useBusinessDayForToday: s.useBusinessDayForToday ?? true,
  businessDayCutoffHour: s.businessDayCutoffHour ?? 4,
+ showPersonalPayment: Boolean(s.showPersonalPayment),
  kotPrinterName: s.kotPrinterName || '',
  billPrinterName: s.billPrinterName || '',
  })
@@ -109,6 +110,7 @@ export default function Settings() {
  taxRate: ns.taxRate ?? 0,
  useBusinessDayForToday: ns.useBusinessDayForToday ?? true,
  businessDayCutoffHour: ns.businessDayCutoffHour ?? 4,
+ showPersonalPayment: Boolean(ns.showPersonalPayment),
  kotPrinterName: ns.kotPrinterName || '',
  billPrinterName: ns.billPrinterName || '',
  })
@@ -344,7 +346,7 @@ export default function Settings() {
  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
  value={system.businessDayCutoffHour}
  onChange={e => setSystem(v => ({ ...v, businessDayCutoffHour: Math.min(23, Math.max(0, Number(e.target.value || 0))) }))}
- /></InputGroup></div><div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"><input
+ /></InputGroup></div> <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"><input
  type="checkbox"
  id="useBusinessDay"
  checked={Boolean(system.useBusinessDayForToday)}
@@ -354,6 +356,16 @@ export default function Settings() {
  Use Business Day for "Today" Widgets
  </label><p className="text-sm text-gray-600 dark:text-gray-400">
  When enabled, totals continue past midnight until you perform Day Close. After closing, the closed day moves to Yesterday widgets.
+ </p></div></div><div className="flex items-start gap-3 p-4 bg-slate-50 dark:bg-slate-900/20 border border-slate-200 dark:border-slate-700 rounded-lg"><input
+ type="checkbox"
+ id="showPersonalPayment"
+ checked={Boolean(system.showPersonalPayment)}
+ onChange={e => setSystem(v => ({ ...v, showPersonalPayment: e.target.checked }))}
+ className="mt-1 w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+ /><div><label htmlFor="showPersonalPayment" className="font-medium text-gray-900 dark:text-white cursor-pointer">
+ Show Personal payment option on Sell page
+ </label><p className="text-sm text-gray-600 dark:text-gray-400">
+ When enabled, cashiers can mark orders as Personal (no payment collected). Off by default.
  </p></div></div></CardBody></Card><Card><CardHeader
  title="Printer Configuration"
  subtitle="Configure printers for KOT/void slips and customer bills"

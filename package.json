@@ -104,6 +104,10 @@
         ]
       },
       {
+        "from": "dist",
+        "to": "app/dist"
+      },
+      {
         "from": "server/.env",
         "to": "app/server/.env"
       }
@@ -122,7 +126,6 @@
     },
     "nsis": {
       "artifactName": "Epicspire-RMS-Setup-${version}.exe",
-      "include": "build/installer.nsh",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

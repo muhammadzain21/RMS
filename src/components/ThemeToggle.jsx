@@ -1,23 +1,17 @@
-import { useEffect } from 'react'
 import { useUI } from '../state/UIContext.jsx'
 
 export default function ThemeToggle() {
   const { theme, toggleTheme } = useUI()
 
-  useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'dark') root.classList.add('dark')
-    else root.classList.remove('dark')
-  }, [theme])
-
   return (
     <button
+      type="button"
       onClick={toggleTheme}
       className="relative w-14 h-8 rounded-full transition-colors duration-300 bg-slate-200 dark:bg-slate-700 flex items-center px-1 shadow-inner"
       aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
     >
       <span
-        className={`absolute left-1 flex items-center justify-center w-6 h-6 rounded-full bg-white shadow-md transform transition-transform duration-300 ${
+        className={`absolute left-1 flex items-center justify-center w-6 h-6 rounded-full bg-[#ffffff] shadow-md transform transition-transform duration-300 ${
           theme === 'dark' ? 'translate-x-6' : 'translate-x-0'
         }`}
       >

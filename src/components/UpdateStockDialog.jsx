@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import DatePicker from './DatePicker.jsx'
 
 export default function UpdateStockDialog({ open, items = [], onClose, API, token, suppliers = [], onUpdated, businessDate }) {
  // No initial selection - start empty
@@ -231,12 +232,7 @@ export default function UpdateStockDialog({ open, items = [], onClose, API, toke
  {/* Expiry & Supplier */}
  <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
  Expiry Date
- </label><input
- type="date"
- value={expiry}
- onChange={(e) => setExpiry(e.target.value)}
- className="w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
- /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+ </label><DatePicker value={expiry} onChange={setExpiry} /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
  Supplier (Optional)
  </label><select
  value={supplierId}

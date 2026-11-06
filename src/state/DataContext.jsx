@@ -39,7 +39,6 @@ const initialState = () => {
     daybook: { open: false, openingCash: 0, date: format(today, 'yyyy-MM-dd'), records: [] },
     audit: [],
     cashOpenings: [],
-    cashHandovers: [],
     advanceBookings: [],
     payInOuts: [],
     dayCloses: [],
@@ -374,7 +373,8 @@ function reducer(state, action) {
       const isClosed = (state.dayCloses || []).some(dc => dc.date === date)
       if (isClosed) return state
       const entry = { id: generateUUID(), date, openingCash: Number(openingCash), userId: userId || '', userName: userName || '' }
-      const next = { ...state, daybook: { open: true, openingCash, date, records: [] }, cashOpenings: [entry, ...state.cashOpenings] }
+      const rest = (state.cashOpenings || []).filter(c => String(c.date) !== String(date))
+      const next = { ...state, daybook: { open: true, openingCash, date, records: [] }, cashOpenings: [entry, ...rest] }
       return log(next, `Day opened ${date} with cash ${openingCash}`)
     }
     case 'DAY_CLOSE': {
@@ -389,13 +389,25 @@ function reducer(state, action) {
       const next = { ...state, dayCloses: [entry, ...(state.dayCloses || [])] }
       return log(next, `Added day close ${entry.date}`)
     }
-    case 'ADD_HANDOVER': {
-      const { date, amount, receiver, note, userId, userName } = action.payload
-      const closed = (state.dayCloses || []).some(dc => dc.date === date)
-      if (closed) return state
-      const entry = { id: generateUUID(), date, amount: Number(amount), receiver: receiver || '', note: note || '', userId: userId || '', userName: userName || '' }
-      const next = { ...state, cashHandovers: [entry, ...(state.cashHandovers || [])] }
-      return log(next, `Cash handover ${entry.amount} on ${date} to ${receiver || '-'}`)
+    case 'UPSERT_CASH_OPENING': {
+      const entry = action.payload || {}
+      const date = String(entry.date || '')
+      if (!date) return state
+      const row = {
+        id: entry.id || entry._id || generateUUID(),
+        date,
+        openingCash: Number(entry.openingCash || 0),
+        note: entry.note || '',
+        userId: entry.userId || '',
+        userName: entry.userName || '',
+      }
+      const rest = (state.cashOpenings || []).filter(c => String(c.date) !== date)
+      const next = { ...state, cashOpenings: [row, ...rest] }
+      // If daybook is for that date, keep opening cash in sync
+      if (state.daybook?.date === date) {
+        next.daybook = { ...state.daybook, openingCash: row.openingCash }
+      }
+      return log(next, `Cash opening ${date} = ${row.openingCash}`)
     }
     case 'ADD_BOOKING': {
       const { date, time, customer, phone, deposit, note, userId, userName } = action.payload
@@ -487,12 +499,13 @@ export function DataProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
   const auth = useAuth()
   const token = auth?.token || ''
-  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+  const getAPI = () => ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
 
   // Hydrate from backend APIs
   useEffect(() => {
     async function load() {
       try {
+        const API = getAPI()
         const headers = token ? { Authorization: `Bearer ${token}` } : {}
         // Helper: try with auth, optionally retry without auth for public endpoints; return defVal on failure
         const getJson = async (path, _defVal, allowUnauthRetry = false) => {
@@ -529,7 +542,7 @@ export function DataProvider({ children }) {
           dispatch({ type: 'HYDRATE', payload: { settings: mergedSettings } })
           return
         }
-        const [staffSettings, menu, categories, staff, riders, customers, suppliers, ingredients, supplies, sales, deletedSales, recalls, returns, expenses, audit, cashOpenings, cashHandovers, bookings, payInOuts, dayCloses, tablesList, helds, demands] = await Promise.all([
+        const [staffSettings, menu, categories, staff, riders, customers, suppliers, ingredients, supplies, sales, deletedSales, recalls, returns, expenses, audit, cashOpenings, bookings, payInOuts, dayCloses, tablesList, helds, demands] = await Promise.all([
           getJson('/api/staff-settings', {}),
           getJson('/api/menu', []),
           getJson('/api/categories', []),
@@ -546,7 +559,6 @@ export function DataProvider({ children }) {
           getJson('/api/expenses?from=0000-00-00&to=9999-12-31', []),
           getJson('/api/audit?limit=200', []),
           getJson('/api/cash-openings', []),
-          getJson('/api/cash-handovers', []),
           getJson('/api/advance-bookings', []),
           getJson('/api/pay-in-outs', []),
           getJson('/api/day-closes', []),
@@ -606,7 +618,6 @@ export function DataProvider({ children }) {
           expenses: mapList(expenses, state.expenses),
           audit: mapList(audit, state.audit),
           cashOpenings: mapList(cashOpenings, state.cashOpenings),
-          cashHandovers: mapList(cashHandovers, state.cashHandovers),
           advanceBookings: mapList(bookings, state.advanceBookings),
           payInOuts: mapList(payInOutRows, state.payInOuts),
           dayCloses: mapList(dayCloses, state.dayCloses),
@@ -636,7 +647,7 @@ export function DataProvider({ children }) {
     const doBackup = async () => {
       try {
         const headers = token ? { Authorization: `Bearer ${token}` } : {}
-        const res = await fetch(`${API}/api/backup/export`, { headers })
+        const res = await fetch(`${getAPI()}/api/backup/export`, { headers })
         if (!res.ok) return
         const text = await res.text()
         const file = `rms-backup-${new Date().toISOString().replace(/[:]/g,'-').slice(0,19)}.json`

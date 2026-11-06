@@ -5,9 +5,14 @@ const DayCloseSchema = new mongoose.Schema({
   openingCash: { type: Number, required: true },
   cashSales: { type: Number, required: true },
   cardSales: { type: Number, required: true },
+  onlineSales: { type: Number, default: 0 },
+  complimentarySales: { type: Number, default: 0 },
+  staffSales: { type: Number, default: 0 },
   partySales: { type: Number, default: 0 },
   returns: { type: Number, default: 0 },
   handovers: { type: Number, required: true },
+  handoverTo: { type: String, default: '' }, // who the handover cash was given to
+  leftAtCounter: { type: Number, default: 0 }, // cash left in drawer → next day's opening
   payIns: { type: Number, required: true },
   payOuts: { type: Number, required: true },
   expectedCash: { type: Number, required: true },

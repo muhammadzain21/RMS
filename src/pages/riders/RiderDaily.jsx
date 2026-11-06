@@ -5,7 +5,13 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { openPdfPreview } from '../../utils/pdfPreview.js'
+import { format } from 'date-fns'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import DatePicker from '../../components/DatePicker.jsx'
+
+const btnPrint = 'ui-btn ui-btn-print'
+const btnPdf = 'ui-btn ui-btn-pdf'
+const btnCsv = 'ui-btn ui-btn-csv'
 
 export default function RiderDaily() {
   const { state, businessDate } = useData()
@@ -73,7 +79,42 @@ export default function RiderDaily() {
     } finally { setLoading(false) }
   }
 
-  const printReport = async () => {
+  const openPrintPreview = async () => {
+    try {
+      const body =
+        reportSummary([
+          { label: 'Total deliveries', amount: String(totals.deliveries) },
+          { label: 'Total cash', amount: `PKR ${Number(totals.amount || 0).toLocaleString()}` },
+          { label: 'Records', amount: String(rows.length) },
+        ]) +
+        reportSec(`Rider daily — ${form.date}`) +
+        reportTable({
+          headers: ['Date', 'Rider', { t: 'Deliveries', align: 'r' }, { t: 'Cash (PKR)', align: 'r' }],
+          numbered: true,
+          rows: rows.map(r => [
+            r.date || '-',
+            r.riderName || '-',
+            { v: Number(r.deliveries || 0), align: 'r' },
+            { v: Number(r.amount || r.cash || 0).toLocaleString(), align: 'r' },
+          ]),
+          emptyText: 'No records for this date',
+        })
+      const html = wrapReportDoc({
+        settings: state?.settings || {},
+        title: 'Rider Daily Record',
+        reportLabel: 'Rider Daily Report',
+        reportNo: `Rpt #: RD-${form.date}`,
+        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', form.date]],
+        metaRight: [['Records', String(rows.length)]],
+        body,
+      })
+      await previewHtmlReport(html, `Rider-Daily-${form.date}.pdf`)
+    } catch {
+      toast.error('Failed to open print preview')
+    }
+  }
+
+  const exportPDF = () => {
     try {
       const doc = new jsPDF()
       doc.setFontSize(14)
@@ -90,10 +131,30 @@ export default function RiderDaily() {
         headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
         footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
       })
-      const ok = await openPdfPreview(doc, `Rider Daily ${form.date}.pdf`)
-      if (!ok) toast.error('Failed to open print preview')
+      doc.save(`rider_daily_${form.date}.pdf`)
+      toast.success('PDF downloaded')
     } catch {
-      toast.error('Failed to open print preview')
+      toast.error('Failed to download PDF')
+    }
+  }
+
+  const exportCSV = () => {
+    try {
+      const header = ['Date', 'Rider', 'Deliveries', 'Cash (PKR)']
+      const lines = rows.map(r =>
+        [r.date, r.riderName, r.deliveries, Number(r.amount || r.cash || 0)]
+          .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+      )
+      const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `rider_daily_${form.date}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('CSV exported')
+    } catch {
+      toast.error('Failed to export CSV')
     }
   }
 
@@ -101,7 +162,11 @@ export default function RiderDaily() {
     <div className="space-y-3 max-w-3xl">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Rider Daily Record</h1>
-        <button onClick={printReport} className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Print</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
+          <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
+          <button type="button" onClick={exportCSV} className={btnCsv}>CSV</button>
+        </div>
       </div>
       <form onSubmit={add} className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div>
@@ -119,8 +184,7 @@ export default function RiderDaily() {
           <input type="number" placeholder="Cash Collected" value={form.cash} onChange={e=>setForm({...form,cash:Number(e.target.value)})} className="px-3 py-2 border rounded w-full" />
         </div>
         <div>
-          <label className="block text-xs mb-1">Date</label>
-          <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="px-3 py-2 border rounded w-full" />
+          <DatePicker label="Date" value={form.date} onChange={v=>{ if (v) setForm({...form, date:v}) }} allowClear={false} />
         </div>
         <div className="md:col-span-1 flex items-end">
           <button disabled={loading} className="px-3 py-2 bg-primary-600 text-white rounded w-full disabled:opacity-50">Add</button>

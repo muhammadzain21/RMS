@@ -37,6 +37,12 @@ const RecallSchema = new mongoose.Schema({
   totalAmount: { type: Number, default: 0 },
   remarks: { type: String, default: '' },
   paymentMethod: { type: String, default: 'cash' },
+  bankChannel: { type: String, default: '' },
+  bankLast4: { type: String, default: '' },
+  bankRef: { type: String, default: '' },
+  staffId: { type: String, default: '' },
+  staffName: { type: String, default: '' },
+  staffSettlement: { type: String, default: '' },
   idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
 }, { timestamps: true })
 

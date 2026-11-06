@@ -4,6 +4,7 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
+import DatePicker from '../../components/DatePicker.jsx'
 
 export default function ReturnNew() {
  const { state, dispatch, businessDate } = useData()
@@ -14,6 +15,7 @@ export default function ReturnNew() {
  const [reason, setReason] = useState('')
  const [paymentMethod, setPaymentMethod] = useState('cash')
  const [saleSearch, setSaleSearch] = useState('')
+ const [showReturnDialog, setShowReturnDialog] = useState(false)
 
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
@@ -115,8 +117,13 @@ export default function ReturnNew() {
  })
  }, [state.sales, state.returns, saleSearch])
 
- const submit = async (e) => {
- e.preventDefault()
+ const closeReturnDialog = () => {
+ setShowReturnDialog(false)
+ setSaleId('')
+ setReturnQtys({})
+ }
+
+ const submit = async () => {
  if (isSelectedDateClosed) { toast.error('This date is closed. Recording returns is disabled.'); return }
  if (!saleId) { toast.error('Please select an original sale.'); return }
  if (selectedItems.length === 0) { toast.error('Please enter return quantity for at least one item.'); return }
@@ -143,6 +150,7 @@ export default function ReturnNew() {
  setReason('')
  setPaymentMethod('cash')
  setSaleSearch('')
+ setShowReturnDialog(false)
  toast.success('Return recorded successfully')
  } catch {
  toast.error('Error recording return')
@@ -157,17 +165,17 @@ export default function ReturnNew() {
  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800"><div className="flex items-center gap-2 text-amber-800 dark:text-amber-200"><span className="text-xl"></span><span className="font-semibold">Selected date is closed. You cannot record returns for this date.</span></div></div>
  )}
 
- <form onSubmit={submit} className="space-y-4">
+ <form onSubmit={e=>e.preventDefault()} className="space-y-4">
  {/* Sale Selection */}
- <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="block"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</span><input value={date} onChange={e => setDate(e.target.value)} type="date" className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" /></label><label className="block md:col-span-2"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Select Order / Sale</span><input value={saleSearch} onChange={e=>setSaleSearch(e.target.value)} placeholder="Search by date, bill, customer..." className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" /></label></div>
+ <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="block"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</span><div className="mt-1"><DatePicker value={date} onChange={v => { if (v) setDate(v) }} allowClear={false} /></div></div><label className="block md:col-span-2"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Select Order / Sale</span><input value={saleSearch} onChange={e=>setSaleSearch(e.target.value)} placeholder="Search by date, bill, customer..." className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" /></label></div>
 
  {/* Sales Table */}
- <div className="mt-4 overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg max-h-64 overflow-y-auto"><table className="min-w-full text-sm"><thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10"><tr><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Bill No</th><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Total</th><th className="px-3 py-2 text-center font-semibold text-gray-700 dark:text-gray-300">Action</th></tr></thead><tbody>
+ <div className="mt-4 overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg"><table className="min-w-full text-sm"><thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10"><tr><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Bill No</th><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Total</th><th className="px-3 py-2 text-center font-semibold text-gray-700 dark:text-gray-300">Action</th></tr></thead><tbody>
  {allSales.map(s => {
  const bill = s.billNo ? `BILL-${s.billNo}` : s.id.slice(0,6)
  const isSelected = saleId === s.id
  return (
- <tr key={s.id} className={`border-t cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`} onClick={() => { setSaleId(s.id); setReturnQtys({}) }}><td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td><td className="px-3 py-2 text-gray-600 dark:text-gray-400">{bill}</td><td className="px-3 py-2 text-gray-600 dark:text-gray-400">{customerText(s.customer)}</td><td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{formatCurrency(s.total)}</td><td className="px-3 py-2 text-center"><button type="button" className={`px-3 py-1 rounded-lg text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+ <tr key={s.id} className={`border-t cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`} onClick={() => { setSaleId(s.id); setReturnQtys({}); setShowReturnDialog(true) }}><td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td><td className="px-3 py-2 text-gray-600 dark:text-gray-400">{bill}</td><td className="px-3 py-2 text-gray-600 dark:text-gray-400">{customerText(s.customer)}</td><td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{formatCurrency(s.total)}</td><td className="px-3 py-2 text-center"><button type="button" className={`px-3 py-1 rounded-lg text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300'}`}>
  {isSelected ? 'Selected' : 'Select'}
  </button></td></tr>
  )
@@ -179,18 +187,28 @@ export default function ReturnNew() {
  )}
  </tbody></table></div>
 
- {/* Sale Summary */}
- {sale && (
- <div className="mt-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between"><div className="text-sm text-gray-600 dark:text-gray-400"><span className="font-medium text-gray-800 dark:text-gray-200">Sale Total:</span> {formatCurrency(sale.total)}
- {' '}<span className="font-medium text-gray-800 dark:text-gray-200">| Payment:</span> {sale.paymentMethod || 'cash'}
- {' '}<span className="font-medium text-gray-800 dark:text-gray-200">| Customer:</span> {customerText(sale.customer)}
- </div><button type="button" onClick={() => { setSaleId(''); setReturnQtys({}); setSaleSearch('') }} className="px-4 py-2 rounded-lg bg-slate-500 text-white text-sm font-medium hover:bg-slate-600 transition-colors">Cancel</button></div>
- )}
  </div>
 
- {/* Items Table */}
- {sale && saleItems.length > 0 && (
- <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><h3 className="text-lg font-semibold mb-3 text-gray-800 dark:text-gray-100">Select Items to Return</h3><div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg"><table className="min-w-full text-sm"><thead className="bg-gray-50 dark:bg-gray-800"><tr><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Item</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Unit Price</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Sold Qty</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Already Returned</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Can Return</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Return Qty</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Refund</th></tr></thead><tbody>
+ </form>
+
+ {/* Return dialog — opens on order select; contains items + reason + method + save */}
+ {showReturnDialog && sale && (
+ <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={closeReturnDialog}>
+ <div className="w-full max-w-3xl rounded-2xl bg-white dark:bg-gray-900 border-2 border-rose-200 dark:border-rose-800 shadow-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+ <div className="flex items-start justify-between gap-3">
+ <div>
+ <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Return Items</h3>
+ <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+ <span className="font-medium text-gray-700 dark:text-gray-300">{sale.billNo ? `BILL-${sale.billNo}` : sale.id?.slice(0,6)}</span>
+ {' • '}Sale Total: {formatCurrency(sale.total)}
+ {' • '}Payment: {sale.paymentMethod || 'cash'}
+ {' • '}Customer: {customerText(sale.customer)}
+ </p>
+ </div>
+ <button type="button" onClick={closeReturnDialog} className="px-3 py-1.5 rounded-lg bg-slate-500 text-white text-xs font-medium hover:bg-slate-600">Close</button>
+ </div>
+
+ <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg"><table className="min-w-full text-sm"><thead className="bg-gray-50 dark:bg-gray-800"><tr><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Item</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Unit Price</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Sold Qty</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Already Returned</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Can Return</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Return Qty</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Refund</th></tr></thead><tbody>
  {saleItems.map(si => {
  const returned = priorReturnsMap[si.itemId] || 0
  const canReturn = Math.max(0, si.originalQty - returned)
@@ -209,13 +227,26 @@ export default function ReturnNew() {
  </td></tr>
  )
  })}
- </tbody><tfoot className="bg-gray-50 dark:bg-gray-800 font-semibold border-t"><tr><td className="px-3 py-2 text-gray-700 dark:text-gray-300" colSpan={6}>Total Refund</td><td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(refund)}</td></tr></tfoot></table></div></div>
- )}
+ </tbody><tfoot className="bg-gray-50 dark:bg-gray-800 font-semibold border-t"><tr><td className="px-3 py-2 text-gray-700 dark:text-gray-300" colSpan={6}>Total Refund</td><td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(refund)}</td></tr></tfoot></table></div>
 
- {/* Reason & Payment */}
- <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"><label className="block md:col-span-2"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Reason</span><input value={reason} onChange={e => setReason(e.target.value)} className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" placeholder="Damaged, wrong item, customer changed mind, etc." /></label><label className="block"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Refund Method</span><select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500"><option value="cash">Cash</option><option value="online">Online</option><option value="complimentary">Personal</option></select></label></div></div><button disabled={isSelectedDateClosed || !saleId || selectedItems.length === 0} className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
- Record Return — {formatCurrency(refund)}
- </button></form>
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+ <label className="block">
+ <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">Reason</span>
+ <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Damaged, wrong item, customer changed mind, etc." className="mt-1 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white focus:border-rose-400 outline-none" />
+ </label>
+ <label className="block">
+ <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">Refund Method</span>
+ <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="mt-1 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white focus:border-rose-400 outline-none"><option value="cash">Cash</option><option value="bank">Bank</option><option value="online">Online (old)</option><option value="complimentary">Personal</option></select>
+ </label>
+ </div>
+
+ <div className="flex gap-2 pt-1">
+ <button type="button" onClick={closeReturnDialog} className="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button>
+ <button type="button" onClick={submit} disabled={isSelectedDateClosed || selectedItems.length === 0} className="flex-1 px-3 py-2.5 rounded-lg bg-gradient-to-r from-rose-500 to-rose-600 text-white text-sm font-semibold hover:from-rose-600 hover:to-rose-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Save — {formatCurrency(refund)}</button>
+ </div>
+ </div>
+ </div>
+ )}
  {ConfirmDialog}
  </div>
  )

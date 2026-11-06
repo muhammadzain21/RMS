@@ -6,6 +6,10 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import SupplierModal from '../../components/SupplierModal.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function SupplierProfile() {
   const { id } = useParams()
@@ -45,6 +49,99 @@ export default function SupplierProfile() {
     return { totalCost, totalEntries, totalItems }
   }, [supplies])
 
+  const supplyLines = useMemo(() => supplies.flatMap(sp => (sp.items || []).map(it => ({
+    date: sp.date ? format(new Date(sp.date), 'yyyy-MM-dd') : '-',
+    name: it.name || '-',
+    qty: Number(it.qty || 0),
+    unit: it.unit || '',
+    unitPrice: Number(it.price || 0),
+    totalPrice: Number(it.qty || 0) * Number(it.price || 0),
+  }))), [supplies])
+
+  const supplyReportRows = () => supplyLines.map(l => [
+    l.date,
+    l.name,
+    l.qty,
+    l.unit,
+    l.unitPrice,
+    l.totalPrice,
+  ])
+
+  const openPrintPreview = async () => {
+    try {
+      const body =
+        reportSummary([
+          { label: 'Supply entries', amount: String(totals.totalEntries) },
+          { label: 'Line items', amount: String(supplyLines.length) },
+          { label: 'Total cost (PKR)', amount: totals.totalCost.toLocaleString() },
+        ]) +
+        reportSec(`Supply lines (${supplyLines.length})`) +
+        reportTable({
+          headers: ['Date', 'Name', { t: 'Qty', align: 'r' }, 'Unit', { t: 'Unit Price', align: 'r' }, { t: 'Total', align: 'r' }],
+          numbered: true,
+          rows: supplyLines.map(l => [
+            l.date,
+            l.name,
+            { v: l.qty, align: 'r' },
+            l.unit,
+            { v: l.unitPrice.toLocaleString(), align: 'r' },
+            { v: l.totalPrice.toLocaleString(), align: 'r' },
+          ]),
+          emptyText: 'No supply lines',
+        })
+      const html = wrapReportDoc({
+        settings: state?.settings || {},
+        title: `Supplier: ${supplier?.name || supplier?.company || 'Profile'}`,
+        reportLabel: 'Supplier Supplies',
+        reportNo: `Rpt #: SP-${id}`,
+        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Phone', supplier?.phone || '-']],
+        metaRight: [['Status', supplier?.status || 'Active'], ['Lines', String(supplyLines.length)]],
+        body,
+      })
+      await previewHtmlReport(html, `Supplier-Supplies-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      toast.success('Print preview opened')
+    } catch (e) {
+      console.error(e)
+      toast.error('Print preview failed')
+    }
+  }
+
+  const exportPDF = () => {
+    try {
+      const doc = new jsPDF('l', 'pt', 'a4')
+      doc.setFontSize(14)
+      doc.text(state?.settings?.companyName || supplier?.name || 'Supplier Supplies', 40, 32)
+      doc.setFontSize(10)
+      doc.text(`${supplyLines.length} lines · PKR ${totals.totalCost.toLocaleString()} total`, 40, 46)
+      doc.autoTable({
+        head: [['Date', 'Name', 'Qty', 'Unit', 'Unit Price', 'Total']],
+        body: supplyReportRows(),
+        startY: 54,
+        styles: { fontSize: 8, cellPadding: 4 },
+        headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
+        margin: { left: 40, right: 40 },
+      })
+      doc.save(`supplier_supplies_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      toast.success('PDF exported successfully')
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to export PDF')
+    }
+  }
+
+  const exportCSV = () => {
+    try {
+      downloadCsvFile(
+        `supplier_supplies_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+        ['Date', 'Name', 'Qty', 'Unit', 'Unit Price (PKR)', 'Total (PKR)'],
+        supplyReportRows()
+      )
+      toast.success('CSV exported successfully')
+    } catch {
+      toast.error('Failed to export CSV')
+    }
+  }
+
   const reloadSuppliers = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {}
@@ -74,7 +171,7 @@ export default function SupplierProfile() {
     return (
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Supplier</h1>
+          <h1 className="page-title">Supplier</h1>
           <button onClick={()=>navigate('/suppliers')} className="px-4 py-2.5 rounded-lg bg-gray-500 text-white font-medium hover:bg-gray-600 transition-colors">Back</button>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-8 text-center">
@@ -88,8 +185,11 @@ export default function SupplierProfile() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Supplier Profile</h1>
-        <div className="flex items-center gap-2">
+        <h1 className="page-title">Supplier Profile</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
+          <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
+          <button type="button" onClick={exportCSV} className={btnCsv}>CSV</button>
           <button onClick={()=>navigate('/suppliers')} className="px-4 py-2.5 rounded-lg bg-slate-600 text-white font-medium hover:bg-slate-700 transition-colors">Back</button>
         </div>
       </div>

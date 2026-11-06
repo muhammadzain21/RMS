@@ -4,6 +4,7 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { openPdfPreview, sanitizeFileName } from '../../../utils/pdfPreview.js';
+import { previewHtmlReport } from '../../../utils/reportDoc.js';
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;')
@@ -15,14 +16,19 @@ const fmt = (n) => Number(n || 0).toLocaleString();
 
 const formatTime12 = (t) => {
   if (!t) return '-';
-  let [h, min] = t.split(':').map(Number);
+  const raw = String(t).trim();
+  if (/am|pm/i.test(raw)) return raw;
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?/.exec(raw);
+  if (!m) return raw;
+  let h = Number(m[1]);
+  let min = Number(m[2]);
   const ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12;
   if (h === 0) h = 12;
   return `${h}:${String(min).padStart(2, '0')} ${ampm}`;
 };
 
-export function buildStaffSummaryHtml({ st, calc, counts, records, staffAdvances, staffPayNotes, advTotal, paid, netDue, month, companyName }) {
+export function buildStaffSummaryHtml({ st, calc, counts, records, staffAdvances, staffEarnings = [], advTotal, extrasSum = 0, manualDeduction = 0, netDue, month, companyName }) {
   const statusColor = (status) => ({
     Present: 'background:#dcfce7;color:#15803d',
     Late: 'background:#ffedd5;color:#c2410c',
@@ -51,12 +57,15 @@ export function buildStaffSummaryHtml({ st, calc, counts, records, staffAdvances
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;color:#2563eb">${r.earlyOutMinutes > 0 ? r.earlyOutMinutes : '-'}</td>
     </tr>`).join('');
 
-  const paymentRows = (staffPayNotes || []).map(n => `
+  const earningRows = (staffEarnings || []).map(n => {
+    const isDed = n.category === 'Deduction';
+    return `
     <tr>
       <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${esc(n.date || (n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''))}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${esc(n.notes || '(No note)')}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">${fmt(n.amount)} PKR</td>
-    </tr>`).join('');
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb">${esc(isDed ? 'Adjustment (Deduction)' : n.category)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:${isDed ? '#b91c1c' : '#15803d'}">${isDed ? '-' : '+'}${fmt(n.amount)} PKR</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;color:#64748b">${esc(n.notes || '')}</td>
+    </tr>` }).join('');
 
   return `<!doctype html>
 <html>
@@ -110,8 +119,9 @@ export function buildStaffSummaryHtml({ st, calc, counts, records, staffAdvances
       ${row(`Absent (${counts.absent} days)`, `-${Number(calc.absentDeduction).toFixed(2)} PKR`, '#dc2626')}
       ${row(`Late (${counts.late} days, ${calc.totalLateMinutes} min)`, `-${Number(calc.lateDeduction).toFixed(2)} PKR`, '#dc2626')}
       ${row(`Early Out (${counts.earlyOutDays} days, ${calc.totalEarlyOutMinutes} min)`, `-${Number(calc.earlyOutDeduction).toFixed(2)} PKR`, '#dc2626')}
+      ${row(`Earnings (${staffEarnings.filter(e => e.category !== 'Deduction').length})`, `+${fmt(extrasSum)} PKR`, '#15803d')}
+      ${row(`Adjustments (${staffEarnings.filter(e => e.category === 'Deduction').length})`, `-${fmt(manualDeduction)} PKR`, '#b91c1c')}
       ${row(`Advances Taken (${staffAdvances.length})`, `-${fmt(advTotal)} PKR`, '#9333ea')}
-      ${row(`Paid This Month (${staffPayNotes.length})`, `-${fmt(paid)} PKR`, '#ea580c')}
       <tr>
         <td style="padding:8px;font-weight:700;background:#dcfce7;border-radius:6px">Net Salary Due</td>
         <td style="padding:8px;font-weight:700;font-size:15px;text-align:right;background:#dcfce7;color:#15803d;border-radius:6px">${fmt(netDue)} PKR</td>
@@ -143,18 +153,19 @@ export function buildStaffSummaryHtml({ st, calc, counts, records, staffAdvances
     </table>
   </div>
 
-  ${staffPayNotes.length ? `
+  ${staffEarnings.length ? `
   <div class="section">
-    <div class="section-title">Payment History</div>
+    <div class="section-title">Earnings &amp; Adjustments</div>
     <table>
       <thead>
         <tr style="background:#f1f5f9">
           <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#64748b">Date</th>
-          <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#64748b">Note</th>
+          <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#64748b">Category</th>
           <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase;color:#64748b">Amount</th>
+          <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#64748b">Notes</th>
         </tr>
       </thead>
-      <tbody>${paymentRows}</tbody>
+      <tbody>${earningRows}</tbody>
     </table>
   </div>` : ''}
 </body>
@@ -162,7 +173,7 @@ export function buildStaffSummaryHtml({ st, calc, counts, records, staffAdvances
 }
 
 // Build the monthly summary as a jsPDF document (portrait A4).
-export function buildStaffSummaryPdf({ st, calc, counts, records, staffAdvances, staffPayNotes, advTotal, paid, netDue, month, companyName }) {
+export function buildStaffSummaryPdf({ st, calc, counts, records, staffAdvances, staffEarnings = [], advTotal, extrasSum = 0, manualDeduction = 0, netDue, month, companyName }) {
   const doc = new jsPDF('p', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 40;
@@ -211,8 +222,9 @@ export function buildStaffSummaryPdf({ st, calc, counts, records, staffAdvances,
     [`Absent (${counts.absent} days)`, `-${Number(calc.absentDeduction).toFixed(2)} PKR`],
     [`Late (${counts.late} days, ${calc.totalLateMinutes} min)`, `-${Number(calc.lateDeduction).toFixed(2)} PKR`],
     [`Early Out (${counts.earlyOutDays} days, ${calc.totalEarlyOutMinutes} min)`, `-${Number(calc.earlyOutDeduction).toFixed(2)} PKR`],
+    [`Earnings (${staffEarnings.filter(e => e.category !== 'Deduction').length})`, `+${fmt(extrasSum)} PKR`],
+    [`Adjustments (${staffEarnings.filter(e => e.category === 'Deduction').length})`, `-${fmt(manualDeduction)} PKR`],
     [`Advances Taken (${staffAdvances.length})`, `-${fmt(advTotal)} PKR`],
-    [`Paid This Month (${staffPayNotes.length})`, `-${fmt(paid)} PKR`],
     ['Net Salary Due', `${fmt(netDue)} PKR`],
   ];
   doc.autoTable({
@@ -261,18 +273,22 @@ export function buildStaffSummaryPdf({ st, calc, counts, records, staffAdvances,
     },
   });
 
-  // Payment history
-  if (staffPayNotes.length) {
+  // Earnings & adjustments
+  if (staffEarnings.length) {
     const y2 = (doc.lastAutoTable?.finalY || y) + 18;
     doc.setFontSize(12);
-    doc.text('Payment History', margin, y2);
+    doc.text('Earnings & Adjustments', margin, y2);
     doc.autoTable({
-      head: [['Date', 'Note', 'Amount']],
-      body: staffPayNotes.map(n => [
-        n.date || (n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''),
-        n.notes || '(No note)',
-        `${fmt(n.amount)} PKR`
-      ]),
+      head: [['Date', 'Category', 'Amount', 'Notes']],
+      body: staffEarnings.map(n => {
+        const isDed = n.category === 'Deduction';
+        return [
+          n.date || (n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''),
+          isDed ? 'Adjustment (Deduction)' : n.category,
+          `${isDed ? '-' : '+'}${fmt(n.amount)} PKR`,
+          n.notes || ''
+        ];
+      }),
       startY: y2 + 6,
       styles: { fontSize: 9, cellPadding: 4 },
       headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
@@ -297,13 +313,14 @@ export async function openStaffSummaryPrintPreview(opts) {
     console.warn('[pdfPreview] PDF build failed:', e);
   }
 
-  // Last resort: HTML preview window
-  const html = buildStaffSummaryHtml(opts);
-  const w = window.open('', 'staffSummaryPrint', 'width=1000,height=800');
-  if (!w) return false;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  try { w.focus(); } catch {}
-  return true;
+  // Last resort: same HTML print-preview pipeline as Consumption / KDS
+  try {
+    const html = buildStaffSummaryHtml(opts);
+    const fileName = sanitizeFileName(`${opts?.st?.name || 'Staff'} Monthly Report ${opts?.month || ''}`) + '.pdf';
+    await previewHtmlReport(html, fileName);
+    return true;
+  } catch (e) {
+    console.warn('[previewHtmlReport] staff summary fallback failed:', e);
+    return false;
+  }
 }

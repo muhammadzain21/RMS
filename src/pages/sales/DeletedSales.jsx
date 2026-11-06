@@ -7,6 +7,7 @@ import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 
 export default function DeletedSales() {
  const { state, dispatch, businessDate } = useData()
@@ -182,6 +183,43 @@ export default function DeletedSales() {
  }
  }
 
+ const openPrintPreview = async () => {
+ try {
+ const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
+ const totalNet = rows.reduce((a, r) => a + Number(r.netAmount || 0), 0)
+ const periodFrom = fromDate || '—'
+ const periodTo = toDate || '—'
+ const body =
+ reportSummary([
+ { label: 'Total Net Amount', amount: money(totalNet) },
+ { label: 'Deleted Sales Count', amount: String(rows.length) },
+ ]) +
+ reportSec(`Deleted Sales (${rows.length})`) +
+ reportTable({
+ headers: ['Deleted At', 'Deleted By', 'Sale Date', 'Bill#', 'Customer', 'Order Type', { t: 'Sale Total', align: 'r' }, { t: 'Net Amount', align: 'r' }, 'Payment'],
+ numbered: true,
+ rows: rows.map(r => [
+ r.deletedAt, r.deletedBy, r.date, r.billNo, r.customer, r.orderType,
+ { v: money(r.saleTotal), align: 'r' },
+ { v: money(r.netAmount), align: 'r' },
+ r.paymentMethod,
+ ]),
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Deleted Sales History',
+ reportLabel: 'Deleted Sales Report',
+ reportNo: `Rpt #: DEL-${format(new Date(), 'yyyyMMdd-HHmm')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaRight: [['Records', String(rows.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Deleted-Sales-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ } catch {
+ toast.error('Print preview failed')
+ }
+ }
+
  const exportCSV = () => {
  const headers = ['Deleted At','Deleted Date','Deleted By','Sale Date','Bill Number','Customer','Order Type','Sale Total (PKR)','Net Amount (PKR)','Payment Mode']
  const lines = rows.map(r => [r.deletedAt,r.deletedDate,r.deletedBy,r.date,r.billNo,r.customer,r.orderType,r.saleTotal,r.netAmount,r.paymentMethod]
@@ -198,9 +236,9 @@ export default function DeletedSales() {
  }
 
  return (
- <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Deleted Sales
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="page-title">Deleted Sales
  </h1></div><div className="px-4 py-3 rounded-xl bg-rose-50 border-2 border-rose-200 text-rose-900 text-sm flex items-center gap-2">This page shows sales that have been deleted from the system. These records are kept for audit purposes.
- </div><div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 border-2 border-rose-200 dark:border-rose-800"><div className="flex gap-3 flex-shrink-0"><button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">PDF</button><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">CSV</button></div><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v => setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v => setToDate(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="w-full px-4 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" /></div></div><div className="border-2 border-rose-200 dark:border-rose-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Deleted At</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Deleted Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Deleted By</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ </div><div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 border-2 border-rose-200 dark:border-rose-800"><div className="flex gap-3 flex-shrink-0"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button></div><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v => setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v => setToDate(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="w-full px-4 py-2 border-2 border-rose-200 dark:border-rose-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 transition-all" /></div></div><div className="border-2 border-rose-200 dark:border-rose-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Deleted At</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Deleted Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Deleted By</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedRows.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300">{r.deletedAt}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deletedDate}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deletedBy}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.date}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.billNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.customer}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.orderType}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td><td className="p-3 text-center"><button onClick={() => { setSelected(r.detail); setDrawerOpen(true) }} className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600">View</button></td></tr>
  ))}

@@ -5,6 +5,10 @@ import CustomerModal from '../../components/CustomerModal.jsx'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function CustomerProfile() {
   const { id } = useParams()
@@ -22,6 +26,93 @@ export default function CustomerProfile() {
     const last = (customer?.lastVisit) || (sales[0]?.date)
     return { visits, spent, last }
   }, [sales, customer])
+
+  const saleItemsText = (s) => (s.items || []).map(it => {
+    const m = (state.menu || []).find(mm => mm.id === it.itemId)
+    return `${m?.name || it.itemId} x${it.qty}`
+  }).join(', ')
+
+  const salesReportRows = () => sales.map(s => [
+    s.date ? format(new Date(s.date), 'yyyy-MM-dd') : '-',
+    saleItemsText(s),
+    Number(((s.total || 0) + (s.discount || 0))).toFixed(2),
+    Number(s.discount || 0).toFixed(2),
+    Number(s.total || 0).toFixed(2),
+  ])
+
+  const openPrintPreview = async () => {
+    try {
+      const body =
+        reportSummary([
+          { label: 'Customer', amount: customer.name || '-', cls: '' },
+          { label: 'Visits', amount: String(totals.visits) },
+          { label: 'Total spent', amount: totals.spent.toFixed(2) },
+        ]) +
+        reportSec(`Sales (${sales.length})`) +
+        reportTable({
+          headers: ['Date', 'Items', { t: 'Subtotal', align: 'r' }, { t: 'Discount', align: 'r' }, { t: 'Total', align: 'r' }],
+          numbered: true,
+          rows: sales.map(s => [
+            s.date ? format(new Date(s.date), 'yyyy-MM-dd') : '-',
+            saleItemsText(s) || '-',
+            { v: Number(((s.total || 0) + (s.discount || 0))).toFixed(2), align: 'r' },
+            { v: Number(s.discount || 0).toFixed(2), align: 'r' },
+            { v: Number(s.total || 0).toFixed(2), align: 'r' },
+          ]),
+          emptyText: 'No sales for this customer',
+        })
+      const html = wrapReportDoc({
+        settings: state?.settings || {},
+        title: `Customer: ${customer.name || 'Profile'}`,
+        reportLabel: 'Customer Sales',
+        reportNo: `Rpt #: C-${customer.id || id}`,
+        metaLeft: [['Phone', customer.phone || '-'], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+        metaRight: [['Regular', customer.isRegular ? 'Yes' : 'No'], ['Sales', String(sales.length)]],
+        body,
+      })
+      await previewHtmlReport(html, `Customer-${customer.name || id}-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      toast.success('Print preview opened')
+    } catch (e) {
+      console.error(e)
+      toast.error('Print preview failed')
+    }
+  }
+
+  const exportPDF = () => {
+    try {
+      const doc = new jsPDF('l', 'pt', 'a4')
+      doc.setFontSize(14)
+      doc.text(state?.settings?.companyName || customer.name || 'Customer Sales', 40, 32)
+      doc.setFontSize(10)
+      doc.text(`${customer.name || ''} · ${sales.length} sales · spent ${totals.spent.toFixed(2)}`, 40, 46)
+      doc.autoTable({
+        head: [['Date', 'Items', 'Subtotal', 'Discount', 'Total']],
+        body: salesReportRows(),
+        startY: 54,
+        styles: { fontSize: 7, cellPadding: 3 },
+        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+        margin: { left: 40, right: 40 },
+      })
+      doc.save(`customer_sales_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      toast.success('PDF exported successfully')
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to export PDF')
+    }
+  }
+
+  const exportCSV = () => {
+    try {
+      downloadCsvFile(
+        `customer_sales_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+        ['Date', 'Items', 'Subtotal', 'Discount', 'Total'],
+        salesReportRows()
+      )
+      toast.success('CSV exported successfully')
+    } catch {
+      toast.error('Failed to export CSV')
+    }
+  }
 
   const onDelete = async () => {
     const confirmed = await confirm({ title: 'Delete Customer', message: 'Delete this customer?' })
@@ -47,7 +138,10 @@ export default function CustomerProfile() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Customer Profile</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
+          <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
+          <button type="button" onClick={exportCSV} className={btnCsv}>CSV</button>
           <button onClick={()=>navigate('/customers')} className="px-3 py-2 rounded border">Back</button>
           <button onClick={()=>setModalOpen(true)} className="px-3 py-2 rounded border">Edit</button>
           <button onClick={onDelete} className="px-3 py-2 rounded border text-red-600">Delete</button>
@@ -76,7 +170,9 @@ export default function CustomerProfile() {
       </div>
 
       <div className="space-y-2">
-        <h2 className="font-semibold">Sales History</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Sales History</h2>
+        </div>
         <div className="overflow-auto border rounded">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-800/50">

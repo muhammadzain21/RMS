@@ -3,6 +3,10 @@ import { useData } from '../state/DataContext.jsx'
 import ChartCard from '../components/ChartCard.jsx'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Tooltip, XAxis, YAxis } from 'recharts'
 import { format } from 'date-fns'
+import { toast } from 'react-hot-toast'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
 
 export default function ProfitLoss() {
  const { state, businessDate } = useData()
@@ -80,13 +84,127 @@ export default function ProfitLoss() {
  }), { sales:0, returns:0, discount:0, complimentary:0, purchases:0, expenses:0, profit:0 })
  }, [monthlyRows])
 
- const exportPDF = () => {
- window.print()
+ const money = (n) => 'PKR ' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([
+ { label: `${year} — Total Sales`, amount: money(yearlyTotals.sales) },
+ { label: 'Total Returns', amount: money(yearlyTotals.returns) },
+ { label: 'Total Discount', amount: money(yearlyTotals.discount) },
+ { label: 'Personal (Complimentary)', amount: money(yearlyTotals.complimentary) },
+ { label: 'Total Purchases', amount: money(yearlyTotals.purchases) },
+ { label: 'Total Expenses', amount: money(yearlyTotals.expenses) },
+ { label: 'Net Profit', amount: money(yearlyTotals.profit), cls: yearlyTotals.profit < 0 ? 'neg' : 'pos' },
+ ]) +
+ reportSec(`Monthly P&L — ${year}`) +
+ reportTable({
+ headers: ['Month', { t: 'Sales', align: 'r' }, { t: 'Returns', align: 'r' }, { t: 'Discount', align: 'r' }, { t: 'Personal', align: 'r' }, { t: 'Purchases', align: 'r' }, { t: 'Expenses', align: 'r' }, { t: 'Net Profit', align: 'r' }],
+ rows: monthlyRows.map(r => [
+ r.monthName,
+ { v: money(r.sales), align: 'r' },
+ { v: money(r.returns), align: 'r' },
+ { v: money(r.discount), align: 'r' },
+ { v: money(r.complimentary), align: 'r' },
+ { v: money(r.purchases), align: 'r' },
+ { v: money(r.expenses), align: 'r' },
+ { v: money(r.profit), align: 'r', cls: r.profit < 0 ? 'neg' : 'pos' },
+ ]),
+ }) +
+ reportSec(`Selected Month — ${month}`) +
+ reportSummary([
+ { label: 'Sales', amount: money(monthly.sales) },
+ { label: 'Returns', amount: money(monthly.returns) },
+ { label: 'Discount', amount: money(monthly.discount) },
+ { label: 'Personal', amount: money(monthly.complimentary) },
+ { label: 'Purchases', amount: money(monthly.purchases) },
+ { label: 'Expenses', amount: money(monthly.expenses) },
+ { label: 'Net Profit', amount: money(monthly.profit), cls: monthly.profit < 0 ? 'neg' : 'pos' },
+ ])
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Profit & Loss',
+ reportLabel: 'P&L Report',
+ reportNo: `Rpt #: PL-${year}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Year', String(year)], ['Focus Month', month]],
+ metaRight: [['Months', '12']],
+ body,
+ footNote: 'Net Profit = max(0, Sales − Returns − Personal) − (Purchases + Expenses).',
+ })
+ await previewHtmlReport(html, `Profit-Loss-${year}.pdf`)
+ } catch {
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportCSV = () => {
+ try {
+ const header = ['Month', 'Sales', 'Returns', 'Discount', 'Personal', 'Purchases', 'Expenses', 'Net Profit']
+ const lines = monthlyRows.map(r =>
+ [r.monthName, r.sales, r.returns, r.discount, r.complimentary, r.purchases, r.expenses, r.profit]
+ .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+ )
+ const foot = ['Total', yearlyTotals.sales, yearlyTotals.returns, yearlyTotals.discount, yearlyTotals.complimentary, yearlyTotals.purchases, yearlyTotals.expenses, yearlyTotals.profit]
+ .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+ const blob = new Blob([[header.join(','), ...lines, foot].join('\n')], { type: 'text/csv;charset=utf-8;' })
+ const url = URL.createObjectURL(blob)
+ const a = document.createElement('a')
+ a.href = url
+ a.download = `profit_loss_${year}.csv`
+ a.click()
+ URL.revokeObjectURL(url)
+ toast.success('CSV exported')
+ } catch {
+ toast.error('Failed to export CSV')
+ }
+ }
+
+ const downloadPDF = () => {
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(16)
+ doc.text(`Profit & Loss — ${year}`, 40, 32)
+ doc.setFontSize(10)
+ doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 40, 48)
+ autoTable(doc, {
+ startY: 60,
+ head: [['Month', 'Sales', 'Returns', 'Discount', 'Personal', 'Purchases', 'Expenses', 'Net Profit']],
+ body: monthlyRows.map(r => [
+ r.monthName,
+ r.sales.toFixed(2),
+ r.returns.toFixed(2),
+ r.discount.toFixed(2),
+ r.complimentary.toFixed(2),
+ r.purchases.toFixed(2),
+ r.expenses.toFixed(2),
+ r.profit.toFixed(2),
+ ]),
+ foot: [[
+ 'Total',
+ yearlyTotals.sales.toFixed(2),
+ yearlyTotals.returns.toFixed(2),
+ yearlyTotals.discount.toFixed(2),
+ yearlyTotals.complimentary.toFixed(2),
+ yearlyTotals.purchases.toFixed(2),
+ yearlyTotals.expenses.toFixed(2),
+ yearlyTotals.profit.toFixed(2),
+ ]],
+ footStyles: { fillColor: [245, 245, 245] },
+ styles: { fontSize: 9 },
+ headStyles: { fillColor: [99, 102, 241], textColor: 255 },
+ })
+ doc.save(`profit_loss_${year}.pdf`)
+ toast.success('PDF downloaded')
+ } catch (err) {
+ console.error('PDF export error:', err)
+ toast.error('Failed to export PDF')
+ }
  }
 
  return (
  <div className="space-y-4">
- <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Profit &amp; Loss</h1>
+ <h1 className="page-title">Profit &amp; Loss</h1>
  {/* Charts Row */}
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
  {/* Yearly Profit Trend */}
@@ -140,11 +258,13 @@ export default function ProfitLoss() {
  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
  <div className="font-bold text-lg text-indigo-900 dark:text-indigo-100">Yearly View</div>
  <div className="flex items-center gap-2">
- <label className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Year</label>
+ <label className="text-sm font-medium text-[var(--color-text-muted)]">Year</label>
  <select value={year} onChange={e=>setYear(e.target.value)} className="px-3 py-1.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg text-sm bg-white dark:bg-gray-800 focus:ring-2 focus:ring-indigo-500">
  {yearOptions.map(y =><option key={y} value={y}>{y}</option>)}
  </select>
- <button onClick={exportPDF} className="px-4 py-1.5 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-lg text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Export PDF</button>
+ <button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button>
+ <button onClick={downloadPDF} className="ui-btn ui-btn-pdf">PDF</button>
+ <button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button>
  </div>
  </div>
  <div className="overflow-auto rounded-xl border border-indigo-200 dark:border-indigo-800">
@@ -159,7 +279,7 @@ export default function ProfitLoss() {
  <tbody className="bg-white/60 dark:bg-gray-900/60">
  {monthlyRows.map((r, idx) => (
  <tr key={r.monthKey} className={`border-t border-indigo-100 dark:border-indigo-800/50 ${idx % 2 === 0 ? 'bg-white/40 dark:bg-gray-800/20' : ''}`}>
- <td className="px-4 py-2 font-medium text-indigo-700 dark:text-indigo-300">{r.monthName}</td>
+ <td className="px-4 py-2 font-medium text-[var(--color-text-muted)]">{r.monthName}</td>
  <td className="px-4 py-2 text-emerald-600 dark:text-emerald-400">{r.sales.toFixed(2)}</td>
  <td className="px-4 py-2 text-orange-600 dark:text-orange-400">{r.returns.toFixed(2)}</td>
  <td className="px-4 py-2 text-amber-600 dark:text-amber-400">{r.discount.toFixed(2)}</td>

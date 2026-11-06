@@ -26,7 +26,7 @@ export default function ConfirmDialog({
 
   const confirmBtnClass = {
     danger: 'bg-red-600 hover:bg-red-700 text-white',
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white',
+    primary: 'ui-btn ui-btn-primary',
     warning: 'bg-yellow-600 hover:bg-yellow-700 text-white'
   }[confirmStyle] || 'bg-red-600 hover:bg-red-700 text-white'
 

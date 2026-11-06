@@ -36,13 +36,22 @@ router.get('/', async (req, res, next) => {
 router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
     const body = req.body || {}
-    const rec = await CashOpening.create({
-      date: String(body.date),
-      openingCash: Number(body.openingCash || 0),
-      note: body.note || '',
-      userId: req.user?.id || '',
-      userName: req.user?.username || '',
-    })
+    const date = String(body.date || '')
+    if (!date) return res.status(400).json({ error: 'date is required' })
+    const openingCash = Number(body.openingCash || 0)
+    const rec = await CashOpening.findOneAndUpdate(
+      { date },
+      {
+        $set: {
+          date,
+          openingCash,
+          note: body.note || '',
+          userId: req.user?.id || '',
+          userName: req.user?.username || '',
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
     await logAudit(req, 'day', `Day opened ${rec.date} with ${rec.openingCash}`, { id: rec._id })
     res.status(201).json(rec)
   } catch (e) { next(e) }

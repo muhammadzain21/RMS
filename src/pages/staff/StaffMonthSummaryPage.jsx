@@ -1,22 +1,22 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { format } from 'date-fns';
 import { computeStaffMonth } from './utils/salaryCalc.js';
-import { openStaffSummaryPrintPreview } from './utils/printStaffSummary.js';
+import { buildStaffSummaryPdf } from './utils/printStaffSummary.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js';
+import { formatTime12 } from '../../utils/dateUtils.js';
+import DatePicker from '../../components/DatePicker.jsx'
 
-const formatTime12 = (t) => {
-  if (!t) return '';
-  let [h, min] = t.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${String(min).padStart(2, '0')} ${ampm}`;
-};
+const btnPrint = 'ui-btn ui-btn-print';
+const btnPdf = 'ui-btn ui-btn-pdf';
+const btnCsv = 'ui-btn ui-btn-csv';
 
 // Full-page per-employee monthly summary (replaces the old summary dialog):
 // attendance stats, salary breakdown incl. advances + paid, and the full
 // daily records table — same detail as the Monthly View page.
 export default function StaffMonthSummaryPage({
-  staff, attendance, settings, payNotes, advances, month, setMonth, businessDate, state
+  staff, attendance, settings, advances, month, setMonth, businessDate, state, API, token
 }) {
   const navigate = useNavigate();
   const { staffId } = useParams();
@@ -40,27 +40,108 @@ export default function StaffMonthSummaryPage({
   );
 
   const staffAdvances = useMemo(
-    () => (advances || []).filter(a => String(a.staffId) === String(staffId) && a.month === month),
+    () => (advances || []).filter(a => String(a.staffId) === String(staffId) && a.month === month && (a.type || 'issue') === 'issue'),
     [advances, staffId, month]
   );
-  const staffPayNotes = useMemo(
-    () => (payNotes || []).filter(n => String(n.staffId) === String(staffId) && n.month === month),
-    [payNotes, staffId, month]
-  );
 
+  const [staffEarnings, setStaffEarnings] = useState([]);
+  useEffect(() => {
+    if (!staffId || !API || !token) { setStaffEarnings([]); return; }
+    let mounted = true;
+    const last = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+    fetch(`${API}/api/staff-earnings?staffId=${encodeURIComponent(staffId)}&from=${month}-01&to=${month}-${String(last).padStart(2, '0')}&limit=500`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(r => r.ok ? r.json() : { items: [] })
+      .then(d => { if (mounted) setStaffEarnings(d?.items || []); })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, [staffId, month, API, token]);
+
+  const extrasSum = staffEarnings.reduce((s, e) => e.category === 'Deduction' ? s : s + Number(e.amount || 0), 0);
+  const manualDeduction = staffEarnings.reduce((s, e) => e.category === 'Deduction' ? s + Number(e.amount || 0) : s, 0);
   const advTotal = staffAdvances.reduce((s, a) => s + Number(a.amount || 0), 0);
-  const paid = staffPayNotes.reduce((s, n) => s + Number(n.amount || 0), 0);
-  const netDue = calc ? Math.max(0, calc.net - advTotal - paid) : 0;
+  const netDue = calc ? Math.max(0, calc.net + extrasSum - manualDeduction - advTotal) : 0;
   const counts = calc?.counts || { present: 0, late: 0, leave: 0, absent: 0, earlyOutDays: 0, totalLateMinutes: 0, totalEarlyOutMinutes: 0 };
   const records = calc?.records || [];
 
-  const handlePrint = () => {
-    if (!calc) return;
-    openStaffSummaryPrintPreview({
-      st, calc, counts, records, staffAdvances, staffPayNotes,
-      advTotal, paid, netDue, month,
-      companyName: state?.settings?.companyName
-    });
+  const openPrintPreview = async () => {
+    if (!calc || !st) { toast.error('No data to print'); return; }
+    try {
+      const body =
+        reportSummary([
+          { label: 'Present (incl. late)', amount: String(counts.present + counts.late) },
+          { label: 'Late', amount: String(counts.late) },
+          { label: 'Leave', amount: String(counts.leave) },
+          { label: 'Absent', amount: String(counts.absent) },
+          { label: 'Base salary', amount: `${calc.base.toLocaleString()} PKR` },
+          { label: 'Net salary due', amount: `${netDue.toLocaleString()} PKR`, cls: 'pos' },
+        ]) +
+        reportSec(`Attendance Records (${records.length} days)`) +
+        reportTable({
+          headers: ['Date', 'Status', 'Check In', 'Check Out', { t: 'Late Min', align: 'r' }, { t: 'Early Out Min', align: 'r' }],
+          numbered: true,
+          rows: records.map(r => [
+            r.date,
+            r.status,
+            r.checkIn ? formatTime12(r.checkIn) : '-',
+            r.checkOut ? formatTime12(r.checkOut) : '-',
+            { v: r.lateMinutes > 0 ? r.lateMinutes : '-', align: 'r' },
+            { v: r.earlyOutMinutes > 0 ? r.earlyOutMinutes : '-', align: 'r' },
+          ]),
+          emptyText: 'No records for this month',
+        });
+      const html = wrapReportDoc({
+        settings: state?.settings || {},
+        title: `${st.name} — Monthly Summary`,
+        reportLabel: 'Staff Monthly Summary',
+        reportNo: `Rpt #: SMS-${month}`,
+        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st.name], ['Month', month]],
+        metaRight: [['Position', st.position || ''], ['Records', String(records.length)]],
+        body,
+      });
+      await previewHtmlReport(html, `${st.name}-${month}-summary.pdf`);
+      toast.success('Print preview opened');
+    } catch (err) {
+      console.error(err);
+      toast.error('Print preview failed');
+    }
+  };
+
+  const exportPDF = () => {
+    if (!calc || !st) { toast.error('No data to export'); return; }
+    try {
+      const doc = buildStaffSummaryPdf({
+        st, calc, counts, records, staffAdvances, staffEarnings,
+        advTotal, extrasSum, manualDeduction, netDue, month,
+        companyName: state?.settings?.companyName,
+      });
+      doc.save(`${st.name || 'staff'}_${month}_summary.pdf`);
+      toast.success('PDF exported successfully');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to export PDF');
+    }
+  };
+
+  const exportCSV = () => {
+    if (!st) { toast.error('No data to export'); return; }
+    try {
+      const header = ['Date', 'Status', 'Check In', 'Check Out', 'Late Minutes', 'Early Out Minutes'];
+      const lines = records.map(r =>
+        [r.date, r.status, r.checkIn || '', r.checkOut || '', r.lateMinutes || 0, r.earlyOutMinutes || 0]
+          .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+      );
+      const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${st.name || 'staff'}_${month}_attendance.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV exported successfully');
+    } catch {
+      toast.error('Failed to export CSV');
+    }
   };
 
   const Stat = ({ label, value, tone }) => (
@@ -94,18 +175,14 @@ export default function StaffMonthSummaryPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            type="month"
-            value={month}
-            onChange={e => setMonth(e.target.value)}
-            className="px-3 py-1.5 rounded-lg text-slate-800 text-sm border-0 focus:ring-2 focus:ring-white/50"
-          />
-          <button
-            onClick={handlePrint}
-            className="px-4 py-1.5 rounded-lg bg-white text-teal-600 text-sm font-semibold hover:bg-blue-50 transition-colors"
-          >
-            Print
-          </button>
+          <div className="h-9 w-[9.5rem] rounded-lg bg-white shadow">
+            <DatePicker mode="month" value={month} onChange={v => { if (v) setMonth(v) }} allowClear={false} compact />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={openPrintPreview} disabled={!calc} className={`${btnPrint} disabled:opacity-50 text-sm`}>Print</button>
+            <button type="button" onClick={exportPDF} disabled={!calc} className={`${btnPdf} disabled:opacity-50 text-sm`}>PDF</button>
+            <button type="button" onClick={exportCSV} disabled={!st} className={`${btnCsv} disabled:opacity-50 text-sm`}>CSV</button>
+          </div>
         </div>
       </div>
 
@@ -139,8 +216,9 @@ export default function StaffMonthSummaryPage({
                   <Row label={`Late (${counts.late} days, ${calc.totalLateMinutes} min)`} value={`-${calc.lateDeduction.toFixed(2)} PKR`} className="text-red-600" />
                   <Row label={`Early Out (${counts.earlyOutDays} days, ${calc.totalEarlyOutMinutes} min)`} value={`-${calc.earlyOutDeduction.toFixed(2)} PKR`} className="text-red-600" />
                   <Row label="Total Deductions" value={`-${calc.ded.toFixed(2)} PKR`} className="text-red-600" />
+                  <Row label={`Earnings (${staffEarnings.filter(e => e.category !== 'Deduction').length})`} value={`+${extrasSum.toLocaleString()} PKR`} className="text-emerald-600" />
+                  <Row label={`Adjustments (${staffEarnings.filter(e => e.category === 'Deduction').length})`} value={`-${manualDeduction.toLocaleString()} PKR`} className="text-red-600" />
                   <Row label={`Advances Taken (${staffAdvances.length})`} value={`-${advTotal.toLocaleString()} PKR`} className="text-purple-600" />
-                  <Row label={`Paid This Month (${staffPayNotes.length})`} value={`-${paid.toLocaleString()} PKR`} className="text-orange-600" />
                   <div className="flex justify-between items-center py-2.5 mt-2 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg px-3">
                     <span className="font-semibold text-slate-800 dark:text-slate-200">Net Salary Due</span>
                     <span className="text-xl font-bold text-green-600">{netDue.toLocaleString()} PKR</span>
@@ -200,20 +278,20 @@ export default function StaffMonthSummaryPage({
             </div>
           </div>
 
-          {/* Payment History */}
-          {staffPayNotes.length > 0 && (
+          {/* Earnings & Adjustments */}
+          {staffEarnings.length > 0 && (
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 overflow-hidden">
               <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 font-semibold text-sm text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-600">
-                Payment History
+                Earnings &amp; Adjustments
               </div>
               <div className="p-3 space-y-2">
-                {staffPayNotes.map(n => (
-                  <div key={n.id} className="flex items-start justify-between gap-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 border border-slate-100 dark:border-slate-600">
+                {staffEarnings.map(n => (
+                  <div key={n._id} className="flex items-start justify-between gap-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 border border-slate-100 dark:border-slate-600">
                     <div>
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{n.notes || '(No note)'}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{n.date || new Date(n.createdAt).toLocaleDateString()}</div>
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{n.category === 'Deduction' ? 'Adjustment (Deduction)' : n.category}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{n.date}{n.notes ? ` · ${n.notes}` : ''}</div>
                     </div>
-                    <div className="text-sm font-bold text-slate-800 dark:text-slate-200">{Number(n.amount).toLocaleString()} PKR</div>
+                    <div className={`text-sm font-bold ${n.category === 'Deduction' ? 'text-rose-600' : 'text-emerald-700 dark:text-emerald-400'}`}>{n.category === 'Deduction' ? '-' : '+'}{Number(n.amount).toLocaleString()} PKR</div>
                   </div>
                 ))}
               </div>

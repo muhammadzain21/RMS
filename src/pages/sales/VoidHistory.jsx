@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { format } from 'date-fns'
+import { toast } from 'react-hot-toast'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { createLineTotal } from './utils.js'
 import { openKotPrintUtil } from './printUtils.js'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+
+const btnPrint = 'ui-btn ui-btn-print'
+const btnPdf = 'ui-btn ui-btn-pdf'
+const btnCsv = 'ui-btn ui-btn-csv'
 
 export default function VoidHistory() {
  const { state, businessDate } = useData()
@@ -98,9 +106,119 @@ export default function VoidHistory() {
  return filtered.reduce((acc, r) => { acc[r.orderType || 'Other'] = (acc[r.orderType || 'Other']||0) + 1; return acc }, {})
  }, [filtered])
 
+ const itemSummary = useCallback((r) => {
+ const menu = Array.isArray(state.menu) ? state.menu : []
+ return (r.items || []).map(it => {
+ try {
+ const size = String(it?.mods?.size || it?.size || '').trim().toUpperCase()
+ const ids = Array.isArray(it?.mods?.flavours) ? it.mods.flavours : []
+ if (ids.length) {
+ const flvNames = ids.map(fid => (menu.find(x=>x.id===fid)?.name || '')).filter(Boolean)
+ const title = flvNames.join(' + ') || (it?.custom?.name || (menu.find(x=>x.id===it.itemId)?.name || ''))
+ return size ? `${title} (${size})` : title
+ }
+ const base = it?.custom?.name || (menu.find(x=>x.id===it.itemId)?.name || '')
+ return size ? `${base} (${size})` : base
+ } catch { return it?.custom?.name || '' }
+ }).filter(Boolean).join('; ')
+ }, [state.menu])
+
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([
+ { label: 'Total voids', amount: String(filtered.length) },
+ { label: 'Dine-in', amount: String(counts['Dine-in'] || 0) },
+ { label: 'Take-away', amount: String(counts['Take-away'] || 0) },
+ { label: 'Delivery', amount: String(counts['Delivery'] || 0) },
+ { label: 'Foodpanda', amount: String(counts['Foodpanda'] || 0) },
+ ]) +
+ reportSec(`Void History (${filtered.length})`) +
+ reportTable({
+ headers: ['Time', 'Token', 'Type', 'Table', 'Waiter', 'Reason', 'Items'],
+ numbered: true,
+ rows: filtered.map(r => [
+ r.createdAt ? format(new Date(r.createdAt), 'yyyy-MM-dd HH:mm') : '-',
+ r.tokenNo || '-',
+ r.orderType || '-',
+ r.tableNo || '-',
+ staffWaiterName(r.waiterId),
+ r.reason || '-',
+ itemSummary(r) || '-',
+ ]),
+ emptyText: 'No voids found',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Void History',
+ reportLabel: 'Void History Report',
+ reportNo: `Rpt #: VOID-${fromDate || 'all'}-${toDate || 'all'}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', fromDate || '...'], ['To', toDate || '...']],
+ metaRight: [['Records', String(filtered.length)], ['Type filter', typeFilter || 'All']],
+ body,
+ })
+ await previewHtmlReport(html, `Void-History-${fromDate || 'all'}.pdf`)
+ toast.success('Print preview opened')
+ } catch (err) {
+ console.error(err)
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportPDF = () => {
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Void History', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${fromDate || '...'} to ${toDate || '...'} · ${filtered.length} records`, 40, 46)
+ doc.autoTable({
+ head: [['Time', 'Token', 'Type', 'Table', 'Waiter', 'Reason', 'Items']],
+ body: filtered.map(r => [
+ r.createdAt ? format(new Date(r.createdAt), 'yyyy-MM-dd HH:mm') : '-',
+ r.tokenNo || '-',
+ r.orderType || '-',
+ r.tableNo || '-',
+ staffWaiterName(r.waiterId),
+ r.reason || '-',
+ itemSummary(r),
+ ]),
+ startY: 54,
+ styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
+ headStyles: { fillColor: [220, 38, 38], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`void_history_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (err) {
+ console.error(err)
+ toast.error('Failed to export PDF')
+ }
+ }
+
+ const exportCSV = () => {
+ try {
+ const header = ['Time', 'Token', 'Type', 'Table', 'Waiter', 'Reason', 'Items']
+ const lines = filtered.map(r =>
+ [r.createdAt ? format(new Date(r.createdAt), 'yyyy-MM-dd HH:mm') : '', r.tokenNo, r.orderType, r.tableNo, staffWaiterName(r.waiterId), r.reason || '', itemSummary(r)]
+ .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+ )
+ const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' })
+ const url = URL.createObjectURL(blob)
+ const a = document.createElement('a')
+ a.href = url
+ a.download = `void_history_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.click()
+ URL.revokeObjectURL(url)
+ toast.success('CSV exported successfully')
+ } catch {
+ toast.error('Failed to export CSV')
+ }
+ }
+
  return (
- <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Void History
- </h1></div><div className="flex flex-wrap items-center gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Order Type</label><select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Types</option><option value="Dine-in">Dine-in</option><option value="Take-away">Take-away</option><option value="Delivery">Delivery</option><option value="Drive-thru">Drive-thru</option></select></div><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v=>setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v=>setToDate(v)} /></div><div className="flex-1 min-w-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Token / table / waiter / reason" className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex items-end gap-3 flex-shrink-0"><button onClick={loadServer} className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap" disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</button></div></div><div className="mt-4 flex flex-wrap gap-2 sm:gap-4 text-sm"><div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"><span className="text-blue-800 dark:text-blue-200 font-medium">Dine-in: {counts['Dine-in']||0}</span></div><div className="px-3 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"><span className="text-green-800 dark:text-green-200 font-medium">Take-away: {counts['Take-away']||0}</span></div><div className="px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800"><span className="text-purple-800 dark:text-purple-200 font-medium">Delivery: {counts['Delivery']||0}</span></div><div className="px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800"><span className="text-orange-800 dark:text-orange-200 font-medium">Drive-thru: {counts['Drive-thru']||0}</span></div></div><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Time</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Token</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Reason</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Items</th><th className="p-3 text-center font-semibold text-gray-700 dark:text-gray-300">Reprint KOT</th></tr></thead><tbody>
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="page-title">Void History
+ </h1></div><div className="flex flex-wrap items-center gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex gap-3 flex-shrink-0"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Order Type</label><select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Types</option><option value="Dine-in">Dine-in</option><option value="Take-away">Take-away</option><option value="Delivery">Delivery</option><option value="Foodpanda">Foodpanda</option></select></div><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v=>setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v=>setToDate(v)} /></div><div className="flex-1 min-w-0"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Token / table / waiter / reason" className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex items-end gap-3 flex-shrink-0"><button onClick={loadServer} className="px-4 py-2 rounded-lg ui-btn ui-btn-primary" disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</button></div></div><div className="mt-4 flex flex-wrap gap-2 sm:gap-4 text-sm"><div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"><span className="text-blue-800 dark:text-blue-200 font-medium">Dine-in: {counts['Dine-in']||0}</span></div><div className="px-3 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"><span className="text-green-800 dark:text-green-200 font-medium">Take-away: {counts['Take-away']||0}</span></div><div className="px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800"><span className="text-purple-800 dark:text-purple-200 font-medium">Delivery: {counts['Delivery']||0}</span></div><div className="px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800"><span className="text-orange-800 dark:text-orange-200 font-medium">Foodpanda: {counts['Foodpanda']||0}</span></div></div><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Time</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Token</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Reason</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Items</th><th className="p-3 text-center font-semibold text-gray-700 dark:text-gray-300">Reprint KOT</th></tr></thead><tbody>
  {filtered.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-600 dark:text-gray-400">{r.createdAt ? format(new Date(r.createdAt), 'yyyy-MM-dd HH:mm:ss') : '-'}</td><td className="p-3 font-medium text-red-600 dark:text-red-400">{r.tokenNo || '-'}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${
  r.orderType === 'Dine-in' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200' :
@@ -147,7 +265,7 @@ export default function VoidHistory() {
  </span>
  )
  })()}
- </td><td className="p-3 text-center"><button className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors" onClick={()=>reprintKot(r)}> Print</button></td></tr>
+ </td><td className="p-3 text-center"><button className="px-3 py-1.5 rounded-lg ui-btn ui-btn-primary text-sm font-medium transition-colors" onClick={()=>reprintKot(r)}> Print</button></td></tr>
  ))}
  {!filtered.length && (
  <tr><td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No voids found</div></td></tr>

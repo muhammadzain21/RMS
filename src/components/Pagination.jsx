@@ -82,7 +82,7 @@ export default function Pagination({
           <button
             disabled={loading || pages < 1}
             onClick={go}
-            className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"
+            className="px-4 py-2 rounded-lg ui-btn ui-btn-primary"
           >
             Go
           </button>

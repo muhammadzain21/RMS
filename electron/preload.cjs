@@ -37,10 +37,13 @@ contextBridge.exposeInMainWorld('printing', {
   }
 })
 
-// PDF preview: open a base64 PDF in the system default PDF viewer
+// PDF preview: open a base64 PDF, or render report HTML to A4 PDF, in the preview window
 contextBridge.exposeInMainWorld('pdfPreview', {
   open: async (base64, name) => {
     try { return await ipcRenderer.invoke('preview:open-pdf', { name, data: base64 }) } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+  },
+  printHtml: async (html, name) => {
+    try { return await ipcRenderer.invoke('preview:print-html', { html, name }) } catch (e) { return { ok: false, error: String(e && e.message || e) } }
   }
 })
 

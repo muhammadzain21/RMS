@@ -5,6 +5,11 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { Plus, X } from 'lucide-react'
+import { format } from 'date-fns'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function Recipes() {
  const { state, dispatch } = useData()
@@ -143,6 +148,85 @@ export default function Recipes() {
  return `${keys.slice(0,3).map(k => `${k} (${recipe[k]})`).join(', ')} +${keys.length - 3} more`
  }
 
+ const recipeReportRows = () => filteredList.map(m => [
+   m.name || '',
+   m.category || '',
+   getRecipeSummary(m.recipe),
+   Object.keys(m.recipe || {}).length,
+ ])
+
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([
+ { label: 'Recipes listed', amount: String(filteredList.length) },
+ { label: 'Total with recipes', amount: String(menuWithRecipes.length) },
+ ]) +
+ reportSec(`Recipes (${filteredList.length})`) +
+ reportTable({
+ headers: ['Menu Item', 'Category', 'Ingredients', { t: 'Count', align: 'r' }],
+ numbered: true,
+ rows: filteredList.map(m => [
+ m.name,
+ m.category || '—',
+ getRecipeSummary(m.recipe),
+ { v: Object.keys(m.recipe || {}).length, align: 'r' },
+ ]),
+ emptyText: 'No recipes match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Recipes',
+ reportLabel: 'Recipe Report',
+ reportNo: `Rpt #: REC-${format(new Date(), 'yyyy-MM-dd')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', listSearch.trim() || 'All']],
+ metaRight: [['Records', String(filteredList.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Recipes-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportPDF = () => {
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Recipes', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${filteredList.length} recipes`, 40, 46)
+ doc.autoTable({
+ head: [['Menu Item', 'Category', 'Ingredients', 'Count']],
+ body: recipeReportRows(),
+ startY: 54,
+ styles: { fontSize: 7, cellPadding: 3 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`recipes_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
+
+ const exportCSV = () => {
+ try {
+ downloadCsvFile(
+ `recipes_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ ['Menu Item', 'Category', 'Ingredients', 'Count'],
+ recipeReportRows()
+ )
+ toast.success('CSV exported successfully')
+ } catch {
+ toast.error('Failed to export CSV')
+ }
+ }
+
  return (
  <div className="space-y-4 w-full">
 
@@ -180,14 +264,14 @@ export default function Recipes() {
  {rows.length === 0 && (
  <tr><td colSpan={4} className="p-6 text-center text-gray-500 dark:text-gray-400">No ingredients in recipe. Add some below.</td></tr>
  )}
- </tbody></table></div><div className="flex items-center gap-3"><button type="button" onClick={addRow} className="px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium transition-all">+ Add Ingredient</button><button disabled={saving || !current} onClick={onSave} className="px-6 py-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Save Recipe</button></div><p className="text-xs text-gray-500 dark:text-gray-400 px-1">Note: Amounts should use the same base unit as the inventory item, e.g., grams for weight items or pcs for piece items. Inventory reduction on sale is automatic using these recipes.</p></div></div></div>
+ </tbody></table></div><div className="flex items-center gap-3"><button type="button" onClick={addRow} className="px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium transition-all">+ Add Ingredient</button><button disabled={saving || !current} onClick={onSave} className="ui-btn ui-btn-primary disabled:opacity-50">Save Recipe</button></div><p className="text-xs text-gray-500 dark:text-gray-400 px-1">Note: Amounts should use the same base unit as the inventory item, e.g., grams for weight items or pcs for piece items. Inventory reduction on sale is automatic using these recipes.</p></div></div></div>
  )}
 
- <section className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Recipes</h1><button onClick={startNew} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"><Plus size={18} /> Create Recipe</button></div><div className="grid grid-cols-2 sm:grid-cols-3 gap-3"><div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-800 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-medium text-blue-700 dark:text-blue-400 uppercase">Total Recipes</div><div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{menuWithRecipes.length}</div></div><div className="p-4 rounded-xl border-2 border-amber-300 dark:border-amber-800 bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase">Without Recipes</div><div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{allMenu.length - menuWithRecipes.length}</div></div><div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-medium text-emerald-700 dark:text-emerald-400 uppercase">Total Menu Items</div><div className="text-2xl font-bold text-gray-800 dark:text-gray-100">{allMenu.length}</div></div></div><input placeholder="Search recipes..." value={listSearch} onChange={e=>setListSearch(e.target.value)} className="w-full sm:w-72 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 text-sm" /><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Menu Item</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Ingredients</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Count</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <section className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Recipes</h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button onClick={startNew} className="ui-btn ui-btn-primary flex items-center gap-2"><Plus size={18} /> Create Recipe</button></div></div><div className="grid grid-cols-2 sm:grid-cols-3 gap-3"><div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-800 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-medium text-blue-700 dark:text-blue-400 uppercase">Total Recipes</div><div className="page-title">{menuWithRecipes.length}</div></div><div className="p-4 rounded-xl border-2 border-amber-300 dark:border-amber-800 bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase">Without Recipes</div><div className="page-title">{allMenu.length - menuWithRecipes.length}</div></div><div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-medium text-emerald-700 dark:text-emerald-400 uppercase">Total Menu Items</div><div className="page-title">{allMenu.length}</div></div></div><input placeholder="Search recipes..." value={listSearch} onChange={e=>setListSearch(e.target.value)} className="w-full sm:w-72 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 text-sm" /><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Menu Item</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Ingredients</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Count</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {pagedList.map(m => {
  const recipeKeys = Object.keys(m.recipe || {})
  return (
- <tr key={m.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{m.name}</td><td className="p-3 text-gray-600 dark:text-gray-400">{m.category || '—'}</td><td className="p-3 text-gray-600 dark:text-gray-400 text-xs">{getRecipeSummary(m.recipe)}</td><td className="p-3 text-center"><span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-bold">{recipeKeys.length}</span></td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={()=>startView(m)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">View</button><button onClick={()=>startEdit(m)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Edit</button><button disabled={deleting} onClick={()=>onDelete(m)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
+ <tr key={m.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{m.name}</td><td className="p-3 text-gray-600 dark:text-gray-400">{m.category || '—'}</td><td className="p-3 text-gray-600 dark:text-gray-400 text-xs">{getRecipeSummary(m.recipe)}</td><td className="p-3 text-center"><span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 text-[var(--color-text-muted)] text-xs font-bold">{recipeKeys.length}</span></td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={()=>startView(m)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">View</button><button onClick={()=>startEdit(m)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Edit</button><button disabled={deleting} onClick={()=>onDelete(m)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
  )
  })}
  {!pagedList.length && (
@@ -215,7 +299,7 @@ export default function Recipes() {
  ) : (
  <div className="text-center text-gray-500 dark:text-gray-400 py-6">No ingredients in this recipe.</div>
  )}
- <div className="flex gap-2 mt-4"><button onClick={() => { startEdit(viewItem); setViewItem(null) }} className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95">Edit Recipe</button><button onClick={() => setViewItem(null)} className="px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium transition-all">Close</button></div></div></div></div>
+ <div className="flex gap-2 mt-4"><button onClick={() => { startEdit(viewItem); setViewItem(null) }} className="flex-1 ui-btn ui-btn-secondary">Edit Recipe</button><button onClick={() => setViewItem(null)} className="px-4 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium transition-all">Close</button></div></div></div></div>
  )}
 
  {ConfirmDialog}

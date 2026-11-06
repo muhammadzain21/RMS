@@ -110,11 +110,28 @@ export async function processBiometricEvent(input) {
   const time = hhmmLocal(ts)
   console.log('[biometric] Parsed date/time:', { date, time, cutoffHour, calendarDate: dateIsoLocal(ts) })
 
-  const mapping = await BiometricMapping.findOne({ deviceId: input.deviceId, enrollId: input.enrollId, active: true }).lean()
+  const enrollId = String(input.enrollId ?? '').trim()
+  // Prefer exact deviceId+enrollId; fall back to enrollId-only so older mappings
+  // saved under a hardcoded/wrong deviceId (e.g. ZK-K70-01) still resolve.
+  let mapping = await BiometricMapping.findOne({
+    deviceId: input.deviceId,
+    enrollId,
+    active: true,
+  }).lean()
+  if (!mapping) {
+    mapping = await BiometricMapping.findOne({ enrollId, active: true }).lean()
+    if (mapping) {
+      console.warn('[biometric] Mapping matched by enrollId only (deviceId mismatch)', {
+        eventDeviceId: input.deviceId,
+        mappingDeviceId: mapping.deviceId,
+        enrollId,
+      })
+    }
+  }
   console.log('[biometric] Mapping lookup result:', { found: !!mapping, staffId: mapping?.staffId })
 
   if (!mapping) {
-    console.log('[biometric] No mapping found for enrollId:', input.enrollId)
+    console.log('[biometric] No mapping found for enrollId:', enrollId)
     try {
       await BiometricEvent.create({
         deviceId: input.deviceId,
@@ -153,7 +170,8 @@ export async function processBiometricEvent(input) {
   const attState = input.attState
   const isCheckIn = attState === 0 || attState === '0'
   const isCheckOut = attState === 1 || attState === '1'
-  const useAutoDetect = attState === null || attState === undefined
+  // Unknown in/out codes (break/overtime/garbage) → treat like auto check-in/out
+  const useAutoDetect = attState === null || attState === undefined || (!isCheckIn && !isCheckOut)
 
   console.log('[biometric] Determining event type:', { 
     hasAtt: !!att, 
@@ -324,16 +342,19 @@ export async function processBiometricEvent(input) {
   console.log('[biometric] Attendance update result:', { success: !!updateResult, _id: updateResult?._id })
 
   try {
-    const eventRecord = await BiometricEvent.create({
-      deviceId: input.deviceId,
-      enrollId: input.enrollId,
-      staffId,
-      timestamp: ts,
-      date,
-      time,
-      type: eventType,
-      raw: input.raw,
-    })
+    const eventRecord = await BiometricEvent.findOneAndUpdate(
+      { deviceId: input.deviceId, enrollId, timestamp: ts },
+      {
+        $set: {
+          staffId,
+          date,
+          time,
+          type: eventType,
+          raw: input.raw,
+        },
+      },
+      { upsert: true, new: true }
+    )
     console.log('[biometric] Event recorded successfully:', { eventId: eventRecord?._id, type: eventType })
   } catch (e) {
     console.error('[biometric] Failed to record event:', e?.message)
@@ -341,4 +362,37 @@ export async function processBiometricEvent(input) {
 
   console.log('[biometric] Process completed:', { type: eventType, ok: true })
   return { ok: true, mapped: true, type: eventType }
+}
+
+/** Re-apply staff mappings to recent unknown_enroll punches (fixes wrong deviceId mappings). */
+export async function reprocessUnknownEvents({ days = 14, limit = 500 } = {}) {
+  const since = new Date(Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000)
+  const unknowns = await BiometricEvent.find({
+    type: 'unknown_enroll',
+    timestamp: { $gte: since },
+  })
+    .sort({ timestamp: 1 })
+    .limit(limit)
+    .lean()
+
+  let mapped = 0
+  let failed = 0
+  for (const ev of unknowns) {
+    try {
+      const result = await processBiometricEvent({
+        deviceId: ev.deviceId,
+        enrollId: ev.enrollId,
+        timestamp: new Date(ev.timestamp),
+        raw: ev.raw,
+        attState: ev.raw?.inOut ?? ev.raw?.attState ?? null,
+      })
+      if (result?.mapped && !result?.ignored) mapped += 1
+      else if (result?.mapped) mapped += 1
+    } catch (e) {
+      failed += 1
+      console.warn('[biometric] reprocessUnknown failed:', e?.message || e)
+    }
+  }
+  console.log('[biometric] reprocessUnknown done:', { total: unknowns.length, mapped, failed })
+  return { total: unknowns.length, mapped, failed }
 }

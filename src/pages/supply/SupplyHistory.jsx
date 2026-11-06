@@ -2,9 +2,17 @@ import { useData } from '../../state/DataContext.jsx'
 import { useMemo, useState, useEffect } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
+import { format } from 'date-fns'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+
+const btnPrint = 'ui-btn ui-btn-print'
+const btnPdf = 'ui-btn ui-btn-pdf'
+const btnCsv = 'ui-btn ui-btn-csv'
 
 export default function SupplyHistory() {
  const { state, dispatch, businessDate } = useData()
@@ -117,10 +125,92 @@ export default function SupplyHistory() {
  const paginatedExpanded = filteredExpanded.slice((page - 1) * limit, page * limit)
  const expandedPages = Math.ceil(filteredExpanded.length / limit) || 1
 
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([
+ { label: 'Total supplies', amount: String(totalSupplies) },
+ { label: 'Total cost', amount: `PKR ${totalCost.toLocaleString()}` },
+ { label: 'Line items', amount: String(filteredExpanded.length) },
+ { label: 'Total quantity', amount: totalQty.toLocaleString() },
+ ]) +
+ reportSec(`Supply line items (${filteredExpanded.length})`) +
+ reportTable({
+ headers: ['Date', 'Supplier', 'Name', { t: 'Qty', align: 'r' }, 'Unit', { t: 'Unit Price', align: 'r' }, { t: 'Total', align: 'r' }],
+ numbered: true,
+ rows: filteredExpanded.map(r => [
+ r.date, r.supplier, r.name,
+ { v: r.qty, align: 'r' },
+ r.unit,
+ { v: `PKR ${r.unitPrice.toLocaleString()}`, align: 'r' },
+ { v: `PKR ${r.totalPrice.toLocaleString()}`, align: 'r' },
+ ]),
+ emptyText: 'No supply records found',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Supply History',
+ reportLabel: 'Supply History Report',
+ reportNo: `Rpt #: SUP-${from || 'all'}-${to || 'all'}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', from || '...'], ['To', to || '...']],
+ metaRight: [['Records', String(filteredExpanded.length)], ['Total cost', `PKR ${totalCost.toLocaleString()}`]],
+ body,
+ })
+ await previewHtmlReport(html, `Supply-History-${from || 'all'}.pdf`)
+ toast.success('Print preview opened')
+ } catch (err) {
+ console.error(err)
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportPDF = () => {
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Supply History', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${from || '...'} to ${to || '...'} · PKR ${totalCost.toLocaleString()} total`, 40, 46)
+ doc.autoTable({
+ head: [['Date', 'Supplier', 'Name', 'Qty', 'Unit', 'Unit Price', 'Total']],
+ body: filteredExpanded.map(r => [r.date, r.supplier, r.name, r.qty, r.unit, r.unitPrice.toLocaleString(), r.totalPrice.toLocaleString()]),
+ startY: 54,
+ styles: { fontSize: 8, cellPadding: 4 },
+ headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`supply_history_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (err) {
+ console.error(err)
+ toast.error('Failed to export PDF')
+ }
+ }
+
+ const exportCSV = () => {
+ try {
+ const header = ['Date', 'Supplier', 'Name', 'Qty', 'Unit', 'Unit Price', 'Total Price']
+ const lines = filteredExpanded.map(r =>
+ [r.date, r.supplier, r.name, r.qty, r.unit, r.unitPrice, r.totalPrice]
+ .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+ )
+ const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' })
+ const url = URL.createObjectURL(blob)
+ const a = document.createElement('a')
+ a.href = url
+ a.download = `supply_history_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.click()
+ URL.revokeObjectURL(url)
+ toast.success('CSV exported successfully')
+ } catch {
+ toast.error('Failed to export CSV')
+ }
+ }
+
  return (
  <div className="space-y-4">
  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
- <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Supply History</h1>
+ <h1 className="page-title">Supply History</h1>
  </div>
 
  {/* Summary Widgets */}
@@ -148,13 +238,18 @@ export default function SupplyHistory() {
  </div>
 
  {/* Filters */}
- <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
+ <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl card card-pad">
+ <div className="flex gap-3 flex-shrink-0">
+ <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
+ <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
+ <button type="button" onClick={exportCSV} className={btnCsv}>CSV</button>
+ </div>
  <div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div>
  <div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div>
- <div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Name, supplier, date, unit..." className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div>
- <button type="button" onClick={reloadSupplies} className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Reload</button>
+ <div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label><input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Name, supplier, date, unit..." className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div>
+ <button type="button" onClick={reloadSupplies} className="px-4 py-2 rounded-lg ui-btn ui-btn-primary font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Reload</button>
  {backfillCandidates.length > 0 && (
- <button type="button" onClick={generateFromIngredients} className="px-4 py-2 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Generate from Ingredients ({backfillCandidates.length})</button>
+ <button type="button" onClick={generateFromIngredients} className="px-4 py-2 rounded-lg ui-btn ui-btn-primary">Generate from Ingredients ({backfillCandidates.length})</button>
  )}
  </div>
 

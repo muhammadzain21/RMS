@@ -129,13 +129,28 @@ export default function SalesNew() {
   const [serviceAmt, setServiceAmt] = useState(0)
   const [taxPct, setTaxPct] = useState(0)
   const [taxAmt, setTaxAmt] = useState(0)
-  const totalPayment = Math.max(0, subTotal - billDiscAmt - itemsDiscount + serviceAmt + taxAmt)
+  const [deliveryAmt, setDeliveryAmt] = useState(0)
+  const totalPayment = Math.max(0, subTotal - billDiscAmt - itemsDiscount + serviceAmt + taxAmt + deliveryAmt)
 
   // Cash received for payment
   const [cashReceived, setCashReceived] = useState(0)
 
   // Payment method
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  // Bank transfer details (destination + last 4 digits of sender account)
+  const [bankChannel, setBankChannel] = useState('bank_account')
+  const [bankLast4, setBankLast4] = useState('')
+  const [bankRef, setBankRef] = useState('')
+  // Staff purchase — always a pending purchase deducted at payroll unless paid earlier
+  const [payStaffId, setPayStaffId] = useState('')
+  const [payStaffName, setPayStaffName] = useState('')
+
+  // Hide Personal payment if disabled in settings
+  useEffect(() => {
+    if (!state.settings?.showPersonalPayment && paymentMethod === 'complimentary') {
+      setPaymentMethod('cash')
+    }
+  }, [state.settings?.showPersonalPayment, paymentMethod])
 
   // Order type & held
   const [orderType, setOrderType] = useState('') // start with no selection; user must choose
@@ -171,6 +186,11 @@ export default function SalesNew() {
     setSearch('')
     // Payment method
     setPaymentMethod('cash')
+    setBankChannel('bank_account')
+    setBankLast4('')
+    setBankRef('')
+    setPayStaffId('')
+    setPayStaffName('')
     // Cash received
     setCashReceived(0)
     // Order type & dialogs
@@ -185,6 +205,7 @@ export default function SalesNew() {
     setServiceAmt(0)
     setTaxPct(0)
     setTaxAmt(0)
+    setDeliveryAmt(0)
     // Delivery info
     setShowDelivery(false)
     setPayName('')
@@ -255,7 +276,8 @@ export default function SalesNew() {
         billDiscount: Number(billDiscAmt||0),
         taxAmt: Number(taxAmt||0),
         serviceAmt: Number(serviceAmt||0),
-        totalAmount: Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0)),
+        deliveryAmt: Number(deliveryAmt||0),
+        totalAmount: Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0) + Number(deliveryAmt||0)),
         remarks: kotRemarks || '',
       }
     }
@@ -384,7 +406,7 @@ export default function SalesNew() {
         price: it.price
       })) : []
       setItems(its)
-      if (ord.orderType) setOrderType(ord.orderType)
+      if (ord.orderType) setOrderType(ord.orderType === 'Drive-thru' ? 'Foodpanda' : ord.orderType)
       // If dine-in, prefill waiter/table from recall
       if ((ord.orderType||'') === 'Dine-in') {
         if (ord.waiterId) setKotWaiterId(ord.waiterId)
@@ -410,6 +432,7 @@ export default function SalesNew() {
       setTaxAmt(taxAmtVal)
       setServicePct(servicePctVal)
       setServiceAmt(serviceAmtVal)
+      setDeliveryAmt(Number(ord.deliveryAmt || ord.deliveryCharges || 0))
       if (ord.paymentMethod) setPaymentMethod(ord.paymentMethod)
       setActiveRecall(ord)
       setActiveRecallSource('recall')
@@ -428,6 +451,11 @@ export default function SalesNew() {
     // Otherwise, pay directly
     // Restore payment method from recall so finalizePayment uses the correct one
     if (ord.paymentMethod) setPaymentMethod(ord.paymentMethod)
+    if (ord.bankChannel) setBankChannel(ord.bankChannel)
+    if (ord.bankLast4) setBankLast4(String(ord.bankLast4))
+    if (ord.bankRef) setBankRef(String(ord.bankRef))
+    if (ord.staffId) setPayStaffId(String(ord.staffId))
+    if (ord.staffName) setPayStaffName(String(ord.staffName))
     // Close dialog immediately to prevent stale entry showing
     setShowRecall(false)
     ;(async ()=>{ await finalizePayment(ord, null) })()
@@ -435,6 +463,18 @@ export default function SalesNew() {
 
   const finalizePayment = async (ord, rider) => {
     try {
+      // Bank payments: destination required; last 4 digits optional but must be 4 digits if given
+      if (paymentMethod === 'bank') {
+        if (!bankChannel) { toast.error('Select bank destination'); return }
+        if (bankLast4 && !/^\d{4}$/.test(String(bankLast4))) { toast.error('Last 4 digits must be exactly 4 digits'); return }
+      }
+      if (paymentMethod === 'card') {
+        if (bankLast4 && !/^\d{4}$/.test(String(bankLast4))) { toast.error('Last 4 digits must be exactly 4 digits'); return }
+      }
+      if (paymentMethod === 'staff' && !payStaffId) { toast.error('Select the staff member'); return }
+      const tipAmount = paymentMethod === 'cash'
+        ? Math.max(0, (Number(cashReceived) || 0) - (Number(ord.totalAmount) || 0))
+        : 0
       // 1) Create sale
       const saleBody = {
         createdAt: ord.createdAt || Date.now(),
@@ -450,10 +490,19 @@ export default function SalesNew() {
         billDiscount: Number(ord.billDiscount||0),
         taxAmt: Number(ord.taxAmt||0),
         serviceAmt: Number(ord.serviceAmt||0),
+        deliveryAmt: Number(ord.deliveryAmt||0),
         totalAmount: Number(ord.totalAmount||0),
         remarks: ord.remarks || '',
         status: 'PAID',
         paymentMethod: paymentMethod,
+        bankChannel: paymentMethod === 'bank' ? bankChannel : '',
+        bankLast4: (paymentMethod === 'bank' || paymentMethod === 'card') ? String(bankLast4) : '',
+        bankRef: '',
+        tipAmount,
+        cashReceived: paymentMethod === 'cash' ? Number(cashReceived || 0) : 0,
+        staffId: paymentMethod === 'staff' ? String(payStaffId) : '',
+        staffName: paymentMethod === 'staff' ? payStaffName : '',
+        staffSettlement: paymentMethod === 'staff' ? 'pay_later' : '',
         riderId: rider?.id || '',
         riderName: rider?.name || '',
         // Ensure dashboard uses business date
@@ -467,8 +516,7 @@ export default function SalesNew() {
       if (!saleRes.ok) { toast.error('Failed to create sale'); return }
       const savedSale = await saleRes.json()
 
-      // Print receipt
-      const changeDue = Math.max(0, (Number(cashReceived)||0) - (Number(saleBody.totalAmount)||0))
+      // Print receipt — tip (not change) when customer overpays in cash
       // Look up floor information from tables array for Dine-in orders
       const tableObj = saleBody.orderType === 'Dine-in' && saleBody.tableNo
         ? tables.find(t => (t.name || t.label || t.code || String(t)) === saleBody.tableNo)
@@ -484,13 +532,21 @@ export default function SalesNew() {
           floor,
           tokenNo: (savedSale?.tokenNo || saleBody.tokenNo || ''),
           paymentMethod: paymentMethod,
+          bankChannel: saleBody.bankChannel,
+          bankLast4: saleBody.bankLast4,
+          bankRef: '',
+          staffId: saleBody.staffId,
+          staffName: saleBody.staffName,
+          staffSettlement: saleBody.staffSettlement,
           cashReceived: Number(cashReceived||0),
-          changeDue: changeDue,
+          changeDue: 0,
+          tipAmount,
           customer: saleBody.customer,
           itemsDiscount: saleBody.itemsDiscount,
           billDiscount: saleBody.billDiscount,
           taxAmt: saleBody.taxAmt,
           serviceAmt: saleBody.serviceAmt,
+          deliveryAmt: saleBody.deliveryAmt,
           billNo: savedSale?.billNo,
           userName: user?.name || user?.username || 'USER',
           riderId: rider?.id || '',
@@ -508,8 +564,16 @@ export default function SalesNew() {
         // Avoid duplicates by id
         const exists = mapped?.id && prev.some(s => s.id === mapped.id)
         const nextSales = exists ? prev : [mapped, ...prev]
-        dispatch({ type: 'HYDRATE', payload: { sales: nextSales } })
+        const hydrate = { sales: nextSales }
+        if (savedSale?.tipPayOut) {
+          const tipEntry = { ...savedSale.tipPayOut, id: savedSale.tipPayOut.id || savedSale.tipPayOut._id }
+          hydrate.payInOuts = [tipEntry, ...(state.payInOuts || [])]
+        }
+        dispatch({ type: 'HYDRATE', payload: hydrate })
       } catch {}
+      if (tipAmount > 0) {
+        toast.success(`Waiter tip Pay Out: PKR ${tipAmount.toLocaleString()}`)
+      }
 
       // Also refresh ingredients so inventory changes appear immediately across the app (e.g., Consumption page)
       try {
@@ -571,10 +635,16 @@ export default function SalesNew() {
       setServiceAmt(0)
       setTaxPct(0)
       setTaxAmt(0)
+      setDeliveryAmt(0)
       // Reset cash received
       setCashReceived(0)
       // Reset payment method
       setPaymentMethod('cash')
+      setBankChannel('bank_account')
+      setBankLast4('')
+      setBankRef('')
+      setPayStaffId('')
+      setPayStaffName('')
       // Reset order type and related fields so UI goes back to neutral state
       setOrderType('')
       setKotWaiterId('')
@@ -619,6 +689,7 @@ export default function SalesNew() {
         billDiscount: Number(ord.billDiscount||0),
         taxAmt: Number(ord.taxAmt||0),
         serviceAmt: Number(ord.serviceAmt||0),
+        deliveryAmt: Number(ord.deliveryAmt||0),
         billNo: '',
         userName: user?.name || user?.username || 'USER',
         // Use logo from settings; do not reference a missing public file
@@ -626,6 +697,29 @@ export default function SalesNew() {
         autoPrint: false,
       })
     } catch {}
+  }
+
+  // Print customer bill for the currently-recalled order, using the live
+  // cart items + current billing summary values (user may have edited them)
+  const handlePrintActiveRecall = () => {
+    if (!activeRecall) return
+    const ord = {
+      ...activeRecall,
+      items: items.map(it => {
+        const m = menu.find(x=>x.id===it.itemId)
+        const price = m ? (lineTotal(m, { ...it, qty: 1 }) || 0) : Number(it.custom?.price || 0)
+        return { itemId: it.itemId, name: it.custom?.name || m?.name || '', price, qty: Number(it.qty||1), mods: it.mods||{}, custom: it.custom||null }
+      }),
+      orderType: orderType || activeRecall.orderType,
+      waiterId: activeRecall.waiterId || kotWaiterId,
+      tableNo: activeRecall.tableNo || kotTable,
+      itemsDiscount: Number(itemsDiscount||0),
+      billDiscount: Number(billDiscAmt||0),
+      taxAmt: Number(taxAmt||0),
+      serviceAmt: Number(serviceAmt||0),
+      deliveryAmt: Number(deliveryAmt||0),
+    }
+    handleCustomerBill(ord)
   }
 
   const handleHeldPrint = (h) => {
@@ -701,6 +795,11 @@ export default function SalesNew() {
       tableNo: orderType==='Dine-in' ? kotTable : '',
       remarks: kotRemarks || '',
       paymentMethod: paymentMethod || 'cash',
+      bankChannel: paymentMethod === 'bank' ? bankChannel : '',
+      bankLast4: (paymentMethod === 'bank' || paymentMethod === 'card') ? String(bankLast4) : '',
+      bankRef: '',
+      staffId: paymentMethod === 'staff' ? String(payStaffId) : '',
+      staffName: paymentMethod === 'staff' ? payStaffName : '',
       customer: orderType==='Delivery' ? { name: payName, phone: payPhone, address: payAddress } : null,
     }
     try {
@@ -739,8 +838,13 @@ export default function SalesNew() {
         price: it.price
       })) : []
       setItems(its)
-      if (h.orderType) setOrderType(h.orderType)
+      if (h.orderType) setOrderType(h.orderType === 'Drive-thru' ? 'Foodpanda' : h.orderType)
       if (h.paymentMethod) setPaymentMethod(h.paymentMethod)
+      if (h.bankChannel) setBankChannel(h.bankChannel)
+      if (h.bankLast4) setBankLast4(String(h.bankLast4))
+      if (h.bankRef) setBankRef(String(h.bankRef))
+      if (h.staffId) setPayStaffId(String(h.staffId))
+      if (h.staffName) setPayStaffName(String(h.staffName))
       setShowHeld(false)
       setActiveRecall(h)
       setActiveRecallSource('held')
@@ -799,7 +903,7 @@ export default function SalesNew() {
       // Recalculate totals
       const subtotalLocal = mergedItems.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
       const totalQtyLocal = mergedItems.reduce((s,it)=> s + Number(it.qty||0), 0)
-      const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
+      const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0) + Number(deliveryAmt||0))
 
       const patchBody = {
         items: mergedItems,
@@ -809,6 +913,7 @@ export default function SalesNew() {
         billDiscount: Number(billDiscAmt||0),
         taxAmt: Number(taxAmt||0),
         serviceAmt: Number(serviceAmt||0),
+        deliveryAmt: Number(deliveryAmt||0),
         totalAmount: totalAmountLocal,
       }
 
@@ -1030,7 +1135,7 @@ export default function SalesNew() {
           // Recalculate totals for the recall
           const subtotalLocal = mergedItems.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
           const totalQtyLocal = mergedItems.reduce((s,it)=> s + Number(it.qty||0), 0)
-          const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
+          const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0) + Number(deliveryAmt||0))
 
           // PATCH the existing recall (if we have an id); otherwise just print delta
           const patchBody = {
@@ -1041,6 +1146,7 @@ export default function SalesNew() {
             billDiscount: Number(billDiscAmt||0),
             taxAmt: Number(taxAmt||0),
             serviceAmt: Number(serviceAmt||0),
+            deliveryAmt: Number(deliveryAmt||0),
             totalAmount: totalAmountLocal,
             remarks: kotRemarks || activeRecall.remarks || '',
           }
@@ -1082,6 +1188,10 @@ export default function SalesNew() {
               tokenNo: activeRecall.tokenNo || '',
               waiterId: kotWaiterId || activeRecall.waiterId || '',
               tableNo: kotTable || activeRecall.tableNo || '',
+              floor: tables.find(t => (t.name || t.label || t.code || String(t)) === (kotTable || activeRecall.tableNo))?.floor || activeRecall.floor || '',
+              customerName: payName || activeRecall?.customer?.name || '',
+              customerPhone: payPhone || activeRecall?.customer?.phone || '',
+              customerAddress: payAddress || activeRecall?.customer?.address || '',
               remarks: kotRemarks || activeRecall.remarks || '',
               items: kotItems,
             }
@@ -1159,11 +1269,18 @@ export default function SalesNew() {
           billDiscount: Number(billDiscAmt||0),
           taxAmt: Number(taxAmt||0),
           serviceAmt: Number(serviceAmt||0),
+          deliveryAmt: Number(deliveryAmt||0),
           totalAmount: Number(totalPayment||0),
           remarks: kotRemarks || '',
-          paymentMethod: paymentMethod || 'cash',
-        }
-        const res = await fetch(`${API}/api/recalls`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': idemKey }, body: JSON.stringify(body) })
+      paymentMethod: paymentMethod || 'cash',
+      bankChannel: paymentMethod === 'bank' ? bankChannel : '',
+      bankLast4: (paymentMethod === 'bank' || paymentMethod === 'card') ? String(bankLast4) : '',
+      bankRef: '',
+      staffId: paymentMethod === 'staff' ? String(payStaffId) : '',
+      staffName: paymentMethod === 'staff' ? payStaffName : '',
+      staffSettlement: paymentMethod === 'staff' ? 'pay_later' : '',
+    }
+    const res = await fetch(`${API}/api/recalls`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': idemKey }, body: JSON.stringify(body) })
         if (res.ok) {
           const createdRecall = await res.json().catch(()=>null)
           await refreshRecalls()
@@ -1181,6 +1298,10 @@ export default function SalesNew() {
               tokenNo: createdRecall?.tokenNo || '',
               waiterId: orderType==='Dine-in' ? kotWaiterId : '',
               tableNo: orderType==='Dine-in' ? kotTable : '',
+              floor: orderType==='Dine-in' && kotTable ? (tables.find(t => (t.name || t.label || t.code || String(t)) === kotTable)?.floor || '') : '',
+              customerName: orderType==='Delivery' ? payName : '',
+              customerPhone: orderType==='Delivery' ? payPhone : '',
+              customerAddress: orderType==='Delivery' ? payAddress : '',
               remarks: kotRemarks || '',
               items: kotItems,
             }
@@ -1282,6 +1403,7 @@ export default function SalesNew() {
           onVoidRecall={onVoidRecall}
           onChangeTableRecall={onChangeTableRecall}
           onUpdateRecall={onUpdateRecall}
+          onPrintRecall={handlePrintActiveRecall}
           isSubmittingKOT={false}
         />
       </div>
@@ -1306,6 +1428,17 @@ export default function SalesNew() {
           heldCount={heldCount || (helds?.length||0)}
           paymentMethod={paymentMethod}
           setPaymentMethod={setPaymentMethod}
+          bankChannel={bankChannel}
+          setBankChannel={setBankChannel}
+          bankLast4={bankLast4}
+          setBankLast4={setBankLast4}
+          bankRef={bankRef}
+          setBankRef={setBankRef}
+          staff={state.staff || []}
+          staffId={payStaffId}
+          setStaffId={setPayStaffId}
+          staffName={payStaffName}
+          setStaffName={setPayStaffName}
           totalItems={totalItems}
           totalQty={totalQty}
           subTotal={subTotal}
@@ -1322,9 +1455,12 @@ export default function SalesNew() {
           serviceAmt={serviceAmt}
           onServicePctChange={(p)=>{ setServicePct(p); const base=Math.max(0, subTotal - itemsDiscount - billDiscAmt); setServiceAmt(Math.round(base * (p/100))) }}
           onServiceAmtChange={(amt)=>{ setServiceAmt(Math.max(0, Number(amt)||0)) }}
+          deliveryAmt={deliveryAmt}
+          onDeliveryAmtChange={(amt)=>{ setDeliveryAmt(Math.max(0, Number(amt)||0)) }}
           totalPayment={totalPayment}
           cashReceived={cashReceived}
           onCashReceivedChange={setCashReceived}
+          showPersonalPayment={Boolean(state.settings?.showPersonalPayment)}
         />
       </div>
     </form>

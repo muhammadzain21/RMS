@@ -11,7 +11,6 @@ import Consumption from './pages/sales/Consumption.jsx'
 import ReturnNew from './pages/sales/ReturnNew.jsx'
 import ReturnHistory from './pages/sales/ReturnHistory.jsx'
 import CashOpening from './pages/sales/CashOpening.jsx'
-import CashHandover from './pages/sales/CashHandover.jsx'
 import CashCount from './pages/sales/CashCount.jsx'
 import AdvanceBooking from './pages/sales/AdvanceBooking.jsx'
 import DayClose from './pages/sales/DayClose.jsx'
@@ -23,7 +22,14 @@ import VoidHistory from './pages/sales/VoidHistory.jsx'
 import SupplyNew from './pages/supply/SupplyNew.jsx'
 import SupplyHistory from './pages/supply/SupplyHistory.jsx'
 import DemandList from './pages/DemandList.jsx'
-import StaffAttendance from './pages/staff/StaffAttendance.jsx'  
+import StaffAttendance from './pages/staff/StaffAttendance.jsx'
+import MyWorkLayout from './pages/my/myWorkShared.jsx'
+import MyHome from './pages/my/MyHome.jsx'
+import MyAttendance from './pages/my/MyAttendance.jsx'
+import MyPurchases from './pages/my/MyPurchases.jsx'
+import MyAdvances from './pages/my/MyAdvances.jsx'
+import MyEarnings from './pages/my/MyEarnings.jsx'
+import MySalary from './pages/my/MySalary.jsx'
 import ExpenseNew from './pages/expenses/ExpenseNew.jsx'
 import ExpenseHistory from './pages/expenses/ExpenseHistory.jsx'
 import RiderList from './pages/riders/RiderList.jsx'
@@ -57,19 +63,29 @@ function App() {
     try { return !!localStorage.getItem('server_url') } catch { return false }
   })
 
-  // Listen for server_url changes (e.g. user reconfigures)
+  // Listen for server_url changes (same-tab + cross-tab)
   useEffect(() => {
-    if (!isCapacitor) return
     const handler = () => {
       try { setServerReady(!!localStorage.getItem('server_url')) } catch {}
     }
     window.addEventListener('storage', handler)
-    return () => window.removeEventListener('storage', handler)
-  }, [isCapacitor])
+    window.addEventListener('server_url_changed', handler)
+    return () => {
+      window.removeEventListener('storage', handler)
+      window.removeEventListener('server_url_changed', handler)
+    }
+  }, [])
 
   // On Capacitor with no server URL configured, show the server config screen
   if (isCapacitor && !serverReady) {
-    return <ServerConfig onSaved={() => setServerReady(true)} />
+    return (
+      <ServerConfig
+        onSaved={() => {
+          setServerReady(true)
+          window.dispatchEvent(new CustomEvent('server_url_changed'))
+        }}
+      />
+    )
   }
 
   return (
@@ -80,7 +96,15 @@ function App() {
       <Route path="/server-config" element={<ServerConfig onSaved={() => setServerReady(true)} />} />
       <Route path="/login" element={<Login />} />
       <Route element={<Layout />}>
-        <Route index element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><Dashboard /></ProtectedRoute>} />
+        <Route index element={<ProtectedRoute roles={["Admin","Manager"]}><Dashboard /></ProtectedRoute>} />
+        <Route path="my" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><MyWorkLayout /></ProtectedRoute>}>
+          <Route index element={<MyHome />} />
+          <Route path="attendance" element={<MyAttendance />} />
+          <Route path="purchases" element={<MyPurchases />} />
+          <Route path="advances" element={<MyAdvances />} />
+          <Route path="earnings" element={<MyEarnings />} />
+          <Route path="salary" element={<MySalary />} />
+        </Route>
 
         <Route path="inventory" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryList /></ProtectedRoute>} />
         <Route path="inventory/new" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryForm /></ProtectedRoute>} />
@@ -97,7 +121,6 @@ function App() {
         <Route path="sales/kds" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><KDS /></ProtectedRoute>} />
         <Route path="sales/void-history" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><VoidHistory /></ProtectedRoute>} />
         <Route path="sales/cash-opening" element={<ProtectedRoute roles={["Admin","Manager"]}><CashOpening /></ProtectedRoute>} />
-        <Route path="sales/cash-handover" element={<ProtectedRoute roles={["Admin","Manager"]}><CashHandover /></ProtectedRoute>} />
         <Route path="sales/cash-count" element={<ProtectedRoute roles={["Admin","Manager"]}><CashCount /></ProtectedRoute>} />
         <Route path="sales/advance-booking" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><AdvanceBooking /></ProtectedRoute>} />
         <Route path="sales/day-close" element={<ProtectedRoute roles={["Admin","Manager"]}><DayClose /></ProtectedRoute>} />
@@ -128,6 +151,7 @@ function App() {
         <Route path="staff/advances" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="advances" showTabs={false} /></ProtectedRoute>} />
         <Route path="staff/payroll" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="payroll" showTabs={false} /></ProtectedRoute>} />
         <Route path="staff/payroll/summary/:staffId" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="payrollSummary" showTabs={false} /></ProtectedRoute>} />
+        <Route path="staff/history/:staffId" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="staffHistory" showTabs={false} /></ProtectedRoute>} />
         <Route path="staff/settings" element={<ProtectedRoute roles={["Admin","Manager"]}><StaffAttendance initialTab="settings" showTabs={false} /></ProtectedRoute>} />
         {/* Staff manage removed */}
 

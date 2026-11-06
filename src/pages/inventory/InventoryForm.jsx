@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useMemo, useState } from 'react'
+import DatePicker from '../../components/DatePicker.jsx'
 
 export default function InventoryForm() {
  const { id } = useParams()
@@ -74,11 +75,19 @@ export default function InventoryForm() {
  }}
  ><option value="">-- Select --</option>
  {unitOptions.map(u =><option key={u.value} value={u.value}>{u.label}</option>)}
- </select></div></label><Input label="Low Stock Threshold" type="number" value={form.lowStock} onChange={v => setForm({ ...form, lowStock: Number(v) })} icon="" /><Input label="Price per Unit" type="number" value={form.price} onChange={v => setForm({ ...form, price: Number(v) })} icon="" /><Input label="Expiry Date" type="date" value={form.expiry || ''} onChange={v => setForm({ ...form, expiry: v })} icon="" /></div><div className="flex gap-3 pt-2"><button className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"> Save Ingredient</button><button type="button" className="px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all" onClick={() => navigate(-1)}> Cancel</button></div></form></div>
+ </select></div></label><Input label="Low Stock Threshold" type="number" value={form.lowStock} onChange={v => setForm({ ...form, lowStock: Number(v) })} icon="" /><Input label="Price per Unit" type="number" value={form.price} onChange={v => setForm({ ...form, price: Number(v) })} icon="" /><Input label="Expiry Date" type="date" value={form.expiry || ''} onChange={v => setForm({ ...form, expiry: v })} icon="" /></div><div className="flex gap-3 pt-2"><button className="flex-1 px-4 py-3 rounded-lg ui-btn ui-btn-primary"> Save Ingredient</button><button type="button" className="px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all" onClick={() => navigate(-1)}> Cancel</button></div></form></div>
  )
 }
 
 function Input({ label, value, onChange, type='text', required, icon = '', step, min }) {
+ if (type === 'date') {
+  return (
+   <div className="block">
+    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">{icon} {label}</span>
+    <div className="mt-1"><DatePicker value={value} onChange={onChange} /></div>
+   </div>
+  )
+ }
  return (
  <label className="block"><span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">{icon} {label}</span><input required={required} value={value} onChange={e => onChange(e.target.value)} type={type} step={step} min={min} className="mt-1 w-full px-3 py-2.5 rounded-lg border-2 border-emerald-200 dark:border-emerald-700 bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all" /></label>
  )

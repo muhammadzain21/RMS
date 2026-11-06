@@ -1,15 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { computeStaffMonth } from '../utils/salaryCalc.js';
+import DatePicker from '../../../components/DatePicker.jsx';
 
 export default function AddAdvanceDialog({
   isOpen, onClose, onSubmit, staff, defaultStaffId = '', businessDate,
-  advances = [], payNotes = [], attendance = [], settings = {}, month,
-  editing = null
+  advances = [], attendance = [], settings = {}, month,
+  editing = null, balances = []
 }) {
   const today = businessDate || new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState(null); // lazily initialized on open
 
   const activeStaffId = form ? form.staffId : (editing?.staffId || defaultStaffId || '');
+  const staffBalance = balances.find(b => String(b.staffId) === String(activeStaffId)) || null;
 
   // Selected staff's current-month picture: advances already taken and
   // salary still available (earned - advances - paid).
@@ -19,20 +21,17 @@ export default function AddAdvanceDialog({
     if (!st) return null;
     const calc = computeStaffMonth(st, attendance, settings, month, businessDate);
     // Exclude the advance being edited so 'remaining' reflects the true headroom
-    const advList = (advances || []).filter(a => String(a.staffId) === String(activeStaffId) && a.month === month && String(a.id) !== String(editing?.id));
+    const advList = (advances || []).filter(a => String(a.staffId) === String(activeStaffId) && a.month === month && String(a.id) !== String(editing?.id) && (a.type || 'issue') === 'issue');
     const advTotal = advList.reduce((s, a) => s + Number(a.amount || 0), 0);
-    const paid = (payNotes || [])
-      .filter(n => String(n.staffId) === String(activeStaffId) && n.month === month)
-      .reduce((s, n) => s + Number(n.amount || 0), 0);
     const earned = calc ? calc.net : 0;
-    return { advTotal, advCount: advList.length, earned, paid, remaining: Math.max(0, earned - advTotal - paid) };
-  }, [isOpen, activeStaffId, staff, advances, payNotes, attendance, settings, month, businessDate]);
+    return { advTotal, advCount: advList.length, earned, remaining: Math.max(0, earned - advTotal) };
+  }, [isOpen, activeStaffId, staff, advances, attendance, settings, month, businessDate, editing?.id]);
 
   if (!isOpen) return null;
 
   const f = form || (editing
-    ? { staffId: editing.staffId || '', date: editing.date || today, amount: editing.amount ?? '', notes: editing.notes || '' }
-    : { staffId: defaultStaffId || '', date: today, amount: '', notes: '' });
+    ? { staffId: editing.staffId || '', date: editing.date || today, amount: editing.amount ?? '', notes: editing.notes || '', type: editing.type || 'issue' }
+    : { staffId: defaultStaffId || '', date: today, amount: '', notes: '', type: 'issue' });
   const set = (patch) => setForm({ ...f, ...patch });
   const overAmount = summary && Number(f.amount) > summary.remaining ? Number(f.amount) - summary.remaining : 0;
 
@@ -40,7 +39,7 @@ export default function AddAdvanceDialog({
     if (!f.staffId) return;
     const amt = Number(f.amount || 0);
     if (!(amt > 0)) return;
-    onSubmit({ id: editing?.id, staffId: f.staffId, date: f.date, notes: f.notes.trim(), amount: amt });
+    onSubmit({ id: editing?.id, staffId: f.staffId, date: f.date, notes: f.notes.trim(), amount: amt, type: f.type || 'issue' });
     setForm(null);
     onClose();
   };
@@ -56,6 +55,23 @@ export default function AddAdvanceDialog({
         </div>
         <div className="space-y-3">
           <div>
+            <label className="block text-sm mb-1 text-slate-600 dark:text-slate-300">Type</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!!editing}
+                onClick={() => set({ type: 'issue' })}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${(f.type || 'issue') === 'issue' ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'} disabled:opacity-60`}
+              >Issue</button>
+              <button
+                type="button"
+                disabled={!!editing}
+                onClick={() => set({ type: 'repay' })}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${f.type === 'repay' ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'} disabled:opacity-60`}
+              >Repay</button>
+            </div>
+          </div>
+          <div>
             <label className="block text-sm mb-1 text-slate-600 dark:text-slate-300">Staff</label>
             <select
               className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200"
@@ -69,7 +85,23 @@ export default function AddAdvanceDialog({
               ))}
             </select>
           </div>
-          {summary && (
+          {staffBalance && (
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 p-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Advance limit</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">{Number(staffBalance.advanceLimit || 0).toLocaleString()} PKR</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Outstanding</span>
+                <span className="font-semibold text-amber-600">{Number(staffBalance.outstanding || 0).toLocaleString()} PKR</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 dark:border-slate-600 pt-1 mt-1">
+                <span className="text-slate-700 dark:text-slate-300 font-medium">{(f.type || 'issue') === 'issue' ? 'Available' : 'Repayable'}</span>
+                <span className="font-bold text-emerald-600">{Number((f.type || 'issue') === 'issue' ? staffBalance.available : staffBalance.outstanding).toLocaleString()} PKR</span>
+              </div>
+            </div>
+          )}
+          {summary && !staffBalance && (
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 p-3 text-sm space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-600 dark:text-slate-400">Advances taken ({month})</span>
@@ -89,13 +121,7 @@ export default function AddAdvanceDialog({
             <p className="text-xs text-amber-600 font-medium">Amount exceeds remaining salary by {overAmount.toLocaleString()} PKR</p>
           )}
           <div>
-            <label className="block text-sm mb-1 text-slate-600 dark:text-slate-300">Date</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200"
-              value={f.date}
-              onChange={e => set({ date: e.target.value })}
-            />
+            <DatePicker label="Date" value={f.date} onChange={v => { if (v) set({ date: v }) }} allowClear={false} />
           </div>
           <div>
             <label className="block text-sm mb-1 text-slate-600 dark:text-slate-300">Amount (PKR)</label>

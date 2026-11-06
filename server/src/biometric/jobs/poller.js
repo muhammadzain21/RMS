@@ -41,7 +41,7 @@ function getAttState(row) {
   return null
 }
 
-function formatZkErr(e) {
+export function formatZkErr(e) {
   if (!e) return 'error'
   if (typeof e === 'string') return e
   const msg = String(e?.message || '')
@@ -172,8 +172,6 @@ export async function syncOnce(source = 'unknown') {
 }
 
 async function _syncOnceInternal() {
-  const ZKLib = (await import('node-zklib')).default
-
   const deviceId = String(env.BIOMETRIC_DEVICE_ID || 'ZK-01')
   const ip = String(env.BIOMETRIC_IP)
   const port = Number(env.BIOMETRIC_PORT || 4370)
@@ -192,19 +190,11 @@ async function _syncOnceInternal() {
     let zk = null
     let connected = false
     try {
-      console.log('[biometric] creating ZKLib instance...')
-      const ZKLib = (await import('node-zklib')).default
-      zk = new ZKLib(ip, port, 10000, 5200, pwd)
-
-      console.log('[biometric] creating socket...')
-      try {
-        await zk.createSocket()
-        connected = true
-        console.log('[biometric] socket connected successfully')
-      } catch (socketErr) {
-        console.error('[biometric] socket creation failed:', formatZkErr(socketErr))
-        throw socketErr
-      }
+      console.log('[biometric] connecting (with COMM auth if needed)...')
+      const { connectZk, disconnectZk } = await import('../zkConnect.js')
+      ;({ zk } = await connectZk({ ip, port, password: pwd }))
+      connected = true
+      console.log('[biometric] socket connected successfully')
 
       console.log('[biometric] fetching attendances...')
       let rawResult

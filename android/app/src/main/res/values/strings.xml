@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Epicspire RMS</string>
-    <string name="title_activity_main">Epicspire RMS</string>
-    <string name="package_name">com.epicspire.rms</string>
-    <string name="custom_url_scheme">com.epicspire.rms</string>
-</resources>

@@ -21,7 +21,7 @@ export default function DeleteKeyModal({ open, title, description, busy, error, 
               value={key}
               onChange={e => setKey(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && key && !busy) onSubmit?.(key) }}
-              className="mt-1 w-full px-3 py-2 border rounded bg-white text-gray-900"
+              className="mt-1 w-full px-3 py-2 border rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 dark:border-gray-600"
               placeholder="Enter key"
               autoFocus
             />

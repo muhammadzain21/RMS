@@ -4,9 +4,10 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // Use relative paths in production so Electron can load assets via file://
-  // Without this, dist/index.html will point to "/assets/..." which breaks in packaged apps
-  base: './',
+  // Absolute asset paths so browser reloads on nested routes (/staff/...) still
+  // load /assets/*.js correctly. Electron production loads http://127.0.0.1:5000
+  // (not file://), so "/" works for both desktop and LAN browser access.
+  base: '/',
   server: {
     host: true,
     port: 5173,

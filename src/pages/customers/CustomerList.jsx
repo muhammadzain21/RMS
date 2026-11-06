@@ -5,6 +5,11 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
+import { format } from 'date-fns'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function CustomerList() {
  const { state, dispatch } = useData()
@@ -218,32 +223,116 @@ export default function CustomerList() {
  }
  }
 
- const exportCSV = () => {
- const header = ['Name','Phone','Regular','Visits','Spent','Last Visit']
- const data = (state.customers||[]).map(c => [
- c.name || '',
- c.phone || '',
- c.isRegular ? 'Yes' : 'No',
- String((salesAgg[c.id]?.visits ?? c.totalVisits ?? 0)),
- String(Number((salesAgg[c.id]?.spent ?? c.totalSpent ?? 0)).toFixed(2)),
- c.lastVisit || ''
+ const mapCustomerRow = (c) => ({
+   ...c,
+   id: c.id || c._id,
+   visits: salesAgg[c.id]?.visits ?? c.totalVisits ?? 0,
+   spent: salesAgg[c.id]?.spent ?? c.totalSpent ?? 0,
+ })
+
+ const fetchFilteredCustomers = async () => {
+ const params = new URLSearchParams({ page: '1', limit: '50000' })
+ if (search.trim()) params.set('q', search.trim())
+ const res = await fetch(`${API}/api/customers?${params.toString()}`, {
+   headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+ })
+ if (!res.ok) throw new Error('Failed to load customers')
+ const body = await res.json()
+ const list = Array.isArray(body?.rows) ? body.rows : (Array.isArray(body) ? body : [])
+ return list.map(mapCustomerRow)
+ }
+
+ const customerReportRows = (list) => list.map(c => [
+   c.name || '',
+   c.phone || '',
+   c.address || '',
+   c.isRegular ? 'Yes' : 'No',
+   String(c.visits ?? 0),
+   Number(c.spent ?? 0).toLocaleString(),
  ])
- const csv = [header, ...data].map(r => r.map(val => {
- const s = String(val).replaceAll('"','""')
- return /[",\n]/.test(s) ? `"${s}"` : s
- }).join(',')).join('\n')
- const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = `customers_${new Date().toLocaleDateString('en-CA')}.csv`
- a.click()
- URL.revokeObjectURL(url)
+
+ const openPrintPreview = async () => {
+ try {
+ const list = await fetchFilteredCustomers()
+ const totalSpent = list.reduce((a, c) => a + Number(c.spent || 0), 0)
+ const body =
+ reportSummary([
+ { label: 'Customers', amount: String(list.length) },
+ { label: 'Total spent (PKR)', amount: totalSpent.toLocaleString() },
+ ]) +
+ reportSec(`Customers (${list.length})`) +
+ reportTable({
+ headers: ['Name', 'Phone', 'Address', 'Regular', { t: 'Visits', align: 'r' }, { t: 'Spent (PKR)', align: 'r' }],
+ numbered: true,
+ rows: list.map(c => [
+ c.name || '-',
+ c.phone || '-',
+ c.address || '-',
+ c.isRegular ? 'Yes' : 'No',
+ { v: c.visits ?? 0, align: 'r' },
+ { v: Number(c.spent ?? 0).toLocaleString(), align: 'r' },
+ ]),
+ emptyText: 'No customers match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Customers',
+ reportLabel: 'Customer List',
+ reportNo: `Rpt #: CUS-${format(new Date(), 'yyyy-MM-dd')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+ metaRight: [['Records', String(list.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Customers-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportPDF = async () => {
+ try {
+ const list = await fetchFilteredCustomers()
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Customers', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${list.length} customers${search.trim() ? ` · search: ${search.trim()}` : ''}`, 40, 46)
+ doc.autoTable({
+ head: [['Name', 'Phone', 'Address', 'Regular', 'Visits', 'Spent (PKR)']],
+ body: customerReportRows(list),
+ startY: 54,
+ styles: { fontSize: 7, cellPadding: 3 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`customers_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
+
+ const exportCSV = async () => {
+ try {
+ const list = await fetchFilteredCustomers()
+ downloadCsvFile(
+ `customers_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ ['Name', 'Phone', 'Address', 'Regular', 'Visits', 'Spent (PKR)'],
+ customerReportRows(list)
+ )
+ toast.success('CSV exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export CSV')
+ }
  }
 
  return (
  <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Customers
- </h1><div className="flex flex-wrap items-center gap-2"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder=" Search by name/phone..." className="px-4 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all w-full sm:w-auto" /><button onClick={onAdd} className="px-4 py-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"> Add Customer</button><button onClick={exportCSV} className="px-4 py-2.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"> Export CSV</button><button onClick={onImportClick} className="px-4 py-2.5 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importCSV} /></div></div><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">SR No</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Phone</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Address</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Regular</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Visits</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Spent</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><input value={search} onChange={e=>setSearch(e.target.value)} placeholder=" Search by name/phone..." className="px-4 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all w-full sm:w-auto" /><button onClick={onAdd} className="ui-btn ui-btn-primary"> Add Customer</button><button onClick={onImportClick} className="ui-btn ui-btn-secondary"> Import CSV</button><input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importCSV} /></div></div><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">SR No</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Phone</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Address</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Regular</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Visits</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Spent</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {rows.map((r, idx) => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-500 dark:text-gray-400">{idx + 1}</td><td className="p-3"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 text-white flex items-center justify-center text-sm font-bold">
  {(r.name?.[0] || '').toUpperCase()}

@@ -18,10 +18,15 @@ const KotSchema = new mongoose.Schema({
   tokenNo: { type: String, index: true },
   waiterId: { type: String, index: true },
   tableNo: { type: String, index: true },
+  floor: { type: String, default: '' },
+  customerName: { type: String, default: '' },
+  customerPhone: { type: String, default: '' },
+  customerAddress: { type: String, default: '' },
   remarks: { type: String },
   items: { type: [KotItemSchema], default: [] },
   status: { type: String, default: 'new', index: true },
   statusUpdatedAt: { type: Date, default: null },
+  completedAt: { type: Date, default: null }, // set when status becomes 'completed'
   userId: { type: String },
   idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
 }, { timestamps: true })

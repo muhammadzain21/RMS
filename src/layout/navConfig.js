@@ -10,10 +10,22 @@ import {
   UtensilsCrossed, FolderTree, FlaskConical, BarChart3, Bike,
   CalendarCheck, UserPlus, CalendarDays, CalendarRange, Settings,
   Receipt, TrendingUp, ShieldCheck, Lock, ScrollText,
-  Fingerprint, ChefHat, Database,
+  Fingerprint, ChefHat, Database, UserCheck, Home, ShoppingBag,
 } from 'lucide-react'
 
 export const dashboardItem = { path: '/', label: 'Dashboard', icon: LayoutDashboard, order: 1 }
+
+// Injected into the sidebar only for staff logins whose My Work toggle is on.
+export const myWorkItem = { path: '/my', label: 'Home', icon: Home, order: 1.5, section: 'My Work' }
+
+export const myWorkNavItems = [
+  { path: '/my', label: 'Home', icon: Home, order: 1.5, section: 'My Work', end: true },
+  { path: '/my/attendance', label: 'Attendance', icon: CalendarCheck, order: 1.51, section: 'My Work' },
+  { path: '/my/purchases', label: 'Purchases', icon: ShoppingBag, order: 1.52, section: 'My Work' },
+  { path: '/my/advances', label: 'Advances', icon: HandCoins, order: 1.53, section: 'My Work' },
+  { path: '/my/earnings', label: 'Earnings', icon: TrendingUp, order: 1.54, section: 'My Work' },
+  { path: '/my/salary', label: 'Salary', icon: FileText, order: 1.55, section: 'My Work' },
+]
 
 const salesSection = {
  label: 'Sales',
@@ -27,7 +39,6 @@ const salesSection = {
  { path: '/sales/kds', label: 'KDS', icon: ChefHat, order: 7.5 },
  { path: '/sales/void-history', label: 'Void History', icon: XCircle, order: 8 },
  { path: '/sales/cash-opening', label: 'Day Opening', icon: Wallet, order: 9 },
- { path: '/sales/cash-handover', label: 'Cash Handover', icon: HandCoins, order: 10 },
   { path: '/customers', label: 'Customers', icon: Users, order: 19 },
 
  { path: '/sales/cash-count', label: 'Manager Cash Count', icon: Calculator, order: 11 },

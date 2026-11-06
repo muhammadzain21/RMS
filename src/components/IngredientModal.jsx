@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { useData } from '../state/DataContext.jsx'
 import { useAuth } from '../state/AuthContext.jsx'
+import DatePicker from '../components/DatePicker.jsx'
 
 export default function IngredientModal({ open, onClose, initial }) {
  const { state, dispatch, businessDate } = useData()
@@ -169,6 +170,14 @@ export default function IngredientModal({ open, onClose, initial }) {
 }
 
 function LabelInput({ label, value, onChange, type='text', required=false, placeholder='', step, min }) {
+ if (type === 'date') {
+  return (
+   <div className="block text-sm">
+    <span className="text-sm">{label}</span>
+    <div className="mt-1"><DatePicker value={value} onChange={onChange} /></div>
+   </div>
+  )
+ }
  return (
  <label className="block text-sm"><span className="text-sm">{label}</span><input required={required} value={value} onChange={e=>onChange(e.target.value)} type={type} placeholder={placeholder} step={step} min={min} className="mt-1 w-full px-3 py-2 border rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white dark:border-gray-600" /></label>
  )

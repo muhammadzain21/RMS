@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAuth } from '../../state/AuthContext.jsx';
 import { useData } from '../../state/DataContext.jsx';
 import { useConfirm } from '../../components/useConfirm.jsx';
 import { toast } from 'react-hot-toast';
-import { getLocalDateString } from '../../utils/dateUtils.js';
+import { getLocalDateString, formatTime12 } from '../../utils/dateUtils.js';
 import MarkAttendanceTab from './tabs/MarkAttendanceTab';
 import AddStaffTab from './tabs/AddStaffTab';
 import DailyViewTab from './tabs/DailyViewTab';
@@ -11,6 +11,7 @@ import MonthlyViewTab from './tabs/MonthlyViewTab';
 import AdvancesTab from './tabs/AdvancesTab';
 import PayrollTab from './tabs/PayrollTab';
 import StaffMonthSummaryPage from './StaffMonthSummaryPage.jsx';
+import StaffHistoryPage from './StaffHistoryPage.jsx';
 import StaffSettingsTab from './tabs/StaffSettingsTab';
 
 export default function StaffAttendance({ initialTab = 'attendance', showTabs = true }) {
@@ -22,6 +23,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
 
  const [tab, setTab] = useState(initialTab);
  const [staff, setStaff] = useState([]);
+ const [biometricMaps, setBiometricMaps] = useState([]); // { staffId, enrollId }
  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
  const [search, setSearch] = useState('');
  const [loadingStaff, setLoadingStaff] = useState(false);
@@ -36,7 +38,6 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  deductionPerMinuteEarlyOut: 0,
  absentChargesEnabled: false
  });
- const [payNotes, setPayNotes] = useState([]);
  const [advances, setAdvances] = useState([]);
  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
@@ -56,7 +57,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  if (res.ok) {
  const result = await res.json();
  const docs = result.data || [];
- const mapped = docs.map(d => ({
+        const mapped = docs.map(d => ({
  id: d._id || d.id || crypto.randomUUID(),
  name: d.name,
  position: d.position || 'Staff',
@@ -64,9 +65,13 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  cnic: d.cnic,
  address: d.address,
  salary: typeof d.salary === 'number' ? d.salary : Number(d.salary || 0),
+ advanceLimit: Number(d.advanceLimit || 0),
  joinDate: d.joinDate ? String(d.joinDate).slice(0, 10) : undefined,
  status: d.status === 'Inactive' ? 'inactive' : 'active',
- shiftId: d.shiftId || ''
+ shiftId: d.shiftId || '',
+ loginUsername: d.loginUsername || '',
+ loginRole: d.loginRole || 'Staff',
+ myWorkAccess: d.myWorkAccess !== false,
  }));
  setStaff(mapped);
  setPagination(prev => ({
@@ -85,6 +90,41 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  useEffect(() => {
  fetchStaff();
  }, [token, API, pagination.page, pagination.limit, search]);
+
+ const fetchBiometricMaps = useCallback(async () => {
+ if (!token) return;
+ try {
+ const res = await fetch(`${API}/api/biometric/mappings`, {
+ headers: { Authorization: `Bearer ${token}` }
+ });
+ if (res.ok) {
+ const data = await res.json();
+ const items = Array.isArray(data?.items) ? data.items : [];
+ setBiometricMaps(
+ items
+ .filter(m => m && m.active !== false && m.staffId && m.enrollId)
+ .map(m => ({
+ staffId: String(m.staffId),
+ enrollId: String(m.enrollId).trim(),
+ }))
+ );
+ }
+ } catch (e) {
+ console.error('Failed to fetch biometric mappings:', e);
+ }
+ }, [token, API]);
+
+ useEffect(() => {
+ fetchBiometricMaps();
+ }, [fetchBiometricMaps]);
+
+ const staffWithBio = useMemo(() => {
+ const byStaff = new Map(biometricMaps.map(m => [String(m.staffId), m.enrollId]));
+ return staff.map(s => ({
+ ...s,
+ biometricId: byStaff.get(String(s.id)) || '',
+ }));
+ }, [staff, biometricMaps]);
 
  useEffect(() => {
  setTab(initialTab);
@@ -143,35 +183,9 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  })();
  }, [token, month, API]);
 
- // Load pay notes
- useEffect(() => {
- if (!token) return;
- (async () => {
- try {
- const res = await fetch(`${API}/api/staff-pay-notes?month=${encodeURIComponent(month)}`, {
- headers: { Authorization: `Bearer ${token}` }
- });
- if (res.ok) {
- const rows = await res.json();
- const mapped = (Array.isArray(rows) ? rows : []).map(n => ({
- id: n._id || crypto.randomUUID(),
- staffId: n.staffId,
- month: n.month,
- date: n.date || '',
- notes: n.notes || '',
- amount: Number(n.amount || 0),
- createdAt: n.createdAt || new Date().toISOString()
- }));
- setPayNotes(mapped);
- }
- } catch {}
- })();
- }, [token, month, API]);
-
  // Load staff advances
- useEffect(() => {
+ const fetchAdvances = async () => {
  if (!token) return;
- (async () => {
  try {
  const res = await fetch(`${API}/api/staff-advances?month=${encodeURIComponent(month)}`, {
  headers: { Authorization: `Bearer ${token}` }
@@ -181,17 +195,19 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  const mapped = (Array.isArray(rows) ? rows : []).map(n => ({
  id: n._id || crypto.randomUUID(),
  staffId: String(n.staffId || ''),
+ staffName: n.staffName || '',
  month: n.month,
  date: n.date || '',
  notes: n.notes || '',
  amount: Number(n.amount || 0),
+ type: n.type || 'issue',
  createdAt: n.createdAt || new Date().toISOString()
  }));
  setAdvances(mapped);
  }
  } catch {}
- })();
- }, [token, month, API]);
+ };
+ useEffect(() => { fetchAdvances(); }, [token, month, API]);
 
  const addStaff = async (payload) => {
  try {
@@ -208,9 +224,12 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  address: payload.address || '',
  position: payload.position,
  salary: Number(payload.salary || 0),
+ advanceLimit: Number(payload.advanceLimit || 0),
  status: payload.status === 'inactive' ? 'Inactive' : 'Active',
  joinDate: payload.joinDate,
- shiftId: payload.shiftId || ''
+ shiftId: payload.shiftId || '',
+ myWorkAccess: payload.myWorkAccess !== false,
+ ...(payload.username ? { username: payload.username, password: payload.password || '', role: payload.role || 'Staff' } : {})
  })
  });
  if (res.ok) {
@@ -241,9 +260,12 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  address: payload.address || '',
  position: payload.position,
  salary: Number(payload.salary || 0),
+ advanceLimit: Number(payload.advanceLimit || 0),
  status: payload.status === 'inactive' ? 'Inactive' : 'Active',
  joinDate: payload.joinDate,
- shiftId: payload.shiftId || ''
+ shiftId: payload.shiftId || '',
+ myWorkAccess: payload.myWorkAccess !== false,
+ ...(payload.username || payload.password ? { username: payload.username || '', password: payload.password || '', role: payload.role || 'Staff' } : {})
  })
  });
  if (res.ok) {
@@ -523,56 +545,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  }
  };
 
- const addPayNote = async ({ staffId, month, notes, amount }) => {
- try {
- const res = await fetch(`${API}/api/staff-pay-notes`, {
- method: 'POST',
- headers: {
- 'Content-Type': 'application/json',
- Authorization: `Bearer ${token}`
- },
- body: JSON.stringify({ staffId, month, date: String(businessDate||'').slice(0,10), notes, amount })
- });
- if (res.ok) {
- const n = await res.json();
- setPayNotes(prev => [{
- id: n._id || crypto.randomUUID(),
- staffId: n.staffId || staffId,
- month: n.month || month,
- date: n.date || String(businessDate||'').slice(0,10),
- notes: n.notes || '',
- amount: Number(n.amount || 0),
- createdAt: n.createdAt || new Date().toISOString()
- }, ...prev]);
- toast.success('Saved');
- } else {
- const msg = await res.text();
- toast.error(`Failed to save ${res.status}${msg ? `: ${msg}` : ''}`);
- }
- } catch {
- toast.error('Network error while saving');
- }
- };
-
- const deletePayNote = async (id) => {
- try {
- const res = await fetch(`${API}/api/staff-pay-notes/${id}`, {
- method: 'DELETE',
- headers: { Authorization: `Bearer ${token}` }
- });
- if (res.ok) {
- setPayNotes(prev => prev.filter(n => n.id !== id));
- toast.success('Note removed');
- } else {
- const msg = await res.text();
- toast.error(`Failed to delete ${res.status}${msg ? `: ${msg}` : ''}`);
- }
- } catch {
- toast.error('Network error while deleting');
- }
- };
-
- const addAdvance = async ({ staffId, month, date, notes, amount }) => {
+ const addAdvance = async ({ staffId, month, date, notes, amount, type }) => {
  try {
  const res = await fetch(`${API}/api/staff-advances`, {
  method: 'POST',
@@ -580,20 +553,22 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  'Content-Type': 'application/json',
  Authorization: `Bearer ${token}`
  },
- body: JSON.stringify({ staffId, month, date: date || String(businessDate||'').slice(0,10), notes, amount })
+ body: JSON.stringify({ staffId, month, date: date || String(businessDate||'').slice(0,10), notes, amount, type })
  });
  if (res.ok) {
  const n = await res.json();
  setAdvances(prev => [{
  id: n._id || crypto.randomUUID(),
  staffId: String(n.staffId || staffId),
+ staffName: n.staffName || '',
  month: n.month || month,
  date: n.date || date || '',
  notes: n.notes || '',
  amount: Number(n.amount || 0),
+ type: n.type || 'issue',
  createdAt: n.createdAt || new Date().toISOString()
  }, ...prev]);
- toast.success('Advance saved');
+ toast.success(n.type === 'repay' ? 'Repayment saved' : 'Advance saved');
  } else {
  const msg = await res.text();
  toast.error(`Failed to save ${res.status}${msg ? `: ${msg}` : ''}`);
@@ -603,7 +578,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  }
  };
 
- const updateAdvance = async ({ id, staffId, month, date, notes, amount }) => {
+ const updateAdvance = async ({ id, staffId, month, date, notes, amount, type }) => {
  try {
  const res = await fetch(`${API}/api/staff-advances/${id}`, {
  method: 'PUT',
@@ -611,17 +586,19 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  'Content-Type': 'application/json',
  Authorization: `Bearer ${token}`
  },
- body: JSON.stringify({ staffId, month, date, notes, amount })
+ body: JSON.stringify({ staffId, month, date, notes, amount, type })
  });
  if (res.ok) {
  const n = await res.json();
  setAdvances(prev => prev.map(a => a.id === id ? {
  ...a,
  staffId: String(n.staffId || staffId),
+ staffName: n.staffName || '',
  month: n.month || month,
  date: n.date || date || '',
  notes: n.notes || '',
- amount: Number(n.amount || 0)
+ amount: Number(n.amount || 0),
+ type: n.type || 'issue'
  } : a));
  toast.success('Advance updated');
  } else {
@@ -651,17 +628,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  }
  };
 
- const fmt12 = (t) => {
- if (!t) return '-';
- const m = /^(\d{1,2}):(\d{2})$/.exec(t);
- if (!m) return t;
- let h = Number(m[1]);
- const min = m[2];
- const ampm = h >= 12 ? 'PM' : 'AM';
- h = h % 12;
- if (h === 0) h = 12;
- return `${h}:${min} ${ampm}`;
- };
+ const fmt12 = (t) => formatTime12(t) || '-';
 
  const tabs = [
  { id: 'attendance', label: 'Mark Attendance', icon: '' },
@@ -695,7 +662,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
 
  {tab === 'attendance' && (
  <MarkAttendanceTab
- staff={staff}
+ staff={staffWithBio}
  attendance={attendance}
  settings={settings}
  onClockIn={clockIn}
@@ -710,7 +677,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
 
  {tab === 'addStaff' && (
  <AddStaffTab
- staff={staff}
+ staff={staffWithBio}
  pagination={pagination}
  setPagination={setPagination}
  search={search}
@@ -723,30 +690,30 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  token={token}
  API={API}
  shifts={settings.shifts || []}
+ onMappingsChange={fetchBiometricMaps}
  />
  )}
 
  {tab === 'daily' && (
  <DailyViewTab
  attendance={attendance}
- staff={staff}
+ staff={staffWithBio}
  fmt12={fmt12}
  onMarkLeave={markLeave}
  token={token}
  API={API}
  settings={state?.settings}
+ month={month}
+ setMonth={setMonth}
  />
  )}
 
  {tab === 'monthly' && (
  <MonthlyViewTab
- staff={staff}
+ staff={staffWithBio}
  attendance={attendance}
  settings={settings}
- payNotes={payNotes}
  advances={advances}
- onDeletePayNote={deletePayNote}
- onAddPayNote={addPayNote}
  state={state}
  API={API}
  token={token}
@@ -763,7 +730,6 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  advances={advances}
  attendance={attendance}
  settings={settings}
- payNotes={payNotes}
  onAddAdvance={addAdvance}
  onUpdateAdvance={updateAdvance}
  onDeleteAdvance={deleteAdvance}
@@ -772,22 +738,23 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  toast={toast}
  businessDate={businessDate}
  confirm={confirm}
+ API={API}
+ token={token}
  />
  )}
 
  {tab === 'payroll' && (
  <PayrollTab
  staff={staff}
- attendance={attendance}
- settings={settings}
- payNotes={payNotes}
- advances={advances}
- onAddPayNote={addPayNote}
- onAddAdvance={addAdvance}
  month={month}
  setMonth={setMonth}
  toast={toast}
  businessDate={businessDate}
+ API={API}
+ token={token}
+ confirm={confirm}
+ companyName={state?.settings?.companyName}
+ onRefreshAdvances={fetchAdvances}
  />
  )}
 
@@ -796,12 +763,23 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  staff={staff}
  attendance={attendance}
  settings={settings}
- payNotes={payNotes}
  advances={advances}
  month={month}
  setMonth={setMonth}
  businessDate={businessDate}
  state={state}
+ API={API}
+ token={token}
+ />
+ )}
+
+ {tab === 'staffHistory' && (
+ <StaffHistoryPage
+ staff={staff}
+ API={API}
+ token={token}
+ companyName={state?.settings?.companyName}
+ companyInfo={state?.settings}
  />
  )}
 

@@ -5,6 +5,11 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { Plus, X } from 'lucide-react'
+import { format } from 'date-fns'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function MenuList() {
  const { state, dispatch } = useData()
@@ -156,30 +161,86 @@ export default function MenuList() {
 
  // Seed function removed per request
 
- const downloadBlob = (blob, filename) => {
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = filename
- document.body.appendChild(a)
- a.click()
- a.remove()
- URL.revokeObjectURL(url)
+ const menuReportRows = () => filteredItems.map(r => [
+   Number(r.sortOrder || 0),
+   r.name || '',
+   r.category || '',
+   Number(r.price || 0),
+   Number(r.discount || 0),
+   r.active ? 'Yes' : 'No',
+ ])
+
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([
+ { label: 'Menu items', amount: String(filteredItems.length) },
+ { label: 'Active', amount: String(filteredItems.filter(i => i.active !== false).length) },
+ ]) +
+ reportSec(`Menu items (${filteredItems.length})`) +
+ reportTable({
+ headers: [{ t: 'Order', align: 'r' }, 'Name', 'Category', { t: 'Price (PKR)', align: 'r' }, { t: 'Discount %', align: 'r' }, 'Active'],
+ numbered: true,
+ rows: filteredItems.map(r => [
+ { v: Number(r.sortOrder || 0), align: 'r' },
+ r.name,
+ r.category || '-',
+ { v: Number(r.price || 0).toLocaleString(), align: 'r' },
+ { v: Number(r.discount || 0), align: 'r' },
+ r.active !== false ? 'Yes' : 'No',
+ ]),
+ emptyText: 'No menu items match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Menu List',
+ reportLabel: 'Menu Report',
+ reportNo: `Rpt #: MENU-${format(new Date(), 'yyyy-MM-dd')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+ metaRight: [['Records', String(filteredItems.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Menu-List-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
  }
 
- const onExport = async (format) => {
+ const exportPDF = () => {
  try {
- setLoading(true)
- const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
- const res = await fetch(`${API}/api/menu/export?format=${format}`, { headers })
- if (!res.ok) throw new Error('Failed')
- const blob = await res.blob()
- downloadBlob(blob, `menu_export.${format === 'csv' ? 'csv' : 'json'}`)
- toast.success(`Exported ${format.toUpperCase()}`)
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Menu List', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${filteredItems.length} items${search.trim() ? ` · search: ${search.trim()}` : ''}`, 40, 46)
+ doc.autoTable({
+ head: [['Order', 'Name', 'Category', 'Price (PKR)', 'Discount %', 'Active']],
+ body: menuReportRows(),
+ startY: 54,
+ styles: { fontSize: 8, cellPadding: 4 },
+ headStyles: { fillColor: [249, 115, 22], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`menu_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
  } catch (e) {
- toast.error('Export failed')
- } finally {
- setLoading(false)
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
+
+ const exportFilteredCSV = () => {
+ try {
+ downloadCsvFile(
+ `menu_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ ['Order', 'Name', 'Category', 'Price (PKR)', 'Discount %', 'Active'],
+ menuReportRows()
+ )
+ toast.success('CSV exported successfully')
+ } catch {
+ toast.error('Failed to export CSV')
  }
  }
 
@@ -218,7 +279,7 @@ export default function MenuList() {
 
  return (
  <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Menu
- </h1><div className="flex items-center gap-2"><button onClick={onAdd} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"><Plus size={18} /> Add Menu Item</button><button type="button" disabled={loading} onClick={()=>onExport('csv')} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 text-sm disabled:opacity-50">Export CSV</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
+ </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportFilteredCSV} className={btnCsv}>CSV</button><button onClick={onAdd} className="ui-btn ui-btn-primary flex items-center gap-2"><Plus size={18} /> Add Menu Item</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
  type="number"
  min={1}
  max={12}
@@ -250,7 +311,7 @@ export default function MenuList() {
  {form.imageUrl && (
  <div className="mt-2"><img src={form.imageUrl} alt="Menu item preview" className="h-20 w-auto rounded-lg border-2 border-orange-200 dark:border-orange-700 shadow-sm" /></div>
  )}
- <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Update</button></div>
+ <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="ui-btn ui-btn-primary disabled:opacity-50">Update</button></div>
  </form>
  ) : (
  <form onSubmit={onSubmit} className="space-y-4">
@@ -276,7 +337,7 @@ export default function MenuList() {
  ))}
  </div>
  <button type="button" onClick={() => setMultiRows([...multiRows, blankRow()])} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 font-medium hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all w-full justify-center"><Plus size={18} /> Add Another Item</button>
- <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Add All Items</button></div>
+ <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="ui-btn ui-btn-primary disabled:opacity-50">Add All Items</button></div>
  </form>
  )}
  </div></div>

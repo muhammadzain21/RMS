@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 import SupplierModal from '../../components/SupplierModal.jsx'
 import { useLocation } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
+import DatePicker from '../../components/DatePicker.jsx'
 
 export default function SupplyNew() {
   const { state, dispatch, businessDate } = useData()
@@ -64,10 +65,9 @@ export default function SupplyNew() {
       )}
       <form onSubmit={submit} className="space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <label className="block text-sm">
-            <div>Date</div>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="mt-1 w-full px-3 py-2 border rounded" />
-          </label>
+          <div>
+            <DatePicker label="Date" value={date} onChange={v=>{ if (v) setDate(v) }} allowClear={false} />
+          </div>
           <label className="block text-sm md:col-span-2">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <span>Supplier</span>

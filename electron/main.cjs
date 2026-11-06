@@ -3,11 +3,100 @@
 
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, nativeImage, shell } = require('electron')
 const { execSync } = require('child_process')
+const http = require('http')
 const path = require('path')
 const fs = require('fs')
 const fsp = require('fs').promises
 const { pathToFileURL } = require('url')
 let printer
+
+function waitForLocalServer(port = 5000, attempts = 80) {
+  return new Promise((resolve) => {
+    let n = 0
+    const tick = () => {
+      const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
+        res.resume()
+        resolve(true)
+      })
+      req.on('error', () => {
+        if (++n >= attempts) return resolve(false)
+        setTimeout(tick, 250)
+      })
+      req.setTimeout(1500, () => {
+        try { req.destroy() } catch {}
+      })
+    }
+    tick()
+  })
+}
+
+function zoomStorePath() {
+  try { return path.join(app.getPath('userData'), 'window-zoom.json') } catch { return '' }
+}
+
+function loadSavedZoomFactor() {
+  try {
+    const p = zoomStorePath()
+    if (!p || !fs.existsSync(p)) return 1
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'))
+    const z = Number(j?.zoomFactor)
+    if (Number.isFinite(z) && z >= 0.5 && z <= 3) return z
+  } catch {}
+  return 1
+}
+
+function saveZoomFactor(factor) {
+  try {
+    const z = Number(factor)
+    if (!Number.isFinite(z) || z < 0.5 || z > 3) return
+    const p = zoomStorePath()
+    if (!p) return
+    fs.writeFileSync(p, JSON.stringify({ zoomFactor: z }), 'utf8')
+  } catch {}
+}
+
+function applySavedZoom(win) {
+  if (!win || win.isDestroyed()) return
+  try {
+    const z = loadSavedZoomFactor()
+    win.webContents.setZoomFactor(z)
+  } catch {}
+}
+
+function persistCurrentZoom(win) {
+  if (!win || win.isDestroyed()) return
+  try {
+    saveZoomFactor(win.webContents.getZoomFactor())
+  } catch {}
+}
+
+function wireZoomPersistence(win) {
+  if (!win || win.isDestroyed()) return
+  const restore = () => applySavedZoom(win)
+  const persist = () => persistCurrentZoom(win)
+
+  // Restore after every load/reload so zoom matches last session
+  win.webContents.on('did-finish-load', restore)
+  win.webContents.on('dom-ready', restore)
+
+  // Persist when user zooms (Ctrl +/- / Ctrl+scroll / menu)
+  try {
+    win.webContents.on('zoom-changed', persist)
+  } catch {}
+
+  // Fallback: catch keyboard zoom shortcuts
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (!input || input.type !== 'keyDown') return
+    const key = String(input.key || '')
+    const zoomKey = input.control || input.meta
+    if (zoomKey && (key === '=' || key === '+' || key === '-' || key === '_' || key === '0' || key === 'NumpadAdd' || key === 'NumpadSubtract' || key === 'Numpad0')) {
+      setTimeout(persist, 50)
+    }
+  })
+
+  win.on('close', persist)
+  win.on('blur', persist)
+}
 
 let mainWindow
 
@@ -276,9 +365,13 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
   } catch { return '' }
 })
 
+  wireZoomPersistence(mainWindow)
+  applySavedZoom(mainWindow)
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.setTitle("EpicSpire")
     try { mainWindow.setIcon(appIcon) } catch {}
+    applySavedZoom(mainWindow)
     mainWindow.show()
     try { mainWindow.webContents.send('license:status', getLicenseInfo()) } catch {}
   })
@@ -311,8 +404,8 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
       mainWindow.webContents.openDevTools({ mode: 'detach' })
     }
   } else {
-    // In production, start the bundled API server so renderer can call http://localhost:5000
-    // Use dynamic import to support ESM server entry.
+    // Start bundled API+UI server, then load http://127.0.0.1:5000 (not file://).
+    // Absolute /assets paths work on nested routes and match LAN browser access.
     (async () => {
       const startViaImport = async (entryPath) => {
         const url = pathToFileURL(entryPath).href
@@ -328,7 +421,6 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
         }
       } catch (e) {
         try {
-          // Fallback for unpacked builds run directly from source tree
           const devServerEntry = path.join(__dirname, '..', 'server', 'src', 'index.js')
           if (fs.existsSync(devServerEntry)) {
             await startViaImport(devServerEntry)
@@ -339,15 +431,26 @@ ipcMain.handle('backup:read', async (_event, { fullPath }) => {
           console.warn('[main] Failed to start server', (e && e.message) || e, '->', (e2 && e2.message) || e2)
         }
       }
+
+      const ok = await waitForLocalServer(5000)
+      if (ok) {
+        try {
+          await mainWindow.loadURL('http://127.0.0.1:5000/')
+          return
+        } catch (loadErr) {
+          console.warn('[main] Failed to load http://127.0.0.1:5000/', loadErr && loadErr.message || loadErr)
+        }
+      }
+      // Fallback: packaged dist via file URL (HashRouter / relative assets may apply)
+      const index = path.join(__dirname, '..', 'dist', 'index.html')
+      try {
+        await mainWindow.loadURL(pathToFileURL(index).href)
+      } catch (e) {
+        try { mainWindow.loadFile(index) } catch (e2) {
+          console.error('[main] loadFile failed:', e2 && e2.message || e2)
+        }
+      }
     })()
-    const index = path.join(__dirname, '..', 'dist', 'index.html')
-    try {
-      const fileUrl = pathToFileURL(index).href
-      mainWindow.loadURL(fileUrl)
-    } catch (e) {
-      console.warn('[main] Failed to load index via file URL, falling back to loadFile:', e && e.message || e)
-      try { mainWindow.loadFile(index) } catch (e2) { console.error('[main] loadFile failed:', e2 && e2.message || e2) }
-    }
   }
 
   mainWindow.on('closed', () => {
@@ -461,60 +564,92 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName }) => {
   }
 })
 
-// IPC: preview a PDF (base64) in an in-app Chromium PDF viewer window;
+// Shared: open a PDF file in an in-app Chromium PDF viewer window;
 // falls back to the system default PDF viewer if the window can't render it
+const openPdfPreviewWindow = async (fullPath, fileName) => {
+  const fileUrl = pathToFileURL(fullPath).toString()
+
+  const previewWin = new BrowserWindow({
+    width: 1000,
+    height: 800,
+    title: fileName,
+    autoHideMenuBar: true,
+    parent: mainWindow,
+    webPreferences: {
+      plugins: true,          // enables Chromium's built-in PDF viewer
+      sandbox: false,         // sandboxed renderers can't host the PDF extension (Electron 20+)
+      contextIsolation: false,
+      nodeIntegration: false,
+    },
+  })
+
+  const openExternal = async () => { try { await shell.openPath(fullPath) } catch {} }
+
+  // Never let a PDF navigation turn into a silent file download from this window
+  const onWillDownload = (_e, item, wc) => {
+    if (wc === previewWin.webContents) { try { item.cancel() } catch {} }
+  }
+  previewWin.webContents.session.on('will-download', onWillDownload)
+  setTimeout(() => {
+    try { previewWin.webContents.session.removeListener('will-download', onWillDownload) } catch {}
+  }, 30000)
+
+  previewWin.webContents.once('did-fail-load', async () => {
+    try { previewWin.destroy() } catch {}
+    await openExternal()
+  })
+  await previewWin.loadURL(fileUrl)
+
+  // If the PDF still ended up downloaded/blank instead of rendered,
+  // open it in the OS default PDF viewer instead
+  setTimeout(() => {
+    try {
+      if (previewWin.isDestroyed()) return
+      const url = previewWin.webContents.getURL()
+      if (!url || url === 'about:blank') { previewWin.destroy(); openExternal() }
+    } catch {}
+  }, 1500)
+}
+
+// IPC: preview a PDF (base64) in the in-app PDF viewer window
 ipcMain.handle('preview:open-pdf', async (_event, { name, data }) => {
   try {
     if (!data) throw new Error('No PDF data')
     const fileName = /\.[Pp][Dd][Ff]$/.test(String(name || '')) ? String(name) : `preview-${Date.now()}.pdf`
     const fullPath = path.join(app.getPath('temp'), fileName)
     await fsp.writeFile(fullPath, Buffer.from(String(data), 'base64'))
-    const fileUrl = pathToFileURL(fullPath).toString()
-
-    const previewWin = new BrowserWindow({
-      width: 1000,
-      height: 800,
-      title: fileName,
-      autoHideMenuBar: true,
-      parent: mainWindow,
-      webPreferences: {
-        plugins: true,          // enables Chromium's built-in PDF viewer
-        sandbox: false,         // sandboxed renderers can't host the PDF extension (Electron 20+)
-        contextIsolation: false,
-        nodeIntegration: false,
-      },
-    })
-
-    const openExternal = async () => { try { await shell.openPath(fullPath) } catch {} }
-
-    // Never let a PDF navigation turn into a silent file download from this window
-    const onWillDownload = (_e, item, wc) => {
-      if (wc === previewWin.webContents) { try { item.cancel() } catch {} }
-    }
-    previewWin.webContents.session.on('will-download', onWillDownload)
-    setTimeout(() => {
-      try { previewWin.webContents.session.removeListener('will-download', onWillDownload) } catch {}
-    }, 30000)
-
-    previewWin.webContents.once('did-fail-load', async () => {
-      try { previewWin.destroy() } catch {}
-      await openExternal()
-    })
-    await previewWin.loadURL(fileUrl)
-
-    // If the PDF still ended up downloaded/blank instead of rendered,
-    // open it in the OS default PDF viewer instead
-    setTimeout(() => {
-      try {
-        if (previewWin.isDestroyed()) return
-        const url = previewWin.webContents.getURL()
-        if (!url || url === 'about:blank') { previewWin.destroy(); openExternal() }
-      } catch {}
-    }, 1500)
-
+    await openPdfPreviewWindow(fullPath, fileName)
     return { ok: true, path: fullPath }
   } catch (e) {
     console.error('[preview] open pdf failed:', e && e.message || e)
     return { ok: false, error: String(e && e.message || e) }
+  }
+})
+
+// IPC: render report HTML to an A4 PDF in a hidden window, then show the PDF preview
+ipcMain.handle('preview:print-html', async (_event, { html, name }) => {
+  const printWin = new BrowserWindow({
+    show: false,
+    webPreferences: { backgroundThrottling: false },
+  })
+  try {
+    await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || '')))
+    // preferCSSPageSize honors the report's own @page size/margins (A4, 12mm)
+    const pdf = await printWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      preferCSSPageSize: true,
+      margins: { marginType: 'default' },
+    })
+    const fileName = /\.[Pp][Dd][Ff]$/.test(String(name || '')) ? String(name) : `report-${Date.now()}.pdf`
+    const fullPath = path.join(app.getPath('temp'), fileName)
+    await fsp.writeFile(fullPath, pdf)
+    await openPdfPreviewWindow(fullPath, fileName)
+    return { ok: true, path: fullPath }
+  } catch (e) {
+    console.error('[preview] html->pdf failed:', e && e.message || e)
+    return { ok: false, error: String(e && e.message || e) }
+  } finally {
+    try { printWin.destroy() } catch {}
   }
 })

@@ -2,8 +2,10 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import User from '../models/User.js'
 import Role from '../models/Role.js'
+import Staff from '../models/Staff.js'
 import { authRequired, signToken } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { mergePermissions } from '../utils/sidebarDefaults.js'
 
 const router = Router()
 
@@ -12,17 +14,34 @@ async function getUserWithPermissions(user) {
   const userData = {
     id: user._id,
     username: user.username,
-    role: user.role
+    role: user.role,
+    staffId: user.staffId || '',
+    useCustomPermissions: !!user.useCustomPermissions,
+    myWorkAccess: false,
   }
-  
-  // If user has a custom role (not Admin), fetch permissions from Role collection
-  if (user.role && user.role !== 'Admin' && user.role !== 'SuperAdmin') {
+
+  if (user.useCustomPermissions && Array.isArray(user.permissions)) {
+    userData.permissions = mergePermissions(user.permissions)
+  } else if (user.role && user.role !== 'Admin' && user.role !== 'SuperAdmin') {
     const role = await Role.findOne({ name: user.role })
     if (role) {
-      userData.permissions = role.permissions
+      userData.permissions = mergePermissions(role.permissions)
     }
   }
-  
+
+  // My Work is staff-only and driven by the Add Staff toggle — never by role defaults.
+  if (user.staffId) {
+    const staff = await Staff.findById(user.staffId).select('myWorkAccess').lean()
+    const allowed = !!(staff && staff.myWorkAccess !== false)
+    userData.myWorkAccess = allowed
+    const perms = (Array.isArray(userData.permissions) ? userData.permissions : []).filter(p => p.path !== '/my')
+    userData.permissions = allowed
+      ? [{ path: '/my', label: 'My Work', visible: true, order: 1.5, section: 'My Work' }, ...perms]
+      : perms
+  } else if (Array.isArray(userData.permissions)) {
+    userData.permissions = userData.permissions.map(p => p.path === '/my' ? { ...p, visible: false } : p)
+  }
+
   return userData
 }
 

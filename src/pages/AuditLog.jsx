@@ -1,4 +1,5 @@
 import { useAuth } from '../state/AuthContext.jsx'
+import { useData } from '../state/DataContext.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
@@ -6,8 +7,10 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import DatePicker from '../components/DatePicker.jsx'
 import Pagination from '../components/Pagination.jsx'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
 
 export default function AuditLog() {
+ const { state } = useData()
  const { token, users: authUsers, user: currentUser } = useAuth()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
@@ -96,6 +99,42 @@ export default function AuditLog() {
  return [{ id: '', name: 'All Users' }, ...list]
  }, [authUsers, rows])
 
+ const openPrintPreview = async () => {
+ try {
+ const periodFrom = from || 'All'
+ const periodTo = to || 'All'
+ const filterNote = type ? `Type: ${type}` : userId ? 'Filtered by user' : q ? `Search: ${q}` : 'None'
+ const body =
+ reportSummary([
+ { label: 'Total Entries', amount: String(rows.length) },
+ { label: 'Active Filter', amount: filterNote },
+ ]) +
+ reportSec(`Audit Log (${rows.length})`) +
+ reportTable({
+ headers: ['Time', 'Type', 'User', 'Action'],
+ numbered: true,
+ rows: rows.map(r => [
+ r.at ? format(new Date(r.at), 'yyyy-MM-dd HH:mm:ss') : '-',
+ r.type || '-',
+ r.userName || r.user || '-',
+ r.action || r.message || '-',
+ ]),
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Audit Log',
+ reportLabel: 'Audit Report',
+ reportNo: `Rpt #: AUD-${format(new Date(), 'yyyyMMdd-HHmm')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaRight: [['Records', String(rows.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Audit-Log-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ } catch {
+ toast.error('Print preview failed')
+ }
+ }
+
  const exportCSV = () => {
  const headers = ['Time','Type','User','Action']
  const lines = rows.map(r => [
@@ -147,11 +186,11 @@ export default function AuditLog() {
  }
 
  return (
- <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Audit Log
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="page-title">Audit Log
  </h1></div>
 
  {/* Summary Cards */}
- <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="p-4 rounded-xl bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/40 dark:to-gray-900 border-2 border-blue-300 dark:border-blue-800"><div className="text-xs font-semibold uppercase text-blue-700 dark:text-blue-300 mb-1">Total Entries</div><div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{rows.length.toLocaleString()}</div></div><div className="p-4 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-gray-900 border-2 border-emerald-300 dark:border-emerald-800"><div className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-300 mb-1">Date Range</div><div className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
+ <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="p-4 rounded-xl bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/40 dark:to-gray-900 border-2 border-blue-300 dark:border-blue-800"><div className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-1">Total Entries</div><div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{rows.length.toLocaleString()}</div></div><div className="p-4 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-gray-900 border-2 border-emerald-300 dark:border-emerald-800"><div className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-300 mb-1">Date Range</div><div className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
  {from && to ? `${from} to ${to}` : from ? `From ${from}` : to ? `Until ${to}` : 'All Time'}
  </div></div><div className="p-4 rounded-xl bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-900/40 dark:to-gray-900 border-2 border-purple-300 dark:border-purple-800"><div className="text-xs font-semibold uppercase text-purple-700 dark:text-purple-300 mb-1">Active Filter</div><div className="text-lg font-bold text-purple-900 dark:text-purple-100">
  {type ? type : userId ? 'By User' : q ? 'Search' : 'None'}
@@ -159,19 +198,19 @@ export default function AuditLog() {
 
  {/* Filters */}
  <div className="p-5 rounded-xl border-2 border-indigo-300 dark:border-indigo-800 bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-950/40 dark:to-gray-900 shadow-sm"><div className="text-sm font-bold text-indigo-900 dark:text-indigo-100 mb-4">Filters
- </div><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} max={to || today} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} min={from || ''} max={today} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Type</label><select 
+ </div><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} max={to || today} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} min={from || ''} max={today} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Type</label><select 
  value={type} 
  onChange={e=>setType(e.target.value)} 
  className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all min-w-[8rem]"
  >
  {types.map(t =><option key={t||'all'} value={t}>{t ? t : 'All Types'}</option>)}
- </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">User</label><select 
+ </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">User</label><select 
  value={userId} 
  onChange={e=>setUserId(e.target.value)} 
  className="px-3 py-2 rounded-lg border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all min-w-[10rem]"
  >
  {userOptions.map(u =><option key={u.id || 'all'} value={u.id}>{u.name || u.id || 'Unknown'}</option>)}
- </select></div><div className="flex flex-col gap-1 flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input 
+ </select></div><div className="flex flex-col gap-1 flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label><input 
  value={q} 
  onChange={e=>setQ(e.target.value)} 
  placeholder="Find action..." 
@@ -179,7 +218,7 @@ export default function AuditLog() {
  /></div><div className="flex gap-3 flex-shrink-0"><button 
  onClick={load} 
  disabled={loading}
- className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 whitespace-nowrap"
+ className="px-4 py-2 rounded-lg ui-btn ui-btn-primary disabled:opacity-50 whitespace-nowrap"
  >
  {loading ? 'Loading...' : 'Apply'}
  </button><button 
@@ -191,15 +230,21 @@ export default function AuditLog() {
 
  {/* Export Buttons */}
  <div className="flex justify-end gap-3"><button 
+ onClick={openPrintPreview} 
+ disabled={rows.length === 0}
+ className="ui-btn ui-btn-print disabled:opacity-50"
+ >
+ Print
+ </button><button 
  onClick={exportCSV} 
  disabled={rows.length === 0}
- className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 whitespace-nowrap"
+ className="ui-btn ui-btn-csv disabled:opacity-50"
  >
  CSV
  </button><button 
  onClick={exportPDF} 
  disabled={rows.length === 0}
- className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 whitespace-nowrap"
+ className="ui-btn ui-btn-pdf disabled:opacity-50"
  >
  PDF
  </button></div>

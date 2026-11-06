@@ -1,10 +1,51 @@
 import { Router } from 'express'
 import DayClose from '../models/DayClose.js'
+import CashOpening from '../models/CashOpening.js'
 import Settings from '../models/Settings.js'
+import Recall from '../models/Recall.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
 import { takeSnapshot } from './inventorySnapshots.js'
- 
+
+function ymdFromCreatedAt(createdAt) {
+  if (!createdAt && createdAt !== 0) return ''
+  let d
+  if (createdAt instanceof Date) d = createdAt
+  else if (typeof createdAt === 'number') d = new Date(createdAt)
+  else if (typeof createdAt === 'string' && /^\d+$/.test(createdAt.trim())) d = new Date(Number(createdAt))
+  else d = new Date(createdAt)
+  if (Number.isNaN(d.getTime())) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function addOneDayYmd(ymd) {
+  const [y, m, d] = String(ymd).split('-').map(Number)
+  if (!y || !m || !d) return ''
+  const dt = new Date(y, m - 1, d)
+  dt.setDate(dt.getDate() + 1)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+/** Any unpaid recall still in DB blocks day close (including older dates). */
+async function countOpenRecalls() {
+  const pending = await Recall.find({})
+    .select('date createdAt tokenNo orderNo')
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .lean()
+  const count = await Recall.countDocuments({})
+  return {
+    count,
+    items: pending.slice(0, 10).map(r => ({
+      date: r.date || ymdFromCreatedAt(r.createdAt) || '',
+      tokenNo: r.tokenNo || '',
+      orderNo: r.orderNo || '',
+    })),
+  }
+}
 
 const router = Router()
 router.use(authRequired)
@@ -52,14 +93,30 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const date = String(body.date)
     const existing = await DayClose.findOne({ date })
     if (existing) return res.status(409).json({ error: 'Day already closed for this date' })
+
+    const openRecalls = await countOpenRecalls()
+    if (openRecalls.count > 0) {
+      return res.status(400).json({
+        error: `Clear ${openRecalls.count} open recall(s) before day close (including older unpaid orders)`,
+        code: 'OPEN_RECALLS',
+        count: openRecalls.count,
+        recalls: openRecalls.items,
+      })
+    }
+
     const rec = await DayClose.create({
       date,
       openingCash: Number(body.openingCash||0),
       cashSales: Number(body.cashSales||0),
       cardSales: Number(body.cardSales||0),
+      onlineSales: Number(body.onlineSales || body.cardSales || 0),
+      complimentarySales: Number(body.complimentarySales||0),
+      staffSales: Number(body.staffSales||0),
       partySales: 0,
       returns: Number(body.returns||0),
       handovers: Number(body.handovers||0),
+      handoverTo: String(body.handoverTo || ''),
+      leftAtCounter: Number(body.leftAtCounter||0),
       payIns: Number(body.payIns||0),
       payOuts: Number(body.payOuts||0),
       expectedCash: Number(body.expectedCash||0),
@@ -70,12 +127,48 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       userName: req.user?.username || '',
     })
 
+    // Cash left at counter → next business day's opening (create or overwrite auto entry)
+    const left = Math.max(0, Number(body.leftAtCounter || 0))
+    let nextOpening = null
+    try {
+      const nextDate = addOneDayYmd(date)
+      if (nextDate) {
+        nextOpening = await CashOpening.findOneAndUpdate(
+          { date: nextDate },
+          {
+            $set: {
+              date: nextDate,
+              openingCash: left,
+              note: `Auto from day close ${date}`,
+              userId: req.user?.id || '',
+              userName: req.user?.username || 'system',
+            },
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        )
+        console.log(`[dayCloses] next-day opening ${nextDate} = ${left}`)
+      }
+    } catch (e) {
+      console.warn('[dayCloses] auto opening cash failed:', e?.message)
+    }
+
     await logAudit(req, 'day', `Day closed ${rec.date} variance ${rec.variance}`, { id: rec._id })
 
     // Take inventory snapshot at day close
     takeSnapshot(date, 'day-close').catch(()=>{})
 
-    res.status(201).json(rec)
+    res.status(201).json({
+      ...rec.toObject?.() ? rec.toObject() : (rec.toJSON?.() ? rec.toJSON() : rec),
+      nextOpening: nextOpening
+        ? {
+            id: nextOpening._id || nextOpening.id,
+            date: nextOpening.date,
+            openingCash: nextOpening.openingCash,
+            note: nextOpening.note,
+            userName: nextOpening.userName,
+          }
+        : null,
+    })
   } catch (e) { next(e) }
 })
 

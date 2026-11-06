@@ -6,6 +6,8 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import DatePicker from '../../components/DatePicker.jsx'
 
 export default function AdvanceBooking() {
  const { state, dispatch, businessDate } = useData()
@@ -170,6 +172,47 @@ export default function AdvanceBooking() {
  }
  }
 
+ const openPrintPreview = async () => {
+ try {
+ const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
+ const periodFrom = from || '—'
+ const periodTo = to || '—'
+ const statusLabel = statusFilter || 'All'
+ const body =
+ reportSummary([
+ { label: 'Total Deposits', amount: money(totalDeposits) },
+ { label: 'Bookings', amount: String(rows.length) },
+ ]) +
+ reportSec(`Advance Bookings (${rows.length})`) +
+ reportTable({
+ headers: ['Date', 'Time', 'Customer', 'Phone', { t: 'Deposit', align: 'r' }, 'Status', 'Note', 'User'],
+ numbered: true,
+ rows: rows.map(r => [
+ r.date,
+ r.time || '-',
+ r.customer || '-',
+ r.phone || '-',
+ { v: money(r.deposit), align: 'r' },
+ r.status,
+ r.note || '-',
+ r.userName || '-',
+ ]),
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Advance Bookings',
+ reportLabel: 'Advance Booking Report',
+ reportNo: `Rpt #: AB-${format(new Date(), 'yyyyMMdd-HHmm')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`], ['Status', statusLabel]],
+ metaRight: [['Records', String(rows.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Advance-Bookings-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ } catch {
+ toast.error('Print preview failed')
+ }
+ }
+
  const exportCSV = () => {
  const headers = ['Date','Time','Customer','Phone','Deposit (PKR)','Status','Note','User','Entry ID']
  const lines = rows.map(r => [r.date, r.time || '', r.customer || '', r.phone || '', r.deposit, r.status, r.note || '', r.userName || '', r.id]
@@ -211,7 +254,7 @@ export default function AdvanceBooking() {
  }
 
  return (
- <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Advance Booking
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="page-title">Advance Booking
  </h1></div>
 
  {/* Reminders */}
@@ -226,11 +269,11 @@ export default function AdvanceBooking() {
  </div>
  )}
 
- <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">New Booking</h2><form onSubmit={onAdd} className="grid grid-cols-1 sm:grid-cols-7 gap-4"><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time</label><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer</label><input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Customer name" className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone</label><input value={phone} onChange={e => setPhone(e.target.value)} placeholder="03xx..." className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Deposit</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" value={deposit} onChange={e => setDeposit(e.target.value)} placeholder="0" className="w-full pl-12 pr-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div></div><div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note</label><input value={note} onChange={e => setNote(e.target.value)} placeholder="Any note..." className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div className="flex items-end"><button type="submit" className="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"> Add Booking</button></div></form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-wrap items-center gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Bookings</h2><div className="sm:ml-auto flex flex-wrap gap-2"><button onClick={exportCSV} className="px-3 py-1.5 text-sm rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors font-medium border border-emerald-200 dark:border-emerald-700"> CSV</button><button onClick={exportPDF} className="px-3 py-1.5 text-sm rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium border border-red-200 dark:border-red-700"> PDF</button></div></div><div className="flex flex-wrap gap-3 mb-4"><div><label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">From</label><input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500" /></div><div><label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">To</label><input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500" /></div><div><label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Status</label><select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500"><option value="">All Status</option><option value="Booked">Booked</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></div><div><label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Search</label><input value={search} onChange={e => setSearch(e.target.value)} placeholder="date, time, customer, phone..." className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500" /></div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Time</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Phone</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Deposit</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">New Booking</h2><form onSubmit={onAdd} className="grid grid-cols-1 sm:grid-cols-7 gap-4"><div><DatePicker label="Date" value={date} onChange={v => { if (v) setDate(v) }} allowClear={false} /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time</label><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer</label><input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Customer name" className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone</label><input value={phone} onChange={e => setPhone(e.target.value)} placeholder="03xx..." className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Deposit</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" value={deposit} onChange={e => setDeposit(e.target.value)} placeholder="0" className="w-full pl-12 pr-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div></div><div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note</label><input value={note} onChange={e => setNote(e.target.value)} placeholder="Any note..." className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" /></div><div className="flex items-end"><button type="submit" className="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"> Add Booking</button></div></form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-wrap items-center gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Bookings</h2><div className="sm:ml-auto flex flex-wrap gap-2"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportCSV} className="px-3 py-1.5 text-sm rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition-colors font-medium border border-emerald-200 dark:border-emerald-700"> CSV</button><button onClick={exportPDF} className="px-3 py-1.5 text-sm rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium border border-red-200 dark:border-red-700"> PDF</button></div></div><div className="flex flex-wrap gap-3 mb-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={setFrom} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={setTo} /></div><div><label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Status</label><select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500"><option value="">All Status</option><option value="Booked">Booked</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></div><div><label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Search</label><input value={search} onChange={e => setSearch(e.target.value)} placeholder="date, time, customer, phone..." className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500" /></div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Time</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Phone</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Deposit</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {rows.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-4 py-3">
  {editId === r.id ? (
- <input type="date" value={editData.date} onChange={e=>setEditData(d=>({...d, date:e.target.value}))} className="px-2 py-1 border rounded w-40 bg-white dark:bg-gray-700" />
+ <div className="w-40"><DatePicker value={editData.date} onChange={v=>{ if (v) setEditData(d=>({...d, date:v})) }} allowClear={false} compact /></div>
  ) : <span className="font-medium text-gray-900 dark:text-gray-100">{r.date}</span>}
  </td><td className="px-4 py-3">
  {editId === r.id ? (

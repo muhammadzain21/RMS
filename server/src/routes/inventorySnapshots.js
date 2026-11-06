@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import InventorySnapshot from '../models/InventorySnapshot.js'
+import PhysicalCount from '../models/PhysicalCount.js'
 import Ingredient from '../models/Ingredient.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 
@@ -32,6 +33,32 @@ router.get('/opening', async (req, res, next) => {
     if (!date) return res.status(400).json({ error: 'date is required' })
     const snap = await InventorySnapshot.findOne({ date: { $lt: String(date) } }).sort({ date: -1, createdAt: -1 })
     res.json(snap || null)
+  } catch (e) { next(e) }
+})
+
+// GET /api/inventory-snapshots/physical?date=YYYY-MM-DD — saved physical counts
+router.get('/physical', async (req, res, next) => {
+  try {
+    const { date } = req.query
+    if (!date) return res.status(400).json({ error: 'date is required' })
+    const doc = await PhysicalCount.findOne({ date: String(date) }).lean()
+    res.json({ date: String(date), counts: doc?.counts || {} })
+  } catch (e) { next(e) }
+})
+
+// PUT /api/inventory-snapshots/physical — upsert physical counts for a date
+// Body: { date: 'YYYY-MM-DD', counts: { [ingredientName]: qty } }
+router.put('/physical', async (req, res, next) => {
+  try {
+    const date = String(req.body?.date || '')
+    if (!date) return res.status(400).json({ error: 'date is required' })
+    const counts = req.body?.counts && typeof req.body.counts === 'object' ? req.body.counts : {}
+    const doc = await PhysicalCount.findOneAndUpdate(
+      { date },
+      { $set: { counts } },
+      { upsert: true, new: true }
+    )
+    res.json({ date, counts: doc?.counts || {} })
   } catch (e) { next(e) }
 })
 

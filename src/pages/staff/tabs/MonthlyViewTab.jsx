@@ -1,17 +1,23 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import PayDialog from '../components/PayDialog';
+import StaffEarningsDialog from '../components/StaffEarningsDialog.jsx';
+import SalarySlipDialog from '../components/SalarySlipDialog.jsx';
+import { format } from 'date-fns';
 import { formatTime12 } from '../../../utils/dateUtils.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../../utils/reportDoc.js';
+import DatePicker from '../../../components/DatePicker.jsx';
+
+const btnPrint = 'ui-btn ui-btn-print';
+const btnPdf = 'ui-btn ui-btn-pdf';
+const btnCsv = 'ui-btn ui-btn-csv';
 
 export default function MonthlyViewTab({
  staff,
  attendance,
  settings,
- payNotes,
  advances = [],
- onDeletePayNote,
- onAddPayNote,
  state,
  API,
  token,
@@ -20,8 +26,30 @@ export default function MonthlyViewTab({
  month,
  setMonth
 }) {
+ const navigate = useNavigate();
  const [monthlyStaffId, setMonthlyStaffId] = useState('');
- const [showPayDialog, setShowPayDialog] = useState(false);
+ const [showEarnings, setShowEarnings] = useState(false);
+ const [slipRun, setSlipRun] = useState(null);
+ const [staffEarnings, setStaffEarnings] = useState([]);
+ const [payrollRun, setPayrollRun] = useState(null);
+ const [earnTick, setEarnTick] = useState(0);
+
+ // Earnings ledger + payroll run for the selected staff/month
+ useEffect(() => {
+ if (!monthlyStaffId || !API || !token) { setStaffEarnings([]); setPayrollRun(null); return; }
+ let mounted = true;
+ const last = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+ const headers = { Authorization: `Bearer ${token}` };
+ Promise.all([
+ fetch(`${API}/api/staff-earnings?staffId=${encodeURIComponent(monthlyStaffId)}&from=${month}-01&to=${month}-${String(last).padStart(2, '0')}&limit=500`, { headers }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+ fetch(`${API}/api/payroll?period=${encodeURIComponent(month)}`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+ ]).then(([earn, runs]) => {
+ if (!mounted) return;
+ setStaffEarnings(earn?.items || []);
+ setPayrollRun((Array.isArray(runs) ? runs : []).find(r => String(r.staffId) === String(monthlyStaffId)) || null);
+ });
+ return () => { mounted = false; };
+ }, [monthlyStaffId, month, API, token, earnTick]);
 
  const rawRecords = useMemo(() => {
  if (!monthlyStaffId) return [];
@@ -90,19 +118,84 @@ export default function MonthlyViewTab({
  const absentDeduction = settings.absentChargesEnabled
  ? counts.absent * perDay
  : counts.absent * settings.deductionPerAbsent;
+ const extrasSum = staffEarnings.reduce((s, e) => e.category === 'Deduction' ? s : s + Number(e.amount || 0), 0);
+ const manualDeduction = staffEarnings.reduce((s, e) => e.category === 'Deduction' ? s + Number(e.amount || 0) : s, 0);
  const ded = absentDeduction + lateDeduction + earlyOutDeduction;
  const net = Math.max(0, base - ded + bonus);
- const paid = payNotes
- .filter(n => n.staffId === monthlyStaffId && n.month === month)
- .reduce((s, n) => s + Number(n.amount || 0), 0);
  const advTotal = (advances || [])
- .filter(a => String(a.staffId) === String(monthlyStaffId) && a.month === month)
+ .filter(a => String(a.staffId) === String(monthlyStaffId) && a.month === month && (a.type || 'issue') === 'issue')
  .reduce((s, a) => s + Number(a.amount || 0), 0);
- const netDue = Math.max(0, net - paid - advTotal);
- return { base, perDay, bonus, ded, net, paid, advTotal, netDue, lateDeduction, earlyOutDeduction, absentDeduction, totalLateMinutes: counts.totalLateMinutes, totalEarlyOutMinutes: counts.totalEarlyOutMinutes };
- }, [counts, monthlyStaffId, staff, settings, payNotes, advances, month]);
+ const netDue = Math.max(0, net + extrasSum - manualDeduction - advTotal);
+ return { base, perDay, bonus, ded, net, extrasSum, manualDeduction, advTotal, netDue, lateDeduction, earlyOutDeduction, absentDeduction, totalLateMinutes: counts.totalLateMinutes, totalEarlyOutMinutes: counts.totalEarlyOutMinutes };
+ }, [counts, monthlyStaffId, staff, settings, staffEarnings, advances, month]);
 
- const downloadPDF = () => {
+ const openPrintPreview = async () => {
+ if (!monthlyStaffId) { toast.error('Select staff'); return; }
+ try {
+  const st = staff.find(s => s.id === monthlyStaffId);
+  const body =
+   reportSummary([
+    { label: 'Present (incl. late)', amount: String(counts.present + counts.late) },
+    { label: 'Late', amount: String(counts.late) },
+    { label: 'Leave', amount: String(counts.leave) },
+    { label: 'Absent', amount: String(counts.absent) },
+    { label: 'Early out days', amount: String(counts.earlyOutDays) },
+    { label: 'Net salary due', amount: `${Number(salaryCalc.netDue || 0).toLocaleString()} PKR` },
+   ]) +
+   reportSec(`Attendance — ${st?.name || ''} (${month})`) +
+   reportTable({
+    headers: ['Date', 'Status', 'Check In', 'Check Out', { t: 'Late Min', align: 'r' }, { t: 'Early Out Min', align: 'r' }],
+    numbered: true,
+    rows: monthRecords.map(r => [
+     r.date,
+     r.status,
+     r.checkIn ? formatTime12(r.checkIn) : '-',
+     r.checkOut ? formatTime12(r.checkOut) : '-',
+     { v: r.lateMinutes > 0 ? r.lateMinutes : '-', align: 'r' },
+     { v: r.earlyOutMinutes > 0 ? r.earlyOutMinutes : '-', align: 'r' },
+    ]),
+    emptyText: 'No records for this month',
+   });
+  const html = wrapReportDoc({
+   settings: state?.settings || {},
+   title: 'Monthly Staff Report',
+   reportLabel: 'Monthly Attendance Report',
+   reportNo: `Rpt #: MA-${month}-${monthlyStaffId}`,
+   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st?.name || ''], ['Month', month]],
+   metaRight: [['Days', String(monthRecords.length)], ['Position', st?.position || '']],
+   body,
+  });
+  await previewHtmlReport(html, `${st?.name || 'staff'}-${month}-attendance.pdf`);
+  toast.success('Print preview opened');
+ } catch (err) {
+  console.error(err);
+  toast.error('Print preview failed');
+ }
+ };
+
+ const exportCSV = () => {
+ if (!monthlyStaffId) { toast.error('Select staff'); return; }
+ try {
+  const st = staff.find(s => s.id === monthlyStaffId);
+  const header = ['Date', 'Status', 'Check In', 'Check Out', 'Late Minutes', 'Early Out Minutes'];
+  const lines = monthRecords.map(r =>
+   [r.date, r.status, r.checkIn ? formatTime12(r.checkIn) : '', r.checkOut ? formatTime12(r.checkOut) : '', r.lateMinutes || 0, r.earlyOutMinutes || 0]
+    .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+  );
+  const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${st?.name || 'staff'}_${month}_attendance.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast.success('CSV exported successfully');
+ } catch {
+  toast.error('Failed to export CSV');
+ }
+ };
+
+ const exportPDF = async () => {
  if (!monthlyStaffId) { toast.error('Select staff'); return; }
  try {
  const doc = new jsPDF('l', 'pt', 'a4')
@@ -148,7 +241,7 @@ export default function MonthlyViewTab({
 
  // Attendance table
  const tableStartY = statY + boxH + gap + 6
- const tableData = monthRecords.map(r => [r.date, r.status, r.checkIn || '-', r.checkOut || '-', r.lateMinutes || '-', r.earlyOutMinutes || '-'])
+ const tableData = monthRecords.map(r => [r.date, r.status, r.checkIn ? formatTime12(r.checkIn) : '-', r.checkOut ? formatTime12(r.checkOut) : '-', r.lateMinutes || '-', r.earlyOutMinutes || '-'])
  tableData.push(['Total', '', '', '', counts.totalLateMinutes, counts.totalEarlyOutMinutes])
 
  doc.autoTable({
@@ -184,8 +277,9 @@ export default function MonthlyViewTab({
  ['Late Deduction', `-${salaryCalc.lateDeduction.toFixed(2)} PKR`],
  ['Early Out Deduction', `-${salaryCalc.earlyOutDeduction.toFixed(2)} PKR`],
  ['Total Deductions', `-${salaryCalc.ded.toFixed(2)} PKR`],
+ ['Earnings (extras)', `+${Number(salaryCalc.extrasSum || 0).toLocaleString()} PKR`],
+ ['Adjustments', `-${Number(salaryCalc.manualDeduction || 0).toLocaleString()} PKR`],
  ['Advances Taken', `-${Number(salaryCalc.advTotal || 0).toLocaleString()} PKR`],
- ['Paid This Month', `-${Number(salaryCalc.paid || 0).toLocaleString()} PKR`],
  ['Net Salary Due', `${Number(salaryCalc.netDue || 0).toLocaleString()} PKR`],
  ]
 
@@ -202,19 +296,18 @@ export default function MonthlyViewTab({
  margin: { left: 40, right: 40 },
  })
 
- // Pay notes
- const staffPayNotes = payNotes.filter(n => n.staffId === monthlyStaffId && n.month === month)
- if (staffPayNotes.length > 0) {
+ // Earnings & adjustments
+ if (staffEarnings.length > 0) {
  let y3 = doc.lastAutoTable?.finalY || y2 + 6
  y3 += 20
  doc.setFontSize(11)
- doc.text('Pay Notes:', 40, y3)
- const noteData = staffPayNotes.map((n, idx) => {
- const date = n.date || new Date(n.createdAt).toLocaleDateString()
- return [`${idx + 1}. ${n.notes || '(No note)'}`, `${Number(n.amount).toLocaleString()} PKR`, date]
+ doc.text('Earnings & Adjustments:', 40, y3)
+ const noteData = staffEarnings.map((n, idx) => {
+ const isDed = n.category === 'Deduction'
+ return [`${idx + 1}. ${n.category || 'Earning'}`, `${isDed ? '-' : '+'}${Number(n.amount).toLocaleString()} PKR`, n.date || '', n.notes || '']
  })
  doc.autoTable({
- head: [['Note', 'Amount', 'Date']],
+ head: [['Category', 'Amount', 'Date', 'Notes']],
  body: noteData,
  startY: y3 + 6,
  styles: { fontSize: 9, cellPadding: 4 },
@@ -223,7 +316,8 @@ export default function MonthlyViewTab({
  })
  }
 
- doc.save(`${st?.name || 'staff'}_${month}_report.pdf`)
+ const fileName = `${st?.name || 'staff'}_${month}_report.pdf`
+ doc.save(fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)
@@ -242,13 +336,33 @@ export default function MonthlyViewTab({
  value={monthlyStaffId}
  onChange={e => setMonthlyStaffId(e.target.value)}
  ><option value="">Choose a staff member...</option>
- {staff.map(s =><option key={s.id} value={s.id}>{s.name} - {s.position}</option>)}
- </select></div><div><label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2"> Select Month</label><input
- type="month"
- className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all"
- value={month}
- onChange={e => setMonth(e.target.value)}
- /></div></div></div>
+ {staff.map(s => (
+ <option key={s.id} value={s.id}>
+ {s.name} - {s.position}{s.biometricId ? ` · Bio ${s.biometricId}` : ''}
+ </option>
+ ))}
+ </select>
+ {monthlyStaffId && (() => {
+ const sel = staff.find(s => String(s.id) === String(monthlyStaffId));
+ if (!sel) return null;
+ return (
+ <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+ Biometric ID:{' '}
+ <span className={`font-mono font-semibold ${sel.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>
+ {sel.biometricId || 'Not mapped'}
+ </span>
+ </p>
+ );
+ })()}
+ </div><div>
+  <DatePicker mode="month" label="Select Month" value={month} onChange={v => { if (v) setMonth(v) }} allowClear={false} />
+ </div></div></div>
+
+ <div className="flex flex-wrap gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800">
+  <button type="button" onClick={openPrintPreview} disabled={!monthlyStaffId} className={`${btnPrint} disabled:opacity-50 disabled:cursor-not-allowed`}>Print</button>
+  <button type="button" onClick={exportPDF} disabled={!monthlyStaffId} className={`${btnPdf} disabled:opacity-50 disabled:cursor-not-allowed`}>PDF</button>
+  <button type="button" onClick={exportCSV} disabled={!monthlyStaffId} className={`${btnCsv} disabled:opacity-50 disabled:cursor-not-allowed`}>CSV</button>
+ </div>
 
  {/* Stats Cards */}
  <div className="grid grid-cols-2 md:grid-cols-5 gap-4"><div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-slate-800 dark:to-slate-700 rounded-xl shadow-md border border-green-200 dark:border-slate-600 p-4"><div className="flex items-center gap-2 mb-1"><span className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center text-sm"></span><span className="text-sm text-slate-500 dark:text-slate-400">Present</span></div><div className="text-3xl font-bold text-green-600">{counts.present + counts.late}</div></div><div className="bg-gradient-to-br from-orange-50 to-yellow-50 dark:from-slate-800 dark:to-slate-700 rounded-xl shadow-md border border-orange-200 dark:border-slate-600 p-4"><div className="flex items-center gap-2 mb-1"><span className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm"></span><span className="text-sm text-slate-500 dark:text-slate-400">Late</span></div><div className="text-3xl font-bold text-orange-600">{counts.late}</div></div><div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-slate-800 dark:to-slate-700 rounded-xl shadow-md border border-amber-200 dark:border-slate-600 p-4"><div className="flex items-center gap-2 mb-1"><span className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm"></span><span className="text-sm text-slate-500 dark:text-slate-400">Early Out</span></div><div className="text-3xl font-bold text-amber-600">{counts.earlyOutDays}</div></div><div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-700 rounded-xl shadow-md border border-blue-200 dark:border-slate-600 p-4"><div className="flex items-center gap-2 mb-1"><span className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm"></span><span className="text-sm text-slate-500 dark:text-slate-400">Leave</span></div><div className="text-3xl font-bold text-blue-600">{counts.leave}</div></div><div className="bg-gradient-to-br from-red-50 to-pink-50 dark:from-slate-800 dark:to-slate-700 rounded-xl shadow-md border border-red-200 dark:border-slate-600 p-4"><div className="flex items-center gap-2 mb-1"><span className="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center text-sm"></span><span className="text-sm text-slate-500 dark:text-slate-400">Absent</span></div><div className="text-3xl font-bold text-red-600">{counts.absent}</div></div></div>
@@ -321,39 +435,61 @@ export default function MonthlyViewTab({
  {counts.earlyOutDays} days {salaryCalc.totalEarlyOutMinutes > 0 ? `(${salaryCalc.totalEarlyOutMinutes} min × ${settings.deductionPerMinuteEarlyOut || 0} PKR)` : ``}
  </span></div><span className="font-semibold text-red-600">-{salaryCalc.earlyOutDeduction.toFixed(2)} PKR</span></div>
  {/* Total Deductions */}
- <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/30 rounded px-3 -mx-1"><span className="font-medium text-slate-700 dark:text-slate-300">Total Deductions</span><span className="font-bold text-red-600">-{salaryCalc.ded.toFixed(2)} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Advances Taken</span><span className="font-semibold text-purple-600">-{Number(salaryCalc.advTotal || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Paid This Month</span><span className="font-semibold text-orange-600">-{Number(salaryCalc.paid || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg px-4 -mx-2 mt-4"><span className="font-semibold text-slate-800 dark:text-slate-200">Net Salary Due</span><span className="text-2xl font-bold text-green-600">{Number(salaryCalc.netDue || 0).toLocaleString()} PKR</span></div></div><div className="px-6 pb-6 flex gap-3"><button
- className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-teal-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
- onClick={() => { if (!monthlyStaffId) { toast.error('Select staff'); return; } setShowPayDialog(true); }}
- ><span>Pay Staff</span></button><button
- className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
- onClick={downloadPDF}
- ><span>Download PDF</span></button></div></div>
+ <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/30 rounded px-3 -mx-1"><span className="font-medium text-slate-700 dark:text-slate-300">Total Deductions</span><span className="font-bold text-red-600">-{salaryCalc.ded.toFixed(2)} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Earnings (extras)</span><span className="font-semibold text-emerald-600">+{Number(salaryCalc.extrasSum || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Adjustments</span><span className="font-semibold text-red-600">-{Number(salaryCalc.manualDeduction || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-600"><span className="text-slate-600 dark:text-slate-400">Advances Taken</span><span className="font-semibold text-purple-600">-{Number(salaryCalc.advTotal || 0).toLocaleString()} PKR</span></div><div className="flex justify-between items-center py-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg px-4 -mx-2 mt-4"><span className="font-semibold text-slate-800 dark:text-slate-200">Net Salary Due</span><span className="text-2xl font-bold text-green-600">{Number(salaryCalc.netDue || 0).toLocaleString()} PKR</span></div>
+ {payrollRun && (
+ <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 dark:bg-slate-700/40 px-3 py-2 mt-2">
+ <span className="text-xs text-slate-500 dark:text-slate-400">Payroll {month}</span>
+ <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${payrollRun.status === 'paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : payrollRun.status === 'approved' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>{payrollRun.status}{payrollRun.slipNo ? ` · ${payrollRun.slipNo}` : ''}</span>
+ <button
+ className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 hover:underline"
+ onClick={() => setSlipRun(payrollRun)}
+ >Slip</button>
+ </div>
+ )}
+ </div><div className="px-6 pb-6 flex flex-wrap gap-3"><button
+ className="flex-1 min-w-[110px] flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
+ onClick={() => { if (!monthlyStaffId) { toast.error('Select staff'); return; } setShowEarnings(true); }}
+ ><span>Earnings</span></button><button
+ className="flex-1 min-w-[110px] flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-medium shadow-md hover:shadow-lg hover:scale-105 transition-all"
+ onClick={() => navigate(`/staff/history/${monthlyStaffId}`)}
+ ><span>History</span></button></div></div>
 
- {/* Pay Notes Card */}
- <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"><div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><span>Payment History</span></h3></div><div className="p-6">
- {payNotes.filter(n => n.staffId === monthlyStaffId && n.month === month).length === 0 ? (
- <div className="text-center py-8"><div className="text-4xl mb-2"></div><p className="text-slate-500 dark:text-slate-400">No payments recorded this month</p></div>
+ {/* Earnings & Adjustments Card */}
+ <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"><div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between"><h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><span>Earnings &amp; Adjustments</span></h3><button
+ className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 hover:underline"
+ onClick={() => { if (!monthlyStaffId) { toast.error('Select staff'); return; } setShowEarnings(true); }}
+ >Manage</button></div><div className="p-6">
+ {staffEarnings.length === 0 ? (
+ <div className="text-center py-8"><div className="text-4xl mb-2"></div><p className="text-slate-500 dark:text-slate-400">No earnings or adjustments this month</p></div>
  ) : (
  <div className="space-y-3 max-h-80 overflow-y-auto">
- {payNotes.filter(n => n.staffId === monthlyStaffId && n.month === month).map(n => (
- <div key={n.id} className="flex items-start justify-between gap-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 border border-slate-100 dark:border-slate-600"><div className="flex-1"><div className="font-medium text-slate-800 dark:text-slate-200">{n.notes || '(No note)'}</div><div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{n.date || new Date(n.createdAt).toLocaleDateString()}</div></div><div className="text-right"><div className="font-bold text-slate-800 dark:text-slate-200">{Number(n.amount).toLocaleString()} PKR</div><button
- className="text-xs text-red-500 hover:text-red-700 mt-1 font-medium"
- onClick={() => onDeletePayNote(n.id)}
- >
- Delete
- </button></div></div>
+ {staffEarnings.map(n => (
+ <div key={n._id} className="flex items-start justify-between gap-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 border border-slate-100 dark:border-slate-600"><div className="flex-1"><div className="font-medium text-slate-800 dark:text-slate-200">{n.category === 'Deduction' ? 'Adjustment (Deduction)' : n.category}</div><div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{n.date}{n.notes ? ` · ${n.notes}` : ''}</div></div><div className="text-right"><div className={`font-bold ${n.category === 'Deduction' ? 'text-rose-600' : 'text-emerald-700 dark:text-emerald-400'}`}>{n.category === 'Deduction' ? '-' : '+'}{Number(n.amount).toLocaleString()} PKR</div></div></div>
  ))}
  </div>
  )}
  </div></div></div>
  )}
 
- <PayDialog
- isOpen={showPayDialog}
- onClose={() => setShowPayDialog(false)}
- onSubmit={onAddPayNote}
- monthlyStaffId={monthlyStaffId}
+ <StaffEarningsDialog
+ open={showEarnings}
+ onClose={() => setShowEarnings(false)}
+ staff={staff.find(s => s.id === monthlyStaffId) || null}
  month={month}
+ readOnly={payrollRun?.status === 'paid'}
+ onChanged={() => setEarnTick(t => t + 1)}
+ API={API}
+ token={token}
+ />
+
+ <SalarySlipDialog
+ open={!!slipRun}
+ onClose={() => setSlipRun(null)}
+ run={slipRun}
+ API={API}
+ token={token}
+ companyName={state?.settings?.companyName}
+ companyInfo={state?.settings}
  /></div>
  );
 }

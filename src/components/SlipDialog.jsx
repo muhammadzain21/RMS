@@ -41,17 +41,17 @@ export default function SlipDialog({ html, title = 'Print Slip', onClose, autoPr
       className="fixed inset-0 bg-black/55 z-[9999] flex items-center justify-center p-3"
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div className="bg-white dark:bg-gray-900 w-[420px] max-w-[95vw] h-[640px] max-h-[95vh] rounded-lg shadow-2xl flex flex-col overflow-hidden">
-        <div className="flex gap-2 justify-end p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+      <div className="bg-white dark:bg-gray-900 w-[420px] max-w-[95vw] h-[min(820px,92vh)] max-h-[95vh] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex gap-2 justify-end p-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shrink-0">
           <button
             onClick={doPrint}
-            className="px-4 py-2 rounded-md bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold text-sm shadow hover:shadow-md transition-shadow"
+            className="px-4 py-1.5 rounded-md bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold text-sm shadow hover:shadow-md transition-shadow"
           >
             Print
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="px-4 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-medium text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             Close
           </button>
@@ -59,7 +59,8 @@ export default function SlipDialog({ html, title = 'Print Slip', onClose, autoPr
         <iframe
           ref={iframeRef}
           title={title}
-          className="border-0 flex-1 w-full"
+          className="border-0 flex-1 w-full min-h-0"
+          scrolling="no"
         />
       </div>
     </div>

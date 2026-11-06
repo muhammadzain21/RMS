@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import { useData } from '../state/DataContext.jsx'
 import { useAuth } from '../state/AuthContext.jsx'
+import DatePicker from './DatePicker.jsx'
 
 function makeEmptyRow() {
   return { name: '', currentStock: '', orderQty: '', unit: '', isFromInventory: false, ingredientId: '' }
@@ -135,14 +136,7 @@ export default function DemandModal({ open, onClose, initial }) {
           {/* Date + Note */}
           <div className="px-5 py-3 grid grid-cols-1 md:grid-cols-3 gap-4 border-b dark:border-gray-700">
             <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white dark:border-gray-600"
-                required
-              />
+              <DatePicker label="Date" value={date} onChange={v => { if (v) setDate(v) }} allowClear={false} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Note</label>
@@ -263,7 +257,7 @@ export default function DemandModal({ open, onClose, initial }) {
           {/* Footer */}
           <div className="px-5 py-3 border-t dark:border-gray-700 flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded border hover:bg-gray-50 dark:hover:bg-gray-800 dark:border-gray-600 dark:text-white">Cancel</button>
-            <button className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium">Save Demand</button>
+            <button className="px-4 py-2 rounded ui-btn ui-btn-primary font-medium">Save Demand</button>
           </div>
         </form>
       </div>

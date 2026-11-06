@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatTime12 } from '../../../utils/dateUtils.js';
+import DatePicker from '../../../components/DatePicker.jsx';
 
 export default function StaffFormDialog({
   isOpen,
@@ -10,17 +11,19 @@ export default function StaffFormDialog({
   customPos,
   setCustomPos,
   isEditing,
-  shifts = []
+  shifts = [],
+  roles = []
 }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="w-full max-w-2xl p-4 rounded bg-white dark:bg-gray-900 shadow">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="font-medium">{isEditing ? 'Edit Staff' : 'Add Staff'}</h3>
-          <button className="px-2 py-1 rounded border" onClick={onClose}>Close</button>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between px-5 py-3 text-white" style={{ background: 'linear-gradient(90deg, #0284c7, #2563eb)' }}>
+          <h3 className="text-base font-semibold">{isEditing ? 'Edit Staff' : 'Add Staff'}</h3>
+          <button className="rounded-md bg-white/15 px-2 py-1 text-sm hover:bg-white/25" onClick={onClose}>Close</button>
         </div>
+        <div className="p-5 max-h-[78vh] overflow-y-auto">
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm mb-1">Name</label>
@@ -104,13 +107,69 @@ export default function StaffFormDialog({
             />
           </div>
           <div>
-            <label className="block text-sm mb-1">Join Date</label>
+            <label className="block text-sm mb-1">Advance Limit (PKR)</label>
             <input
-              type="date"
+              type="number"
+              min={0}
+              step={500}
               className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
-              value={formData.joinDate || ''}
-              onChange={e => setFormData({ ...formData, joinDate: e.target.value })}
+              value={formData.advanceLimit ?? ''}
+              placeholder="Defaults to salary"
+              onChange={e => setFormData({ ...formData, advanceLimit: e.target.value ? Number(e.target.value) : 0 })}
             />
+          </div>
+          <div>
+            <DatePicker
+              label="Join Date"
+              value={formData.joinDate || ''}
+              onChange={v => setFormData({ ...formData, joinDate: v })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Login Username (optional)</label>
+            <input
+              autoComplete="off"
+              placeholder="e.g. ahmed.waiter — for staff app login"
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.username || ''}
+              onChange={e => setFormData({ ...formData, username: e.target.value.trim() })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Login Password (optional)</label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              placeholder={isEditing ? 'Leave blank to keep current' : 'Required if username is set'}
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.password || ''}
+              onChange={e => setFormData({ ...formData, password: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Login Role</label>
+            <select
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.role || 'Staff'}
+              onChange={e => setFormData({ ...formData, role: e.target.value })}
+            >
+              {[...new Set(['Staff', ...roles.map(r => r.name)])].map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="md:col-span-2 flex items-center justify-between px-3 py-2 rounded border bg-gray-50 dark:bg-gray-800/50">
+            <div>
+              <div className="text-sm font-medium">My Work portal</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Show this staff member their attendance, purchases & salary history</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, myWorkAccess: !(formData.myWorkAccess !== false) })}
+              className={`relative w-11 h-6 rounded-full transition-colors ${formData.myWorkAccess !== false ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.myWorkAccess !== false ? 'translate-x-5' : ''}`} />
+            </button>
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm mb-1">Status</label>
@@ -125,10 +184,11 @@ export default function StaffFormDialog({
           </div>
         </div>
         <div className="flex justify-end mt-4 gap-2">
-          <button className="px-3 py-2 rounded border" onClick={onClose}>Cancel</button>
-          <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={onSave}>
+          <button className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm font-semibold" onClick={onClose}>Cancel</button>
+          <button className="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700" onClick={onSave}>
             {isEditing ? 'Update' : 'Save'}
           </button>
+        </div>
         </div>
       </div>
     </div>

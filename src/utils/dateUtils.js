@@ -50,16 +50,26 @@ export function formatDateYMD(dateInput) {
 }
 
 /**
- * Convert 24-hour time (HH:mm) to 12-hour format (h:mm AM/PM)
- * @param {string} time24 - Time in 24-hour format like "09:00" or "14:30"
+ * Convert 24-hour time (HH:mm or HH:mm:ss) to 12-hour format (h:mm AM/PM)
+ * @param {string} time24 - Time in 24-hour format like "09:00", "14:30", or "14:30:00"
  * @returns {string} Time in 12-hour format like "9:00 AM" or "2:30 PM"
  */
 export function formatTime12(time24) {
-  if (!time24) return '';
-  const [hours, minutes] = time24.split(':').map(Number);
+  if (time24 == null || time24 === '') return '';
+  const raw = String(time24).trim();
+  if (!raw || raw === '-') return raw === '-' ? '-' : '';
+  // Already 12-hour
+  if (/am|pm/i.test(raw)) return raw.replace(/\s+/g, ' ').trim();
+
+  const m = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (!m) return raw;
+
+  let hours = Number(m[1]);
+  const minutes = m[2];
+  if (Number.isNaN(hours)) return raw;
   const period = hours >= 12 ? 'PM' : 'AM';
   const hours12 = hours % 12 || 12;
-  return `${hours12}:${String(minutes).padStart(2, '0')} ${period}`;
+  return `${hours12}:${minutes} ${period}`;
 }
 
 /**
@@ -69,10 +79,10 @@ export function formatTime12(time24) {
  */
 export function parseTime12(time12) {
   if (!time12) return '';
-  const match = time12.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const match = String(time12).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (!match) return time12; // Return as-is if not matching expected format
   let [, hours, minutes, period] = match;
-  hours = parseInt(hours);
+  hours = parseInt(hours, 10);
   if (period.toUpperCase() === 'PM' && hours !== 12) hours += 12;
   if (period.toUpperCase() === 'AM' && hours === 12) hours = 0;
   return `${String(hours).padStart(2, '0')}:${minutes}`;

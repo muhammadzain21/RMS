@@ -29,7 +29,7 @@ export default function HeldDialog({
  if (!open) return null
  return (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4"><div className="w-full max-w-6xl max-h-[90vh] bg-white dark:bg-gray-900 border rounded-xl p-3 sm:p-4 flex flex-col"><div className="flex items-start justify-between"><div className="text-xl font-semibold">Held Sales</div><button onClick={onClose} className="text-gray-500 hover:text-gray-800"></button></div><div className="mt-3 flex flex-col sm:grid sm:grid-cols-12 gap-3 items-start sm:items-end"><div className="sm:col-span-7 flex flex-wrap gap-2">
- {['Dine-in','Take-away','Delivery','Drive-thru'].map(t => (
+ {['Dine-in','Take-away','Delivery','Foodpanda'].map(t => (
  <button
  key={t}
  type="button"

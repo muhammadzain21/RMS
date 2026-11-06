@@ -19,7 +19,7 @@ export default function ReceiptPreview({
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="w-full max-w-md bg-white dark:bg-gray-900 border rounded p-4 space-y-3"><div className="flex items-center justify-between"><div className="text-2xl font-semibold">Order Taken – {orderType}</div><button type="button" onClick={onClose} className="text-gray-500"></button></div><div className="space-y-2"><div className="border p-2 text-center font-semibold">Order Receipt</div>
  {state?.currentTokenNo && <div className="border p-2 text-center">Token No: {state.currentTokenNo}</div>}
  <div className="border p-2 text-center">{orderType}</div><div className="grid grid-cols-2 gap-2 text-sm"><div>Date & Time : {format(new Date(), 'd-M-yyyy h:mm a')}</div>
- {(orderType==='Dine-in' || orderType==='Drive-thru') && (
+ {(orderType==='Dine-in' || orderType==='Foodpanda' || orderType==='Drive-thru') && (
  <div>Waiter : {(state?.staff||[]).find(s=>s.id===waiterId)?.name || '-'}</div>
  )}
  <div>User : {(state?.user?.name)||'ADMIN'}</div>

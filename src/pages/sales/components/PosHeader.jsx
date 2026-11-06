@@ -1,4 +1,5 @@
 import React from 'react'
+import DatePicker from '../../../components/DatePicker.jsx'
 
 export default function PosHeader({
   date,
@@ -13,7 +14,9 @@ export default function PosHeader({
   return (
     <div className="grid grid-cols-12 gap-2 items-center">
       <div className="col-span-3 flex items-center gap-2 text-sm">
-        <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="px-3 py-2 border rounded w-full" />
+        <div className="w-full min-w-0">
+          <DatePicker value={date} onChange={v => { if (v) setDate(v) }} allowClear={false} />
+        </div>
         <select className="px-3 py-2 border rounded w-full" value={waiterId} onChange={e=>setWaiterId(e.target.value)}>
           <option value="">Waiter: Default</option>
           {(staff||[]).map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}

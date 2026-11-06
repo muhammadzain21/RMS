@@ -34,14 +34,27 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
     const g = window
     g.API_BASE = initial
     const orig = g.fetch.bind(g)
+    // Rewrite hardcoded localhost / env API URLs to the active server (LAN or online)
     g.fetch = (input, init) => {
       try{
         const toUrl = (u) => typeof u === 'string' ? u : (u && 'url' in u ? u.url : '')
         const url = toUrl(input)
-        if (typeof url === 'string' && /^https?:\/\/(localhost|127\.0\.0\.1):5000\//i.test(url)) {
-          const base = String(g.API_BASE||'http://localhost:5000')
-          const rew = url.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/i, base)
-          return orig(rew, init)
+        if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return orig(input, init)
+        const base = String(g.API_BASE || '').replace(/\/+$/, '')
+        if (!base) return orig(input, init)
+        const candidates = [
+          'http://localhost:5000',
+          'https://localhost:5000',
+          'http://127.0.0.1:5000',
+          'https://127.0.0.1:5000',
+        ]
+        const e = String(envBase || '').trim().replace(/\/+$/, '')
+        if (e && !candidates.includes(e)) candidates.push(e)
+        for (const c of candidates) {
+          if (c === base) continue
+          if (url === c || url.startsWith(c + '/')) {
+            return orig(base + url.slice(c.length), init)
+          }
         }
       }catch{}
       return orig(input, init)

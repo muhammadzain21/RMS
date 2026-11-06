@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { toast } from 'react-hot-toast';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { format } from 'date-fns';
 import { getLocalDateString } from '../../../utils/dateUtils.js';
 import { useData } from '../../../state/DataContext.jsx';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../../utils/reportDoc.js';
+
+const btnPrint = 'ui-btn ui-btn-print';
+const btnPdf = 'ui-btn ui-btn-pdf';
+const btnCsv = 'ui-btn ui-btn-csv';
 
 export default function MarkAttendanceTab({
  staff,
@@ -14,7 +23,7 @@ export default function MarkAttendanceTab({
  API,
  shifts = []
 }) {
- const { businessDate } = useData();
+ const { businessDate, state } = useData();
  // Use system business date - this follows day open/close
  const today = businessDate || getLocalDateString();
  const calendarDate = getLocalDateString();
@@ -67,6 +76,110 @@ export default function MarkAttendanceTab({
  }
  };
 
+ const activeStaff = useMemo(() => staff.filter(s => s.status !== 'inactive'), [staff]);
+
+ const reportRows = useMemo(() => activeStaff.map(s => {
+  const record = attendance.find(r => r.staffId === s.id && r.date === today);
+  const shift = shifts.find(sh => sh.id === s.shiftId);
+  const shiftLabel = shift ? `${fmt12(shift.checkIn)} - ${fmt12(shift.checkOut)}` : 'No shift';
+  let status = 'Not marked';
+  if (record?.status === 'Leave') status = 'Leave';
+  else if (record?.status === 'Late') status = 'Late';
+  else if (record?.checkIn && record?.checkOut) status = 'Present';
+  else if (record?.checkIn) status = 'Clocked in';
+  else if (record) status = record.status || 'Absent';
+  return {
+   name: s.name,
+   position: s.position || '-',
+   phone: s.phone || '-',
+   shift: shiftLabel,
+   status,
+   checkIn: record?.checkIn ? fmt12(record.checkIn) : '-',
+   checkOut: record?.checkOut ? fmt12(record.checkOut) : '-',
+  };
+ }), [activeStaff, attendance, today, shifts, fmt12]);
+
+ const stats = useMemo(() => ({
+  marked: reportRows.filter(r => r.status !== 'Not marked').length,
+  leave: reportRows.filter(r => r.status === 'Leave').length,
+  late: reportRows.filter(r => r.status === 'Late').length,
+  clockedIn: reportRows.filter(r => r.checkIn !== '-' && r.checkOut === '-').length,
+ }), [reportRows]);
+
+ const openPrintPreview = async () => {
+  try {
+   const body =
+    reportSummary([
+     { label: 'Active staff', amount: String(activeStaff.length) },
+     { label: 'Marked today', amount: String(stats.marked) },
+     { label: 'On leave', amount: String(stats.leave) },
+     { label: 'Late', amount: String(stats.late) },
+    ]) +
+    reportSec(`Mark attendance — ${today}`) +
+    reportTable({
+     headers: ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out'],
+     numbered: true,
+     rows: reportRows.map(r => [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut]),
+     emptyText: 'No active staff',
+    });
+   const html = wrapReportDoc({
+    settings: state?.settings || settings || {},
+    title: 'Mark Attendance',
+    reportLabel: 'Attendance Report',
+    reportNo: `Rpt #: MA-${today}`,
+    metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', today]],
+    metaRight: [['Active staff', String(activeStaff.length)]],
+    body,
+   });
+   await previewHtmlReport(html, `Mark-Attendance-${today}.pdf`);
+   toast.success('Print preview opened');
+  } catch {
+   toast.error('Print preview failed');
+  }
+ };
+
+ const exportPDF = () => {
+  try {
+   const doc = new jsPDF('p', 'pt', 'a4');
+   doc.setFontSize(16);
+   doc.text(state?.settings?.companyName || 'Mark Attendance', 40, 32);
+   doc.setFontSize(11);
+   doc.text(`Date: ${today} · ${activeStaff.length} active staff`, 40, 48);
+   doc.autoTable({
+    head: [['Staff', 'Position', 'Shift', 'Status', 'Check In', 'Check Out']],
+    body: reportRows.map(r => [r.name, r.position, r.shift, r.status, r.checkIn, r.checkOut]),
+    startY: 58,
+    styles: { fontSize: 8, cellPadding: 4 },
+    headStyles: { fillColor: [20, 184, 166], textColor: 255, fontStyle: 'bold' },
+    margin: { left: 40, right: 40 },
+   });
+   doc.save(`mark-attendance-${today}.pdf`);
+   toast.success('PDF exported');
+  } catch {
+   toast.error('Failed to export PDF');
+  }
+ };
+
+ const exportCSV = () => {
+  try {
+   const header = ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out'];
+   const lines = reportRows.map(r =>
+    [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut]
+     .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+   );
+   const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
+   const url = URL.createObjectURL(blob);
+   const a = document.createElement('a');
+   a.href = url;
+   a.download = `mark-attendance-${today}.csv`;
+   a.click();
+   URL.revokeObjectURL(url);
+   toast.success('CSV exported');
+  } catch {
+   toast.error('Failed to export CSV');
+  }
+ };
+
  return (
  <div className="space-y-4">
  {/* Biometric Status Bar */}
@@ -88,14 +201,20 @@ export default function MarkAttendanceTab({
  {calendarDate !== today && <span className="text-xs ml-2 opacity-75">(Calendar: {calendarDate})</span>}
  </p></div><div className="text-right"><div className="text-sm text-blue-100">Shifts Configured</div><div className="font-medium">{shifts.length || 0} shifts</div><div className="text-xs text-blue-200 mt-1">Late after {settings.lateThresholdMinutes} min</div></div></div></div>
 
+ <div className="flex flex-wrap gap-3 p-4 rounded-xl card card-pad">
+  <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
+  <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
+  <button type="button" onClick={exportCSV} className={btnCsv}>CSV</button>
+ </div>
+
  {/* Staff Table Card */}
  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"><div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><span className="w-2 h-2 bg-teal-500 rounded-full"></span>
- Staff List ({staff.filter(s => s.status !== 'inactive').length} active)
- </h3></div><div className="overflow-x-auto"><table className="w-full"><thead><tr className="bg-slate-100 dark:bg-slate-700/50"><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Position</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Phone</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Shift</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock In</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock Out</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Actions</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+ Staff List ({activeStaff.length} active)
+ </h3></div><div className="overflow-x-auto"><table className="w-full"><thead><tr className="bg-slate-100 dark:bg-slate-700/50"><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Biometric ID</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Position</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Phone</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Shift</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock In</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock Out</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Actions</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-700">
  {staff.length === 0 && (
- <tr><td colSpan={7} className="px-6 py-12 text-center"><div className="text-slate-400 dark:text-slate-500"><div className="text-4xl mb-2"></div><p>No staff members found</p><p className="text-sm">Add staff first to mark attendance</p></div></td></tr>
+ <tr><td colSpan={8} className="px-6 py-12 text-center"><div className="text-slate-400 dark:text-slate-500"><div className="text-4xl mb-2"></div><p>No staff members found</p><p className="text-sm">Add staff first to mark attendance</p></div></td></tr>
  )}
- {staff.filter(s => s.status !== 'inactive').map((s, idx) => {
+ {activeStaff.map((s, idx) => {
  const record = attendance.find(r => r.staffId === s.id && r.date === today);
  const isClockedIn = !!record?.checkIn;
  const isClockedOut = !!record?.checkOut;
@@ -108,7 +227,7 @@ export default function MarkAttendanceTab({
  </div><div><div className="font-semibold text-slate-800 dark:text-slate-200">{s.name}</div>
  {isLate && <span className="text-xs text-orange-500 font-medium"> Late</span>}
  {isLeave && <span className="text-xs text-blue-500 font-medium"> Leave</span>}
- </div></div></td><td className="px-6 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+ </div></div></td><td className="px-6 py-4"><span className={`font-mono text-sm ${s.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>{s.biometricId || '—'}</span></td><td className="px-6 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
  {s.position}
  </span></td><td className="px-6 py-4 text-slate-600 dark:text-slate-400">{s.phone || '-'}</td><td className="px-6 py-4 text-slate-600 dark:text-slate-400">
  {(() => {

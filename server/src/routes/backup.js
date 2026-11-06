@@ -16,7 +16,6 @@ import Sale from '../models/Sale.js'
 import Attendance from '../models/Attendance.js'
 import Audit from '../models/Audit.js'
 import CashOpening from '../models/CashOpening.js'
-import CashHandover from '../models/CashHandover.js'
 import AdvanceBooking from '../models/AdvanceBooking.js'
 import Return from '../models/Return.js'
 import PayInOut from '../models/PayInOut.js'
@@ -27,7 +26,9 @@ import Held from '../models/Held.js'
 import Kot from '../models/Kot.js'
 import Recall from '../models/Recall.js'
 import Void from '../models/Void.js'
-import StaffPayNote from '../models/StaffPayNote.js'
+import StaffAdvance from '../models/StaffAdvance.js'
+import StaffEarning from '../models/StaffEarning.js'
+import PayrollRun from '../models/PayrollRun.js'
 import Counter from '../models/Counter.js'
 import User from '../models/User.js'
 import DeletedSale from '../models/DeletedSale.js'
@@ -40,7 +41,7 @@ const router = Router()
 
 // Utility to fetch all data
 async function dumpAll() {
-  const [settings, staffSettings, menu, categories, ingredients, supplies, customers, staff, riders, riderCash, suppliers, expenses, sales, deletedSales, attendance, audit, cashOpenings, cashHandovers, advanceBookings, returns, payInOuts, dayCloses, tables, users, cashCounts, helds, kots, recalls, voids, staffPayNotes, counters, roles, biometricEvents, biometricMappings, biometricSyncStates] = await Promise.all([
+  const [settings, staffSettings, menu, categories, ingredients, supplies, customers, staff, riders, riderCash, suppliers, expenses, sales, deletedSales, attendance, audit, cashOpenings, advanceBookings, returns, payInOuts, dayCloses, tables, users, cashCounts, helds, kots, recalls, voids, staffAdvances, staffEarnings, payrollRuns, counters, roles, biometricEvents, biometricMappings, biometricSyncStates] = await Promise.all([
     Settings.find().lean(),
     StaffSettings.find().lean(),
     MenuItem.find().lean(),
@@ -58,7 +59,6 @@ async function dumpAll() {
     Attendance.find().lean(),
     Audit.find().lean(),
     CashOpening.find().lean(),
-    CashHandover.find().lean(),
     AdvanceBooking.find().lean(),
     Return.find().lean(),
     PayInOut.find().lean(),
@@ -70,14 +70,16 @@ async function dumpAll() {
     Kot.find().lean(),
     Recall.find().lean(),
     Void.find().lean(),
-    StaffPayNote.find().lean(),
+    StaffAdvance.find().lean(),
+    StaffEarning.find().lean(),
+    PayrollRun.find().lean(),
     Counter.find().lean(),
     Role.find().lean(),
     BiometricEvent.find().lean(),
     BiometricMapping.find().lean(),
     BiometricSyncState.find().lean(),
   ])
-  return { settings, staffSettings, menu, categories, ingredients, supplies, customers, staff, riders, riderCash, suppliers, expenses, sales, deletedSales, attendance, audit, cashOpenings, cashHandovers, advanceBookings, returns, payInOuts, dayCloses, tables, users, cashCounts, helds, kots, recalls, voids, staffPayNotes, counters, roles, biometricEvents, biometricMappings, biometricSyncStates }
+  return { settings, staffSettings, menu, categories, ingredients, supplies, customers, staff, riders, riderCash, suppliers, expenses, sales, deletedSales, attendance, audit, cashOpenings, advanceBookings, returns, payInOuts, dayCloses, tables, users, cashCounts, helds, kots, recalls, voids, staffAdvances, staffEarnings, payrollRuns, counters, roles, biometricEvents, biometricMappings, biometricSyncStates }
 }
 
 // GET /api/backup/export - protected (any authenticated user)
@@ -138,7 +140,6 @@ router.post('/import', authRequired, requireRole('Admin','admin'), async (req, r
     await insert(Attendance, d.attendance, 'attendance')
     await insert(Audit, d.audit, 'audit')
     await insert(CashOpening, d.cashOpenings, 'cashOpenings')
-    await insert(CashHandover, d.cashHandovers, 'cashHandovers')
     await insert(AdvanceBooking, d.advanceBookings, 'advanceBookings')
     await insert(Return, d.returns, 'returns')
     await insert(PayInOut, d.payInOuts, 'payInOuts')
@@ -149,7 +150,9 @@ router.post('/import', authRequired, requireRole('Admin','admin'), async (req, r
     await insert(Kot, d.kots, 'kots')
     await insert(Recall, d.recalls, 'recalls')
     await insert(Void, d.voids, 'voids')
-    await insert(StaffPayNote, d.staffPayNotes, 'staffPayNotes')
+    await insert(StaffAdvance, d.staffAdvances, 'staffAdvances')
+    await insert(StaffEarning, d.staffEarnings, 'staffEarnings')
+    await insert(PayrollRun, d.payrollRuns, 'payrollRuns')
     await insert(DeletedSale, d.deletedSales, 'deletedSales')
     await insert(Role, d.roles, 'roles')
     await insert(BiometricEvent, d.biometricEvents, 'biometricEvents')
@@ -181,7 +184,6 @@ router.post('/reset', authRequired, requireRole('Admin','admin'), async (req, re
       Attendance.deleteMany({}),
       Audit.deleteMany({}),
       CashOpening.deleteMany({}),
-      CashHandover.deleteMany({}),
       AdvanceBooking.deleteMany({}),
       Return.deleteMany({}),
       PayInOut.deleteMany({}),
@@ -220,7 +222,7 @@ router.post('/purge', authRequired, requireRole('Admin','admin'), async (req, re
       'customers', 'staffs', 'riders', 'ridercashes', 'suppliers', 'expenses',
       'sales', 'deletedsales', 'attendances', 'audits', 'cashopenings', 'cashhandovers',
       'advancebookings', 'returns', 'payinouts', 'daycloses', 'tables', 'cashcounts',
-      'helds', 'kots', 'recalls', 'voids', 'staffpaynotes', 'counters', 'roles',
+      'helds', 'kots', 'recalls', 'voids', 'staffpaynotes', 'staffadvances', 'staffearnings', 'payrollruns', 'counters', 'roles',
       'biometricevents', 'biometricmappings', 'biometricsyncstates'
     ]
     if (includeUsers) collectionsToDrop.push('users')
@@ -254,7 +256,7 @@ router.get('/export-and-purge', authRequired, requireRole('Admin','admin'), asyn
           'customers', 'staffs', 'riders', 'ridercashes', 'suppliers', 'expenses',
           'sales', 'deletedsales', 'attendances', 'audits', 'cashopenings', 'cashhandovers',
           'advancebookings', 'returns', 'payinouts', 'daycloses', 'tables', 'cashcounts',
-          'helds', 'kots', 'recalls', 'voids', 'staffpaynotes', 'counters', 'roles',
+          'helds', 'kots', 'recalls', 'voids', 'staffpaynotes', 'staffadvances', 'staffearnings', 'payrollruns', 'counters', 'roles',
           'biometricevents', 'biometricmappings', 'biometricsyncstates'
         ]
         if (includeUsers) collectionsToDrop.push('users')

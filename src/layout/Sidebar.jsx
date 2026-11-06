@@ -1,15 +1,15 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { dashboardItem, navSections } from './navConfig.js'
+import { dashboardItem, navSections, myWorkItem, myWorkNavItems } from './navConfig.js'
 import { LogOut, X, Menu as MenuIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useData } from '../state/DataContext.jsx'
 
 // ─── Tailwind token strings ─────────────────────────────────────────────────
-const SB_BG = 'bg-slate-900 dark:bg-gray-950'
-const SB_BORDER = 'border-slate-800 dark:border-gray-800'
+const SB_BG = 'bg-gradient-to-b from-[#0f2d5c] via-[#0c2449] to-[#0a1e3c]'
+const SB_BORDER = 'border-white/10'
 const SB_ITEM_BASE = 'flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer w-full'
-const SB_ITEM_INACTIVE = 'text-slate-400 hover:bg-slate-800 hover:text-white dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'
-const SB_ITEM_ACTIVE = 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-const SB_SECTION_LABEL = 'px-3 pt-3 pb-1 text-[10px] font-semibold tracking-widest uppercase text-slate-500 dark:text-gray-500 select-none'
+const SB_ITEM_INACTIVE = 'text-slate-300 hover:bg-white/10 hover:text-white'
+const SB_ITEM_ACTIVE = 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+const SB_SECTION_LABEL = 'px-3 pt-3 pb-1 text-[10px] font-semibold tracking-widest uppercase text-sky-200/50 select-none'
 
 // ─── Permission helpers ───────────────────────────────────────────────────
 // enabledPaths = superadmin-managed feature access (null/empty array = all enabled)
@@ -19,6 +19,10 @@ const isEnabled = (enabledPaths, path) =>
 export function isDashboardVisible(user, enabledPaths) {
  if (user?.role === 'SuperAdmin') return true
  if (!isEnabled(enabledPaths, '/')) return false
+ // Custom per-user permissions apply even to Admin accounts
+ if (user?.useCustomPermissions && Array.isArray(user.permissions)) {
+ return user.permissions.some(p => p.path === '/' && p.visible)
+ }
  if (user?.role === 'Admin') return true
  if (user?.permissions && Array.isArray(user.permissions)) {
  return user.permissions.some(p => p.path === '/' && p.visible)
@@ -26,21 +30,39 @@ export function isDashboardVisible(user, enabledPaths) {
  return false
 }
 
+function withStaffMyWork(sections, user, enabledPaths) {
+ const showMyWork = Boolean(user?.staffId) && user?.myWorkAccess === true && isEnabled(enabledPaths, myWorkItem.path)
+ if (!showMyWork) return sections.filter(s => s.label !== 'My Work')
+ const rest = sections.filter(s => s.label !== 'My Work')
+ return [{
+  label: 'My Work',
+  items: myWorkNavItems.map(i => ({ to: i.path, label: i.label, icon: i.icon, end: i.end })),
+ }, ...rest]
+}
+
 export function getVisibleSections(user, enabledPaths) {
  const sections = navSections()
- if (user?.role === 'SuperAdmin') return sections
- if (user?.role === 'Admin') {
- return sections
- .map(s => ({ ...s, items: s.items.filter(i => isEnabled(enabledPaths, i.to)) }))
- .filter(s => s.items.length > 0)
+ if (user?.role === 'SuperAdmin') return withStaffMyWork(sections, user, enabledPaths)
+ if (user?.role === 'Admin' && !user?.useCustomPermissions) {
+ return withStaffMyWork(
+  sections
+   .map(s => ({ ...s, items: s.items.filter(i => i.to !== '/my' && isEnabled(enabledPaths, i.to)) }))
+   .filter(s => s.items.length > 0),
+  user,
+  enabledPaths
+ )
  }
  if (user?.permissions && Array.isArray(user.permissions)) {
- const allowedPaths = new Set(user.permissions.filter(p => p.visible).map(p => p.path))
- return sections
- .map(s => ({ ...s, items: s.items.filter(i => allowedPaths.has(i.to) && isEnabled(enabledPaths, i.to)) }))
- .filter(s => s.items.length > 0)
+ const allowedPaths = new Set(user.permissions.filter(p => p.visible && p.path !== '/my').map(p => p.path))
+ return withStaffMyWork(
+  sections
+   .map(s => ({ ...s, items: s.items.filter(i => i.to !== '/my' && allowedPaths.has(i.to) && isEnabled(enabledPaths, i.to)) }))
+   .filter(s => s.items.length > 0),
+  user,
+  enabledPaths
+ )
  }
- return []
+ return withStaffMyWork([], user, enabledPaths)
 }
 
 // ─── Sidebar component ────────────────────────────────────────────────────
@@ -89,13 +111,13 @@ const NavItem = ({ item, onClick }) => {
  className={`
  no-print hidden md:flex flex-none flex-col
  ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-52 min-w-[13rem]'}
- sticky top-0 h-screen overflow-y-auto overflow-x-visible
+ sticky top-0 h-[100dvh] overflow-y-auto overflow-x-visible app-drawer-safe
  ${SB_BG} border-r ${SB_BORDER}
  transition-[width] duration-200 z-[1000]
  `}
  >
  {/* Brand */}
- <div className={`flex items-center gap-3 px-4 py-4 border-b ${SB_BORDER} flex-shrink-0 ${collapsed ? 'justify-center' : ''}`}><div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-600/30"><span className="text-white text-sm font-bold leading-none">
+ <div className={`flex items-center gap-3 px-4 py-4 border-b ${SB_BORDER} flex-shrink-0 ${collapsed ? 'justify-center' : ''}`}><div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/40"><span className="text-white text-sm font-bold leading-none">
  {(brand?.[0] || 'R').toUpperCase()}
  </span></div>
  {!collapsed && (
@@ -132,7 +154,7 @@ const NavItem = ({ item, onClick }) => {
  className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-colors"
  ><LogOut size={18} /></button></div>
  ) : (
- <div className="flex items-center justify-between px-1"><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-semibold text-white">
+ <div className="flex items-center justify-between px-1"><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-xs font-semibold text-white">
  {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
  </div><span className="text-xs text-slate-300 dark:text-gray-300 truncate max-w-[80px]">{user?.name || user?.email || 'User'}</span></div><button
  onClick={() => { logout(); navigate('/login') }}
@@ -146,9 +168,9 @@ const NavItem = ({ item, onClick }) => {
 
  {/* ── MOBILE DRAWER ── */}
  {mobileOpen && (
- <><div className="fixed inset-0 z-[1100] bg-black/50 backdrop-blur-sm" onClick={() => setMobileOpen(false)} /><div className={`fixed inset-y-0 left-0 z-[1200] w-72 max-w-[82vw] ${SB_BG} border-r ${SB_BORDER} flex flex-col shadow-2xl`}>
+ <><div className="fixed inset-0 z-[1100] bg-black/50 backdrop-blur-sm" onClick={() => setMobileOpen(false)} /><div className={`fixed inset-y-0 left-0 z-[1200] w-72 max-w-[82vw] ${SB_BG} border-r ${SB_BORDER} flex flex-col shadow-2xl app-drawer-safe`}>
  {/* Mobile header */}
- <div className={`flex items-center justify-between px-4 py-4 border-b ${SB_BORDER}`}><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30"><span className="text-white text-sm font-bold">{(brand?.[0] || 'R').toUpperCase()}</span></div><div><div className="text-sm font-bold text-white leading-tight">{brand}</div><div className="text-[10px] text-slate-400 dark:text-gray-400 uppercase tracking-wider">POS System</div></div></div><button
+ <div className={`flex items-center justify-between px-4 py-4 border-b ${SB_BORDER} app-sidebar-safe-top`}><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30 overflow-hidden"><img src="/icons/icon-48.png" alt="" className="w-8 h-8 object-cover" onError={(e)=>{ e.currentTarget.style.display='none'; e.currentTarget.nextSibling?.classList.remove('hidden') }} /><span className="hidden text-white text-sm font-bold">{(brand?.[0] || 'R').toUpperCase()}</span></div><div><div className="text-sm font-bold text-white leading-tight">{brand}</div><div className="text-[10px] text-slate-400 dark:text-gray-400 uppercase tracking-wider">EpicSpire RMS</div></div></div><button
  onClick={() => setMobileOpen(false)}
  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-800 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
  ><X size={18} /></button></div>
@@ -195,9 +217,9 @@ const NavItem = ({ item, onClick }) => {
  </nav>
 
  {/* Mobile footer */}
- <div className={`border-t ${SB_BORDER} px-3 py-3 flex items-center justify-between`}><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-full bg-stone-700 flex items-center justify-center text-xs font-semibold text-stone-300">
+ <div className={`border-t ${SB_BORDER} px-3 py-3 flex items-center justify-between`}><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs font-semibold text-slate-200">
  {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
- </div><span className="text-xs text-stone-400">{user?.name || user?.email || 'User'}</span></div><button
+ </div><span className="text-xs text-slate-300">{user?.name || user?.email || 'User'}</span></div><button
  onClick={() => { setMobileOpen(false); logout(); navigate('/login') }}
  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors"
 >

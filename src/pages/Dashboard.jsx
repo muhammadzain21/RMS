@@ -1,638 +1,868 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
+import {
+  RefreshCw,
+  ShoppingCart,
+  CheckCircle2,
+  Clock,
+  Banknote,
+  Wallet,
+  Tag,
+  UserX,
+  Printer,
+  FileDown,
+  FileSpreadsheet,
+  BarChart3,
+  Users,
+  UserPlus,
+} from 'lucide-react'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useData } from '../state/DataContext.jsx'
-import StatsCard from '../components/StatsCard.jsx'
-import ChartCard from '../components/ChartCard.jsx'
-import { LineChart, Line, XAxis, YAxis, Tooltip, BarChart, Bar, Legend, CartesianGrid } from 'recharts'
-import { format, subDays, addDays } from 'date-fns'
+import DatePicker from '../components/DatePicker.jsx'
+import PageHero from '../components/ui/PageHero.jsx'
+import { createLineTotal } from './sales/utils.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+
+const PIE_COLORS = ['#3b82f6', '#6366f1', '#0ea5e9', '#10b981', '#f59e0b']
+
+function num(v) {
+  return Number(v || 0)
+}
+
+function fmt(n) {
+  return num(n).toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+
+function billDiscountOf(s) {
+  const itemsDisc = num(s.itemsDiscount)
+  const billDisc = num(s.billDiscount)
+  const combined = num(s.discount)
+  return billDisc || (combined ? Math.max(0, combined - itemsDisc) : 0) || combined
+}
+
+function totalDiscountOf(s) {
+  return num(s.itemsDiscount) + billDiscountOf(s)
+}
+
+function saleGrossBeforeTaxService(s) {
+  return num(s.total) - num(s.serviceAmt) - num(s.taxAmt) + totalDiscountOf(s)
+}
+
+function customerKey(s) {
+  const c = s.customer
+  if (!c || typeof c !== 'object') return null
+  if (c.id) return `id:${c.id}`
+  if (c.phone) return `ph:${String(c.phone).trim()}`
+  if (c.name) return `nm:${String(c.name).trim().toLowerCase()}`
+  return null
+}
+
+function tsToDateStr(ts) {
+  const n = Number(ts)
+  if (!n) return ''
+  try {
+    return format(new Date(n), 'yyyy-MM-dd')
+  } catch {
+    return ''
+  }
+}
+
+function saleCreatedMs(s) {
+  const c = s.createdAt
+  if (!c) return null
+  if (typeof c === 'number') return c
+  const t = new Date(c).getTime()
+  return Number.isFinite(t) ? t : null
+}
+
+function heldTotal(h, lineTotal) {
+  if (num(h.totalAmount) > 0) return num(h.totalAmount)
+  const items = Array.isArray(h.items) ? h.items : []
+  return items.reduce((a, it) => a + lineTotal(null, it), 0)
+}
+
+function voidLineTotal(v, lineTotal, menu) {
+  const items = Array.isArray(v.items) ? v.items : []
+  return items.reduce((a, it) => {
+    const m = menu.find(x => x.id === it.itemId)
+    return a + lineTotal(m, it)
+  }, 0)
+}
+
+function durationBucket(minutes) {
+  if (minutes == null || minutes < 0) return '60 + mins'
+  if (minutes <= 15) return '15 mins'
+  if (minutes <= 30) return '30 mins'
+  if (minutes <= 45) return '45 mins'
+  if (minutes <= 60) return '60 mins'
+  return '60 + mins'
+}
+
+function isPaidMethod(pm) {
+  const m = String(pm || 'cash').toLowerCase()
+  return m === 'cash' || m === 'card' || m === 'bank'
+}
+
+function paymentBucket(s) {
+  const pm = String(s.paymentMethod || 'cash').toLowerCase()
+  const ch = String(s.bankChannel || '').toLowerCase()
+  if (pm === 'cash') return 'cash'
+  if (pm === 'card') return 'card'
+  if (pm === 'bank') {
+    if (ch === 'foodpanda' || ch === 'food_panda') return 'foodpanda'
+    return 'bank'
+  }
+  return null
+}
+
+function StatCard({ title, value, icon: Icon, iconColor = 'bg-blue-500' }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-center justify-between">
+        <div className="space-y-1.5 min-w-0">
+          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">{title}</span>
+          <div className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)] truncate">{value}</div>
+        </div>
+        <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${iconColor} text-white shadow-md`}>
+          <Icon className="h-6 w-6" />
+        </div>
+      </div>
+      <div className="absolute -bottom-6 -right-6 h-16 w-16 rounded-full bg-slate-50 opacity-50 dark:bg-slate-800" />
+    </div>
+  )
+}
+
+function MiniStat({ title, value, icon: Icon, iconColor = 'bg-blue-500' }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md flex-1 min-w-[8.5rem]">
+      <div className="flex items-center justify-between gap-2">
+        <div className="space-y-1 min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">{title}</span>
+          <div className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">{fmt(value)}</div>
+        </div>
+        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${iconColor} text-white shadow-sm`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Panel({ title, icon: Icon, children, className = '' }) {
+  return (
+    <div className={`rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ${className}`}>
+      <div className="mb-4 flex items-center gap-2 text-[var(--color-text-primary)] font-semibold">
+        {Icon ? <Icon className="h-4 w-4 text-blue-500" /> : null}
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
 
 export default function Dashboard() {
-  const { metrics, state, businessDate, dispatch } = useData()
+  const { state, businessDate, dispatch } = useData()
   const { token } = useAuth()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
-  // Per-card selectors (already added)
-  const [saleCardRange, setSaleCardRange] = useState('today')
-  const [returnCardRange, setReturnCardRange] = useState('today')
-  const [netCardRange, setNetCardRange] = useState('today')
-  // New per-chart/table selectors
-  const [salesChartRange, setSalesChartRange] = useState('30') // '7' | '30' | '90' | 'today'
-  const [expenseChartRange, setExpenseChartRange] = useState('30')
-  const [itemTableRange, setItemTableRange] = useState('30')
-  const [categoryTableRange, setCategoryTableRange] = useState('30')
-  const rangeToDays = (v) => (v === 'today' ? 1 : Number(v))
-  const sinceDateStr = (n) => format(subDays(new Date(), Math.max(0, n - 1)), 'yyyy-MM-dd')
-  const inLastNDays = (dateStr, n) => {
-    const since = sinceDateStr(n)
-    const todayStr = format(new Date(), 'yyyy-MM-dd')
-    // All dates are yyyy-MM-dd so lexicographic compare works
-    return dateStr >= since && dateStr <= todayStr
-  }
-  const getSalesAgg = (rangeVal) => {
-    const n = Math.max(1, rangeToDays(rangeVal))
-    const list = rangeVal === 'today'
-      ? state.sales.filter(s => {
-          // Include sales dated with the active business day.
-          if (s.date === businessDate) return true
-          // If daybook is open and calendar today != businessDate, also include calendar today's sales.
-          if (Boolean(state?.daybook?.open) && businessDate !== format(new Date(), 'yyyy-MM-dd')) {
-            return s.date === format(new Date(), 'yyyy-MM-dd')
-          }
-          return false
-        })
-      : state.sales.filter(s => inLastNDays(s.date, n))
-    // netTotal = sum of saved totals (after all discounts)
-    const compTotal = list.filter(s => s.paymentMethod === 'complimentary').reduce((a,b) => a + Number(b.total||0), 0)
-    const netTotal = Math.max(0, list.reduce((a,b) => a + Number(b.total||0), 0) - compTotal)
-    // preGross = sum of pre-discount subtotals: total + itemsDiscount + billDiscount (or legacy discount)
-    const preGross = list.reduce((a,b) => a + Number(b.total || 0) + Number(b.itemsDiscount || 0) + Number(b.billDiscount || b.discount || 0), 0)
-    const itemsDiscounts = list.reduce((a,b) => a + Number(b.itemsDiscount || 0), 0)
-    const billDiscounts = list.reduce((a,b) => {
-      const itemsDisc = Number(b.itemsDiscount || 0)
-      const billDisc = Number(b.billDiscount || 0)
-      const combined = Number(b.discount || 0)
-      // Prefer explicit billDiscount; else derive from combined - items
-      const derived = billDisc || (combined ? Math.max(0, combined - itemsDisc) : 0) || 0
-      return a + derived
-    }, 0)
-    const discount = itemsDiscounts + billDiscounts
-    const items = list.reduce((a, sale) => a + sale.items.reduce((x, it) => x + Number(it.qty), 0), 0)
-    const byMethod = list.reduce((acc, s) => {
-      const m = s.paymentMethod || 'cash'
-      const key = m === 'card' ? 'online' : m
-      if (!acc[key]) acc[key] = { gross: 0, discount: 0 }
-      // For the 'Total Sale in PKR' card we display pre-discount totals.
-      acc[key].gross += Number(s.total || 0) + Number(s.itemsDiscount || 0) + Number(s.billDiscount || s.discount || 0)
-      acc[key].discount += Number(s.billDiscount || s.discount || 0) + Number(s.itemsDiscount || 0)
-      return acc
-    }, {})
-    // Also provide by-method bill-only discounts for Net card alignment
-    const byMethodBillDiscounts = list.reduce((acc, s) => {
-      const m = s.paymentMethod || 'cash'
-      const key = m === 'card' ? 'online' : m
-      if (!acc[key]) acc[key] = { bill: 0 }
-      const itemsDisc = Number(s.itemsDiscount || 0)
-      const billDisc = Number(s.billDiscount || 0)
-      const combined = Number(s.discount || 0)
-      const derived = billDisc || (combined ? Math.max(0, combined - itemsDisc) : 0) || 0
-      acc[m].bill += derived
-      return acc
-    }, {})
-    // Provide by-method net aligned to gross - billDiscounts (exclude item discounts)
-    const byMethodNet = Object.keys(byMethod).reduce((acc, m) => {
-      if (m === 'complimentary') {
-        acc[m] = { net: 0 }
-      } else {
-        const gross = byMethod[m]?.gross || 0
-        const bill = byMethodBillDiscounts[m]?.bill || 0
-        acc[m] = { net: Math.max(0, gross - bill) }
-      }
-      return acc
-    }, {})
-    return { gross: preGross, net: netTotal, discount, items, byMethod, byMethodNet, billDiscounts }
-  }
-  const saleAgg = useMemo(() => getSalesAgg(saleCardRange), [state.sales, saleCardRange, businessDate, state?.daybook?.open])
-  const netAgg = useMemo(() => getSalesAgg(netCardRange), [state.sales, netCardRange, businessDate, state?.daybook?.open])
+  const companyName = state?.settings?.companyName || 'Restaurant POS'
 
-  // Returns aggregation for range selectors
-  const getReturnsAgg = (rangeVal) => {
-    const n = Math.max(1, rangeToDays(rangeVal))
-    const list = rangeVal === 'today'
-      ? (state.returns||[]).filter(r => {
-          if (r.date === businessDate) return true
-          if (Boolean(state?.daybook?.open) && businessDate !== format(new Date(), 'yyyy-MM-dd')) {
-            return r.date === format(new Date(), 'yyyy-MM-dd')
-          }
-          return false
-        })
-      : (state.returns||[]).filter(r => inLastNDays(r.date, n))
-    const totalRefund = list.reduce((a,b) => a + Number(b.refund || 0), 0)
-    const byMethod = list.reduce((acc, r) => {
-      const m = r.paymentMethod || 'cash'
-      if (!acc[m]) acc[m] = { refund: 0 }
-      acc[m].refund += Number(r.refund || 0)
-      return acc
-    }, {})
-    return { totalRefund, byMethod }
-  }
-  const returnAgg = useMemo(() => getReturnsAgg(returnCardRange), [state.returns, returnCardRange, businessDate, state?.daybook?.open])
-  const netReturnAgg = useMemo(() => getReturnsAgg(netCardRange), [state.returns, netCardRange, businessDate, state?.daybook?.open])
+  const [selectedDate, setSelectedDate] = useState(businessDate || format(new Date(), 'yyyy-MM-dd'))
+  const [dateTouched, setDateTouched] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [voidRows, setVoidRows] = useState([])
+  const [attendanceRows, setAttendanceRows] = useState([])
+  const [pieIndex, setPieIndex] = useState(0)
+  // Sales fetched for the selected date (source of truth for dashboard filter)
+  const [daySalesOverride, setDaySalesOverride] = useState(null)
 
-  const salesSeries = useMemo(() => {
-    const n = Math.max(1, rangeToDays(salesChartRange))
-    // Use businessDate as anchor if daybook is open and has sales; otherwise use calendar today
-    const hasBusinessDateSales = state.sales.some(s => s.date === businessDate)
-    const anchorDate = (state?.daybook?.open && hasBusinessDateSales) ? new Date(businessDate) : new Date()
-    const days = Array.from({ length: n }).map((_, i) => format(subDays(anchorDate, n - 1 - i), 'yyyy-MM-dd'))
-    return days.map(d => {
-      const gross = state.sales
-        .filter(s => s.date === d)
-        .reduce((a,b) => a + Number(b.total||0), 0)
-      const returns = (state.returns||[])
-        .filter(r => r.date === d)
-        .reduce((a,b) => a + Number(b.refund||0), 0)
-      return {
-        date: d.slice(5),
-        sales: Math.max(0, gross - returns)
-      }
-    })
-  }, [state.sales, state.returns, salesChartRange, businessDate, state?.daybook?.open])
-
-  // Ensure we have both businessDate and calendar-today sales when daybook stays open past midnight
   useEffect(() => {
-    const fetchBoth = async () => {
-      try {
-        if (!token) return
-        if (!state?.daybook?.open) return
-        const realToday = format(new Date(), 'yyyy-MM-dd')
-        if (businessDate === realToday) return
-        const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-        const yesterday = format(subDays(new Date(realToday), 1), 'yyyy-MM-dd')
-        const [bizRes, todayRes, yRes] = await Promise.all([
-          fetch(`${API}/api/sales?from=${businessDate}&to=${businessDate}`, { headers }),
-          fetch(`${API}/api/sales?from=${realToday}&to=${realToday}`, { headers }),
-          fetch(`${API}/api/sales?from=${yesterday}&to=${yesterday}`, { headers }),
-        ])
-        let rows = []
-        if (bizRes.ok) rows = [...rows, ...(await bizRes.json()||[])]
-        if (todayRes.ok) rows = [...rows, ...(await todayRes.json()||[])]
-        if (yRes.ok) rows = [...rows, ...(await yRes.json()||[])]
-        // Merge with existing sales; keep all historical records
-        const base = Array.isArray(state?.sales) ? state.sales : []
-        const all = [...base, ...rows]
-        const seen = new Set(); const merged = []
-        for (const s of all) {
-          const key = s._id || s.id || `${s.billNo || ''}-${s.date || ''}`
-          if (seen.has(key)) continue
-          seen.add(key)
-          merged.push({ ...s, id: s.id || s._id })
-        }
-        if (merged.length) dispatch({ type: 'HYDRATE', payload: { sales: merged } })
-      } catch {}
-    }
-    fetchBoth()
-  }, [businessDate, state?.daybook?.open, token])
+    if (!dateTouched && businessDate) setSelectedDate(businessDate)
+  }, [businessDate, dateTouched])
 
-  const expenseVsRevenue = useMemo(() => {
-    const n = Math.max(1, rangeToDays(expenseChartRange))
-    // Use businessDate as anchor when daybook is open; otherwise use calendar today
-    const hasBusinessDateData = state.sales.some(s => s.date === businessDate) || 
-                                state.expenses.some(e => e.date === businessDate) ||
-                                state.supplies.some(s => s.date === businessDate)
-    const anchorDate = (state?.daybook?.open && hasBusinessDateData) ? new Date(businessDate) : new Date()
-    const since = format(subDays(anchorDate, n - 1), 'yyyy-MM-dd')
-    const anchorStr = format(anchorDate, 'yyyy-MM-dd')
-    const inRange = (dateStr) => dateStr >= since && dateStr <= anchorStr
-    
-    // Include both businessDate data AND calendar today's data when daybook is open and spans midnight
-    const includeCalendarToday = Boolean(state?.daybook?.open) && businessDate !== format(new Date(), 'yyyy-MM-dd')
-    const todayStr = format(new Date(), 'yyyy-MM-dd')
-    
-    const grossSales = state.sales
-      .filter(s => inRange(s.date) || (includeCalendarToday && s.date === todayStr))
-      .reduce((a,b) => a + Number(b.total||0), 0)
-    const returns = (state.returns||[])
-      .filter(r => inRange(r.date) || (includeCalendarToday && r.date === todayStr))
-      .reduce((a,b) => a + Number(b.refund||0), 0)
-    const sales = Math.max(0, grossSales - returns)
+  const lineTotal = useMemo(() => createLineTotal(state.settings?.modifiers || {}), [state.settings?.modifiers])
 
-    const purchases = state.supplies
-      .filter(s => inRange(s.date) || (includeCalendarToday && s.date === todayStr))
-      .reduce((a,b) => a + Number(b.cost||0), 0)
+  const daySales = useMemo(() => {
+    if (Array.isArray(daySalesOverride)) return daySalesOverride
+    return (state.sales || []).filter(s => String(s.date) === String(selectedDate))
+  }, [daySalesOverride, state.sales, selectedDate])
 
-    const expenses = state.expenses
-      .filter(e => inRange(e.date) || (includeCalendarToday && e.date === todayStr))
-      .reduce((a,b) => a + Number(b.amount||0), 0)
+  const saleTokenSet = useMemo(() => {
+    const set = new Set()
+    daySales.forEach(s => {
+      if (s.tokenNo) set.add(String(s.tokenNo))
+    })
+    return set
+  }, [daySales])
 
+  const pendingRecalls = useMemo(() => {
+    const recalls = Array.isArray(state.recalls) ? state.recalls : []
+    return recalls.filter(r => {
+      const d = r.date || tsToDateStr(r.createdAt)
+      if (d !== selectedDate) return false
+      const tok = String(r.tokenNo || '')
+      if (tok && saleTokenSet.has(tok)) return false
+      return true
+    })
+  }, [state.recalls, selectedDate, saleTokenSet])
+
+  const pendingHelds = useMemo(() => {
+    const helds = Array.isArray(state.helds) ? state.helds : []
+    return helds.filter(h => tsToDateStr(h.createdAt) === selectedDate)
+  }, [state.helds, selectedDate])
+
+  const completedCount = daySales.length
+  const pendingCount = pendingRecalls.length + pendingHelds.length
+  const totalOrders = completedCount + pendingCount
+
+  const customerStats = useMemo(() => {
+    const beforeKeys = new Set()
+    ;(state.sales || []).forEach(s => {
+      if (s.date >= selectedDate) return
+      const k = customerKey(s)
+      if (k) beforeKeys.add(k)
+    })
+    const newKeys = new Set()
+    const oldKeys = new Set()
+    daySales.forEach(s => {
+      const k = customerKey(s)
+      if (!k) return
+      if (beforeKeys.has(k)) oldKeys.add(k)
+      else newKeys.add(k)
+    })
+    const identified = newKeys.size + oldKeys.size
+    const newPct = identified ? (newKeys.size / identified) * 100 : 0
+    const oldPct = identified ? (oldKeys.size / identified) * 100 : 0
+    return { newCount: newKeys.size, oldCount: oldKeys.size, newPct, oldPct }
+  }, [state.sales, daySales, selectedDate])
+
+  const salesSummary = useMemo(() => {
+    const transactions = daySales.length
+    let sale = 0
+    let discount = 0
+    let charges = 0
+    let taxIn = 0
+    let taxEx = 0
+    let total = 0
+    let paid = 0
+    daySales.forEach(s => {
+      sale += saleGrossBeforeTaxService(s)
+      discount += totalDiscountOf(s)
+      charges += num(s.serviceAmt)
+      const tax = num(s.taxAmt)
+      if (s.taxInclusive) taxIn += tax
+      else taxEx += tax
+      total += num(s.total)
+      if (isPaidMethod(s.paymentMethod)) paid += num(s.total)
+    })
+    const expense = (state.expenses || [])
+      .filter(e => e.date === selectedDate)
+      .reduce((a, e) => a + num(e.amount), 0)
+    const billSize = transactions ? total / transactions : 0
+    return { transactions, sale, discount, charges, taxIn, taxEx, total, paid, billSize, expense }
+  }, [daySales, state.expenses, selectedDate])
+
+  const recallStartByToken = useMemo(() => {
+    const map = new Map()
+    ;(state.recalls || []).forEach(r => {
+      const d = r.date || tsToDateStr(r.createdAt)
+      if (d !== selectedDate) return
+      const tok = String(r.tokenNo || '')
+      if (!tok) return
+      const t = Number(r.createdAt || 0)
+      if (!map.has(tok) || t < map.get(tok)) map.set(tok, t)
+    })
+    return map
+  }, [state.recalls, selectedDate])
+
+  const timeBuckets = useMemo(() => {
+    const labels = ['15 mins', '30 mins', '45 mins', '60 mins', '60 + mins']
+    const counts = Object.fromEntries(labels.map(l => [l, 0]))
+    daySales.forEach(s => {
+      const tok = String(s.tokenNo || '')
+      const start = tok ? recallStartByToken.get(tok) : null
+      const end = saleCreatedMs(s)
+      let minutes = null
+      if (start && end) minutes = Math.max(0, Math.floor((end - start) / 60000))
+      const bucket = durationBucket(minutes)
+      counts[bucket] = (counts[bucket] || 0) + 1
+    })
+    const rows = labels.map(label => ({ label, count: counts[label] || 0 }))
+    const total = rows.reduce((a, r) => a + r.count, 0)
+    const pieData = rows
+      .filter(r => r.count > 0)
+      .map(r => ({ name: r.label, value: r.count, pct: total ? Math.round((r.count / total) * 100) : 0 }))
+    return { rows, total, pieData }
+  }, [daySales, recallStartByToken])
+
+  useEffect(() => {
+    setPieIndex(0)
+  }, [selectedDate, timeBuckets.pieData.length])
+
+  const posStats = useMemo(() => {
+    let sale = 0
+    let settled = 0
+    let discount = 0
+    let gift = 0
+    daySales.forEach(s => {
+      sale += saleGrossBeforeTaxService(s)
+      discount += totalDiscountOf(s)
+      const pm = String(s.paymentMethod || '').toLowerCase()
+      if (pm === 'complimentary') gift += num(s.total)
+      if (isPaidMethod(pm)) settled += num(s.total)
+    })
+    const voidTotal = voidRows.reduce((a, v) => a + voidLineTotal(v, lineTotal, state.menu || []), 0)
+    return { sale, settled, discount, gift, void: voidTotal }
+  }, [daySales, voidRows, lineTotal, state.menu])
+
+  const paymentRows = useMemo(() => {
+    const buckets = { bank: 0, cash: 0, card: 0, foodpanda: 0 }
+    daySales.forEach(s => {
+      const b = paymentBucket(s)
+      if (!b) return
+      buckets[b] += num(s.total)
+    })
     return [
-      { name: 'Sales', amount: sales },
-      { name: 'Purchases', amount: purchases },
-      { name: 'Expenses', amount: expenses },
+      { type: 'Bank Account', amount: buckets.bank },
+      { type: 'Cash', amount: buckets.cash },
+      { type: 'Card', amount: buckets.card },
+      { type: 'Food Panda', amount: buckets.foodpanda },
     ]
-  }, [state.sales, state.returns, state.supplies, state.expenses, expenseChartRange, businessDate, state?.daybook?.open])
+  }, [daySales])
 
-  // === Sales Statistics (business day vs last CLOSED day) ===
-  // Business day persists past midnight until a Day Close is performed.
-  const realToday = format(new Date(), 'yyyy-MM-dd')
-  const closedDates = (state.dayCloses||[]).map(d => d.date)
-  const closedSet = new Set(closedDates)
-  // Use businessDate from context; fall back to real today if absent
-  const activeBusinessDate = businessDate || realToday
-  const isDaybookOpenForActive = Boolean(state?.daybook?.open) && (state?.daybook?.date === activeBusinessDate)
-  const isBusinessDateClosed = !isDaybookOpenForActive && closedSet.has(activeBusinessDate)
-  // If the current businessDate is already closed (e.g. just after closing),
-  // treat the effective 'today' reference as the next day so that the just-closed
-  // date appears under 'Yesterday'.
-  const effectiveToday = isBusinessDateClosed
-    ? format(addDays(new Date(activeBusinessDate), 1), 'yyyy-MM-dd')
-    : activeBusinessDate
-  const sortedClosed = [...closedDates].sort()
-  const salesDateSet = new Set((state.sales||[]).map(s=>s.date))
-  // Pick the most recent closed date strictly before the current businessDate
-  let yesterdayDate = ''
-  // Prefer a closed date that actually has sales
-  for (let i = sortedClosed.length - 1; i >= 0; i--) {
-    const d = sortedClosed[i]
-    if (d < effectiveToday && salesDateSet.has(d)) { yesterdayDate = d; break }
-  }
-  // If none with sales, pick the latest closed before effectiveToday regardless of sales
-  if (!yesterdayDate) {
-    for (let i = sortedClosed.length - 1; i >= 0; i--) {
-      const d = sortedClosed[i]
-      if (d < effectiveToday) { yesterdayDate = d; break }
+  const billAnalysis = useMemo(() => {
+    const bookings = (state.advanceBookings || []).filter(b => b.date === selectedDate)
+    const bookedFromBookings = bookings
+      .filter(b => String(b.status || '').toLowerCase() !== 'completed' && String(b.status || '').toLowerCase() !== 'cancelled')
+      .reduce((a, b) => a + num(b.deposit), 0)
+    const paidBookings = bookings
+      .filter(b => String(b.status || '').toLowerCase() === 'completed')
+      .reduce((a, b) => a + num(b.deposit), 0)
+    const heldAmt = pendingHelds.reduce((a, h) => a + heldTotal(h, lineTotal), 0)
+    const billBooked = bookedFromBookings + heldAmt
+    const billPaid = paidBookings
+    return { billBooked, billPaid, totalPayable: Math.max(0, billBooked - billPaid) }
+  }, [state.advanceBookings, pendingHelds, selectedDate, lineTotal])
+
+  const expenseAnalysis = useMemo(() => {
+    const booked = (state.expenses || [])
+      .filter(e => e.date === selectedDate)
+      .reduce((a, e) => a + num(e.amount), 0)
+    const paid = (state.payInOuts || [])
+      .filter(p => p.date === selectedDate && p.type === 'OUT')
+      .reduce((a, p) => a + num(p.amount), 0)
+    return { booked, paid }
+  }, [state.expenses, state.payInOuts, selectedDate])
+
+  const hrRows = useMemo(() => {
+    const staffById = Object.fromEntries((state.staff || []).map(s => [String(s.id), s]))
+    const byPos = {}
+    attendanceRows.forEach(rec => {
+      const st = staffById[String(rec.staffId)]
+      const pos = st?.position || rec.staffName || 'Staff'
+      const status = String(rec.status || '')
+      const present =
+        status === 'Present' ||
+        status === 'Late' ||
+        (rec.checkIn && status !== 'Leave' && status !== 'Absent')
+      if (!present) return
+      byPos[pos] = (byPos[pos] || 0) + 1
+    })
+    return Object.entries(byPos)
+      .map(([designation, present]) => ({ designation, present }))
+      .sort((a, b) => a.designation.localeCompare(b.designation))
+  }, [attendanceRows, state.staff])
+
+  const authHeaders = useMemo(
+    () => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }),
+    [token]
+  )
+
+  const refreshData = useCallback(async (opts = {}) => {
+    const quiet = !!opts.quiet
+    if (!token || !selectedDate) return
+    setRefreshing(true)
+    try {
+      const month = selectedDate.slice(0, 7)
+      const [salesRes, recallsRes, heldsRes, voidsRes, attRes, bookingsRes] = await Promise.all([
+        fetch(`${API}/api/sales?from=${selectedDate}&to=${selectedDate}`, { headers: authHeaders, cache: 'no-store' }),
+        fetch(`${API}/api/recalls`, { headers: authHeaders, cache: 'no-store' }),
+        fetch(`${API}/api/helds`, { headers: authHeaders, cache: 'no-store' }),
+        fetch(`${API}/api/voids?from=${selectedDate}&to=${selectedDate}&limit=500`, { headers: authHeaders, cache: 'no-store' }),
+        fetch(`${API}/api/attendance?date=${encodeURIComponent(selectedDate)}`, { headers: authHeaders, cache: 'no-store' }),
+        fetch(`${API}/api/advance-bookings`, { headers: authHeaders, cache: 'no-store' }),
+      ])
+
+      const patch = {}
+      if (salesRes.ok) {
+        const rows = await salesRes.json()
+        const fetched = (Array.isArray(rows) ? rows : []).map(s => ({ ...s, id: s.id || s._id }))
+        setDaySalesOverride(fetched)
+        // Replace that date's sales in global state; keep other dates
+        const others = (state.sales || []).filter(s => String(s.date) !== String(selectedDate))
+        patch.sales = [...fetched, ...others]
+      }
+      if (recallsRes.ok) {
+        const data = await recallsRes.json()
+        if (Array.isArray(data)) patch.recalls = data.map(r => ({ ...r, id: r.id || r._id }))
+      }
+      if (heldsRes.ok) {
+        const data = await heldsRes.json()
+        if (Array.isArray(data)) patch.helds = data.map(h => ({ ...h, id: h.id || h._id }))
+      }
+      if (Object.keys(patch).length) dispatch({ type: 'HYDRATE', payload: patch })
+
+      if (voidsRes.ok) {
+        const data = await voidsRes.json()
+        const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : []
+        setVoidRows(list)
+      } else setVoidRows([])
+
+      if (attRes.ok) {
+        const docs = await attRes.json()
+        setAttendanceRows(Array.isArray(docs) ? docs : [])
+      } else {
+        const fallback = await fetch(`${API}/api/attendance?month=${encodeURIComponent(month)}`, { headers: authHeaders })
+        if (fallback.ok) {
+          const docs = await fallback.json()
+          setAttendanceRows((Array.isArray(docs) ? docs : []).filter(d => d.date === selectedDate))
+        } else setAttendanceRows([])
+      }
+
+      if (bookingsRes.ok) {
+        const rows = await bookingsRes.json()
+        dispatch({
+          type: 'HYDRATE',
+          payload: { advanceBookings: (rows || []).map(x => ({ ...x, id: x.id || x._id })) },
+        })
+      }
+
+      if (!quiet) toast.success('Dashboard refreshed')
+    } catch {
+      toast.error('Refresh failed')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [API, authHeaders, dispatch, selectedDate, state.sales, token])
+
+  useEffect(() => {
+    setDaySalesOverride(null)
+    refreshData({ quiet: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate])
+
+  const exportPayload = useMemo(
+    () => ({
+      date: selectedDate,
+      companyName,
+      totalOrders,
+      completedCount,
+      pendingCount,
+      customers: customerStats,
+      salesSummary,
+      timeBuckets: timeBuckets.rows,
+      posStats,
+      paymentRows,
+      billAnalysis,
+      expenseAnalysis,
+      hrRows,
+    }),
+    [
+      selectedDate,
+      companyName,
+      totalOrders,
+      completedCount,
+      pendingCount,
+      customerStats,
+      salesSummary,
+      timeBuckets.rows,
+      posStats,
+      paymentRows,
+      billAnalysis,
+      expenseAnalysis,
+      hrRows,
+    ]
+  )
+
+  const openPrint = async () => {
+    try {
+      const p = exportPayload
+      const body =
+        reportSummary([
+          { label: 'Date', amount: p.date },
+          { label: 'Total orders', amount: String(p.totalOrders) },
+          { label: 'Completed', amount: String(p.completedCount) },
+          { label: 'Pending', amount: String(p.pendingCount) },
+          { label: 'New customers', amount: String(p.customers.newCount) },
+          { label: 'Old customers', amount: String(p.customers.oldCount) },
+        ]) +
+        reportSec('Sales') +
+        reportTable({
+          headers: ['Branch', 'Transactions', 'Sale', 'Discount', 'Charges', 'Total', 'Paid', 'Bill Size', 'Expense'],
+          rows: [
+            [
+              p.companyName,
+              String(p.salesSummary.transactions),
+              fmt(p.salesSummary.sale),
+              fmt(p.salesSummary.discount),
+              fmt(p.salesSummary.charges),
+              fmt(p.salesSummary.total),
+              fmt(p.salesSummary.paid),
+              fmt(p.salesSummary.billSize),
+              fmt(p.salesSummary.expense),
+            ],
+          ],
+        }) +
+        reportSec('Time analysis') +
+        reportTable({
+          headers: ['Minutes', 'Invoice count'],
+          rows: p.timeBuckets.map(r => [r.label, String(r.count)]),
+        }) +
+        reportSec('POS stats') +
+        reportSummary([
+          { label: 'Sale', amount: fmt(p.posStats.sale) },
+          { label: 'Settled', amount: fmt(p.posStats.settled) },
+          { label: 'Discount', amount: fmt(p.posStats.discount) },
+          { label: 'Void', amount: fmt(p.posStats.void) },
+        ]) +
+        reportSec('Payment analysis') +
+        reportTable({
+          headers: ['Payment type', 'Amount'],
+          rows: p.paymentRows.map(r => [r.type, fmt(r.amount)]),
+        }) +
+        reportSec('Bill & expense') +
+        reportSummary([
+          { label: 'Bill booked', amount: fmt(p.billAnalysis.billBooked) },
+          { label: 'Bill paid', amount: fmt(p.billAnalysis.billPaid) },
+          { label: 'Total payable', amount: fmt(p.billAnalysis.totalPayable) },
+          { label: 'Expense booked', amount: fmt(p.expenseAnalysis.booked) },
+          { label: 'Expense paid', amount: fmt(p.expenseAnalysis.paid) },
+        ]) +
+        reportSec('HR information') +
+        reportTable({
+          headers: ['Staff designation', 'Present'],
+          rows: p.hrRows.map(r => [r.designation, String(r.present)]),
+          emptyText: 'No attendance for this date',
+        })
+
+      const html = wrapReportDoc({
+        settings: state?.settings || {},
+        title: 'POS Dashboard',
+        reportLabel: 'Dashboard Summary',
+        reportNo: `Rpt #: DB-${p.date}`,
+        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Business date', p.date]],
+        metaRight: [['Branch', p.companyName]],
+        body,
+      })
+      await previewHtmlReport(html, `Dashboard-${p.date}.pdf`)
+      toast.success('Print preview opened')
+    } catch {
+      toast.error('Print preview failed')
     }
   }
-  // Fallback: use the day immediately before effectiveToday (business-aware),
-  // not calendar yesterday. This avoids duplicating the same date in both Today & Yesterday
-  // when businessDate equals calendar yesterday.
-  if (!yesterdayDate) {
-    yesterdayDate = format(subDays(new Date(effectiveToday), 1), 'yyyy-MM-dd')
-  }
-  // For business day: if closed, show zeros; else use records of the business date.
-  // When daybook is open and calendar today != business date, also include calendar today's entries
-  // so after-midnight sales/returns appear in the current business day's totals until Day Close.
-  const includeCalendarTodayAlso = Boolean(state?.daybook?.open) && (activeBusinessDate !== realToday)
-  const todaysSalesList = isBusinessDateClosed ? [] : state.sales.filter(s => (s.date === activeBusinessDate) || (includeCalendarTodayAlso && s.date === realToday))
-  const todaysReturnsList = isBusinessDateClosed ? [] : (state.returns||[]).filter(r => (r.date === activeBusinessDate) || (includeCalendarTodayAlso && r.date === realToday))
-  const todaysSalesAmount = todaysSalesList.reduce((a,b) => a + Number(b.total||0), 0)
-  const todaysSalesCount = todaysSalesList.length
-  // Items discount amount today
-  // Support legacy sales where itemsDiscount/billDiscount were not persisted
-  // Derive items discount as: explicit itemsDiscount; else (combined - billDiscount) if positive; else 0
-  const todaysItemsDiscountAmount = todaysSalesList.reduce((a,b) => {
-    const itemsDisc = Number(b.itemsDiscount || 0)
-    const billDisc = Number(b.billDiscount || 0)
-    const combined = Number(b.discount || 0)
-    const derivedItems = itemsDisc || (combined > 0 ? Math.max(0, combined - billDisc) : 0)
-    return a + Number(derivedItems || 0)
-  }, 0)
-  // Derive count robustly even if backend didn't persist itemsDiscountCount
-  const todaysItemsDiscountCount = todaysSalesList.reduce((acc, sale) => {
-    const hasItemDisc = Number(sale.itemsDiscount || 0) > 0 || Number(sale.billDiscount || 0) > 0 || Number(sale.discount || 0) > 0
-    if (!hasItemDisc) return acc
-    const qty = Array.isArray(sale.items) ? sale.items.reduce((q,it)=> q + Number(it.qty||0), 0) : 0
-    return acc + qty
-  }, 0)
-  // Bill discount should reflect bill-level discount, not item discount
-  const todaysBillDiscounts = todaysSalesList.reduce((a,b) => {
-    const itemsDisc = Number(b.itemsDiscount || 0)
-    const billDisc = Number(b.billDiscount || 0)
-    const combined = Number(b.discount || 0)
-    // Prefer explicit billDiscount; else try to derive from combined - items; else assume combined is bill-level
-    const derived = billDisc || (combined ? Math.max(0, combined - itemsDisc) : 0) || combined
-    return a + Number(derived || 0)
-  }, 0)
-  // Today's metrics alignment
-  // "TODAY'S TOTAL SALE AMOUNT" = sum before discounts (approx) = total + itemsDiscount + billDiscount
-  const todaysPreDiscountTotal = todaysSalesAmount + todaysBillDiscounts + todaysItemsDiscountAmount
-  const todaysComplimentary = todaysSalesList.filter(s => s.paymentMethod === 'complimentary').reduce((a,b) => a + Number(b.total||0), 0)
-  const todaysReturns = todaysReturnsList.reduce((a,b) => a + Number(b.refund || 0), 0)
-  // "TOTAL BILL AFTER DISCOUNT" = TODAY'S TOTAL SALE AMOUNT - ALL DISCOUNTS (item + bill) - COMPLIMENTARY - RETURNS
-  const todaysBillAfterDiscount = Math.max(0, todaysPreDiscountTotal - todaysBillDiscounts - todaysItemsDiscountAmount - todaysComplimentary - todaysReturns)
-  const yesterdayReturnsList = state.returns?.filter(r => r.date === yesterdayDate) || []
-  const yesterdayReturns = yesterdayReturnsList.reduce((a,b) => a + Number(b.refund || 0), 0)
-  const todaysByMethod = todaysSalesList.reduce((acc, s) => {
-    const m = s.paymentMethod || 'cash'
-    if (!acc[m]) acc[m] = { gross: 0, discount: 0 }
-    acc[m].gross += Number(s.total)
-    acc[m].discount += Number(s.discount || 0)
-    return acc
-  }, {})
-  const methodValue = (m) => (todaysByMethod[m]?.gross || 0)
-  const methodNet = (m) => (todaysByMethod[m]?.gross || 0) - (todaysByMethod[m]?.discount || 0)
-  const yesterdaySalesAmount = state.sales.filter(s => s.date === yesterdayDate).reduce((a,b) => a + Number(b.total||0), 0)
-  const yesterdaySalesCount = state.sales.filter(s => s.date === yesterdayDate).length
-  const yesterdayItemsSold = state.sales.filter(s => s.date === yesterdayDate).reduce((a, sale) => a + (Array.isArray(sale.items)? sale.items.reduce((x, it) => x + Number(it.qty||0), 0) : 0), 0)
-  const yesterdayItemsDiscountAmount = state.sales.filter(s => s.date === yesterdayDate).reduce((a,b) => {
-    const itemsDisc = Number(b.itemsDiscount || 0)
-    const billDisc = Number(b.billDiscount || 0)
-    const combined = Number(b.discount || 0)
-    const derivedItems = itemsDisc || (combined > 0 ? Math.max(0, combined - billDisc) : 0)
-    return a + Number(derivedItems || 0)
-  }, 0)
-  const yesterdayItemsDiscountCount = state.sales.filter(s => s.date === yesterdayDate).reduce((acc, sale) => {
-    const hasItemDisc = Number(sale.itemsDiscount || 0) > 0 || Number(sale.billDiscount || 0) > 0 || Number(sale.discount || 0) > 0
-    if (!hasItemDisc) return acc
-    const qty = Array.isArray(sale.items) ? sale.items.reduce((q,it)=> q + Number(it.qty||0), 0) : 0
-    return acc + qty
-  }, 0)
-  const yesterdayBillDiscounts = state.sales.filter(s => s.date === yesterdayDate).reduce((a,b) => {
-    const itemsDisc = Number(b.itemsDiscount || 0)
-    const billDisc = Number(b.billDiscount || 0)
-    const combined = Number(b.discount || 0)
-    const derived = billDisc || (combined ? Math.max(0, combined - itemsDisc) : 0) || combined
-    return a + Number(derived || 0)
-  }, 0)
-  // Fallback: if no sales captured but day close exists, use its aggregates
-  const yesterdayClose = (state.dayCloses||[]).find(dc => dc.date === yesterdayDate)
-  let ySalesAmt = yesterdaySalesAmount
-  if (ySalesAmt === 0 && yesterdayClose) {
-    ySalesAmt = Number(yesterdayClose.cashSales||0) + Number(yesterdayClose.onlineSales||yesterdayClose.cardSales||0)
-  }
-  const yesterdayPreDiscountTotal = ySalesAmt + yesterdayBillDiscounts + yesterdayItemsDiscountAmount
-  const yesterdayComplimentary = state.sales.filter(s => s.date === yesterdayDate && s.paymentMethod === 'complimentary').reduce((a,b) => a + Number(b.total||0), 0)
-  const yesterdayBillAfterDiscount = Math.max(0, yesterdayPreDiscountTotal - yesterdayBillDiscounts - yesterdayItemsDiscountAmount - yesterdayComplimentary - yesterdayReturns)
 
-  // === Item-wise aggregation for last N days (own selector) ===
-  const itemNDays = rangeToDays(itemTableRange)
-  const itemRecentSales = state.sales.filter(s => inLastNDays(s.date, itemNDays))
-
-  const menuById = useMemo(() => Object.fromEntries(state.menu.map(m => [m.id, m])), [state.menu])
-  const itemAgg = useMemo(() => {
-    const map = {}
-    itemRecentSales.forEach(sale => {
-      let contributed = false
-      sale.items.forEach(it => {
-        const m = menuById[it.itemId]
-        const name = m?.name || it?.name || it?.itemName || it?.title || it?.custom?.name || 'Item'
-        const qty = Number(it?.qty ?? it?.quantity ?? it?.count ?? 0)
-        let lineTotal = Number(it?.total ?? it?.lineTotal ?? it?.amount ?? 0)
-        let rate = Number(m?.price ?? it?.price ?? it?.rate ?? it?.unitPrice ?? 0)
-        // If no unit rate but we have a line total and qty, derive it
-        if (!rate && qty > 0 && lineTotal > 0) rate = lineTotal / qty
-        // If still no price info and the sale has exactly 1 item, treat sale.total as this line total
-        if (!rate && lineTotal <= 0 && Array.isArray(sale.items) && sale.items.length === 1) {
-          lineTotal = Number(sale.total || 0)
-          if (qty > 0 && lineTotal > 0) rate = lineTotal / qty
-        }
-        if (!map[name]) map[name] = { product: name, quantity: 0, amount: 0 }
-        map[name].quantity += qty
-        map[name].amount += (lineTotal > 0 ? lineTotal : qty * rate)
-        if ((lineTotal > 0) || (qty > 0 && rate > 0)) contributed = true
+  const exportPdf = () => {
+    try {
+      const p = exportPayload
+      const doc = new jsPDF()
+      doc.setFontSize(14)
+      doc.text(`${p.companyName} — Dashboard`, 14, 16)
+      doc.setFontSize(10)
+      doc.text(`Date: ${p.date}`, 14, 23)
+      autoTable(doc, {
+        startY: 28,
+        head: [['Metric', 'Value']],
+        body: [
+          ['Total orders', p.totalOrders],
+          ['Completed', p.completedCount],
+          ['Pending', p.pendingCount],
+          ['Sale total', fmt(p.salesSummary.total)],
+          ['Paid amount', fmt(p.salesSummary.paid)],
+          ['Expense', fmt(p.salesSummary.expense)],
+        ],
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [15, 45, 92] },
       })
-      // If nothing contributed (missing names/prices), roll up the sale as a single generic line
-      if (!contributed) {
-        const fallbackName = 'Unlabeled Item'
-        if (!map[fallbackName]) map[fallbackName] = { product: fallbackName, quantity: 0, amount: 0 }
-        const q = sale.items?.reduce((a,b)=> a + Number(b?.qty ?? b?.quantity ?? b?.count ?? 0), 0) || 1
-        map[fallbackName].quantity += q
-        map[fallbackName].amount += Number(sale.total || 0)
-      }
-    })
-    return Object.values(map).sort((a,b) => b.amount - a.amount)
-  }, [itemRecentSales, menuById])
-
-  // === Category-wise aggregation for last N days (own selector) ===
-  const categoryNDays = rangeToDays(categoryTableRange)
-  const categoryRecentSales = state.sales.filter(s => inLastNDays(s.date, categoryNDays))
-
-  const categoryAgg = useMemo(() => {
-    const map = {}
-    categoryRecentSales.forEach(sale => {
-      let contributed = false
-      sale.items.forEach(it => {
-        const m = menuById[it.itemId]
-        const cat = m?.category || it?.category || it?.custom?.category || 'Uncategorized'
-        const name = m?.name || it?.name || it?.itemName || it?.title || it?.custom?.name || 'Item'
-        const qty = Number(it?.qty ?? it?.quantity ?? it?.count ?? 0)
-        let lineTotal = Number(it?.total ?? it?.lineTotal ?? it?.amount ?? 0)
-        let rate = Number(m?.price ?? it?.price ?? it?.rate ?? it?.unitPrice ?? 0)
-        if (!rate && qty > 0 && lineTotal > 0) rate = lineTotal / qty
-        if (!rate && lineTotal <= 0 && Array.isArray(sale.items) && sale.items.length === 1) {
-          lineTotal = Number(sale.total || 0)
-          if (qty > 0 && lineTotal > 0) rate = lineTotal / qty
-        }
-        if (!map[cat]) map[cat] = { category: cat, quantity: 0, amount: 0 }
-        map[cat].quantity += qty
-        map[cat].amount += (lineTotal > 0 ? lineTotal : qty * rate)
-        if ((lineTotal > 0) || (qty > 0 && rate > 0)) contributed = true
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 8,
+        head: [['Payment type', 'Amount']],
+        body: p.paymentRows.map(r => [r.type, fmt(r.amount)]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [15, 45, 92] },
       })
-      if (!contributed) {
-        const cat = 'Uncategorized'
-        if (!map[cat]) map[cat] = { category: cat, quantity: 0, amount: 0 }
-        const q = sale.items?.reduce((a,b)=> a + Number(b?.qty ?? b?.quantity ?? b?.count ?? 0), 0) || 1
-        map[cat].quantity += q
-        map[cat].amount += Number(sale.total || 0)
-      }
-    })
-    return Object.values(map).sort((a,b) => b.amount - a.amount)
-  }, [categoryRecentSales, menuById])
+      doc.save(`dashboard_${p.date}.pdf`)
+      toast.success('PDF downloaded')
+    } catch {
+      toast.error('PDF export failed')
+    }
+  }
+
+  const exportCsv = () => {
+    try {
+      const p = exportPayload
+      const lines = [
+        ['Section', 'Field', 'Value'].join(','),
+        ['KPI', 'Total Orders', p.totalOrders].map(v => `"${v}"`).join(','),
+        ['KPI', 'Completed', p.completedCount].map(v => `"${v}"`).join(','),
+        ['KPI', 'Pending', p.pendingCount].map(v => `"${v}"`).join(','),
+        ['Sales', 'Branch', p.companyName].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','),
+        ['Sales', 'Transactions', p.salesSummary.transactions].map(v => `"${v}"`).join(','),
+        ['Sales', 'Sale', p.salesSummary.sale].map(v => `"${v}"`).join(','),
+        ['Sales', 'Total', p.salesSummary.total].map(v => `"${v}"`).join(','),
+        ...p.paymentRows.map(r => ['Payment', r.type, r.amount].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+        ...p.hrRows.map(r => ['HR', r.designation, r.present].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+      ]
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `dashboard_${p.date}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('CSV exported')
+    } catch {
+      toast.error('CSV export failed')
+    }
+  }
+
+  const activeSlice = timeBuckets.pieData[pieIndex] || timeBuckets.pieData[0]
+
+  const topCards = [
+    { title: 'Total Orders', value: String(totalOrders), icon: ShoppingCart, iconColor: 'bg-blue-500' },
+    { title: 'Completed', value: String(completedCount), icon: CheckCircle2, iconColor: 'bg-emerald-500' },
+    { title: 'Pending', value: String(pendingCount), icon: Clock, iconColor: 'bg-amber-500' },
+    { title: 'Sale Total', value: `PKR ${fmt(salesSummary.total)}`, icon: Wallet, iconColor: 'bg-indigo-500' },
+  ]
+
+  const customerCards = [
+    { title: 'New Customers', value: String(customerStats.newCount), icon: UserPlus, iconColor: 'bg-sky-500' },
+    { title: 'Returning Customers', value: String(customerStats.oldCount), icon: Users, iconColor: 'bg-blue-600' },
+    { title: 'Transactions', value: String(salesSummary.transactions), icon: BarChart3, iconColor: 'bg-violet-500' },
+    { title: 'Bill Size', value: `PKR ${fmt(salesSummary.billSize)}`, icon: Banknote, iconColor: 'bg-teal-500' },
+  ]
+
+  const heroBtn =
+    'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-bold uppercase tracking-wider transition-all active:scale-95'
+  const heroBtnSolid = `${heroBtn} bg-white text-blue-700 shadow-lg hover:bg-blue-50 disabled:opacity-60`
+  const heroBtnGhost = `${heroBtn} bg-white/15 text-white ring-1 ring-white/30 hover:bg-white/25`
 
   return (
-    <div className="space-y-4">
-      {/* Sales Statistics panel */}
-      <div className="p-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-gradient-to-br from-gray-100 to-gray-50 dark:from-gray-800/50 dark:to-gray-900 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-base font-semibold text-gray-900 dark:text-gray-100">Dashboard Summary</div>
-          <button
-            className="px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
-            onClick={async()=>{
-              try {
-                const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-                const res = await fetch(`${API}/api/backup/export`, { headers })
-                if (!res.ok) { const t = await res.text().catch(()=>`${res.status}`); toast.error(`Export failed: ${t}`); return }
-                const blob = await res.blob()
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                const today = new Date().toLocaleDateString('en-CA')
-                a.download = `rms-backup-${today}.json`
-                document.body.appendChild(a)
-                a.click()
-                a.remove()
-                URL.revokeObjectURL(url)
-              } catch { toast.error('Network error while exporting data') }
-            }}
-          >Export Data</button>
+    <div className="space-y-6 pb-10">
+      <PageHero
+        icon={BarChart3}
+        title="Dashboard"
+        subtitle={`POS overview · Business date ${selectedDate}`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative z-20 h-9 w-[11.5rem] rounded-xl bg-white shadow-lg">
+              <DatePicker
+                value={selectedDate}
+                onChange={v => {
+                  if (!v) return
+                  setDateTouched(true)
+                  setSelectedDate(v)
+                }}
+                className="h-full w-full gap-0"
+                compact
+                allowClear={false}
+              />
+            </div>
+            <button type="button" onClick={() => refreshData()} disabled={refreshing} className={heroBtnSolid}>
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+            <button type="button" onClick={openPrint} className={heroBtnGhost}>
+              <Printer className="h-3.5 w-3.5" /> Print
+            </button>
+            <button type="button" onClick={exportPdf} className={heroBtnGhost}>
+              <FileDown className="h-3.5 w-3.5" /> PDF
+            </button>
+            <button type="button" onClick={exportCsv} className={heroBtnGhost}>
+              <FileSpreadsheet className="h-3.5 w-3.5" /> CSV
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {topCards.map(card => (
+          <StatCard key={card.title} {...card} />
+        ))}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {customerCards.map(card => (
+          <StatCard key={card.title} {...card} />
+        ))}
+      </div>
+
+      <Panel title="Sales" icon={BarChart3}>
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                {['Branch', 'Transactions', 'Sale', 'Discount', 'Charges', 'Tax Inclusive', 'Tax Exclusive', 'Total', 'Paid Amount', 'Bill Size', 'Expense'].map(h => (
+                  <th key={h} className="whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="font-medium">{companyName}</td>
+                <td>{salesSummary.transactions}</td>
+                <td>{fmt(salesSummary.sale)}</td>
+                <td>{fmt(salesSummary.discount)}</td>
+                <td>{fmt(salesSummary.charges)}</td>
+                <td>{fmt(salesSummary.taxIn)}</td>
+                <td>{fmt(salesSummary.taxEx)}</td>
+                <td className="font-semibold">{fmt(salesSummary.total)}</td>
+                <td>{fmt(salesSummary.paid)}</td>
+                <td>{fmt(salesSummary.billSize)}</td>
+                <td>{fmt(salesSummary.expense)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-          <StatsCard variant="blue" title="TODAY'S TOTAL SALE AMOUNT" value={`PKR ${todaysPreDiscountTotal.toLocaleString()}`} />
-          <StatsCard variant="green" title="TOTAL SALES TODAY" value={todaysSalesCount} />
-          <StatsCard variant="red" title="ITEMS DISCOUNTED TODAY" value={`${todaysItemsDiscountCount}`} />
-          <StatsCard variant="red" title="TOTAL DISCOUNTS" value={`PKR ${(todaysBillDiscounts + todaysItemsDiscountAmount).toLocaleString()}`} />
-          <StatsCard variant="red" title="PERSONAL TODAY" value={`PKR ${todaysComplimentary.toLocaleString()}`} />
-          <StatsCard variant="orange" title="RETURNS TODAY" value={`PKR ${todaysReturns.toLocaleString()}`} />
-          <StatsCard variant="blue" title="TOTAL BILL AFTER DISCOUNT" value={`PKR ${todaysBillAfterDiscount.toLocaleString()}`} />
-          <StatsCard variant="slate" title="YESTERDAY'S TOTAL SALE" value={`PKR ${yesterdayPreDiscountTotal.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" title="TOTAL SALES YESTERDAY" value={yesterdaySalesCount} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" title="ITEMS DISCOUNTED YESTERDAY" value={`${yesterdayItemsDiscountCount}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" title="TOTAL DISCOUNTS YESTERDAY" value={`PKR ${(yesterdayBillDiscounts + yesterdayItemsDiscountAmount).toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" title="PERSONAL YESTERDAY" value={`PKR ${yesterdayComplimentary.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" title="RETURNS YESTERDAY" value={`PKR ${yesterdayReturns.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
-          <StatsCard variant="slate" title="BILL AFTER DISCOUNT YESTERDAY" value={`PKR ${yesterdayBillAfterDiscount.toLocaleString()}`} sub={`Yesterday: ${yesterdayDate}`} />
+      </Panel>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Time Analysis" icon={Clock}>
+          <div className="overflow-x-auto mb-4">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Minutes</th>
+                  <th className="text-right">Invoice Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timeBuckets.rows.map(r => (
+                  <tr key={r.label}>
+                    <td>{r.label}</td>
+                    <td className="text-right">{r.count}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td className="font-semibold">Total</td>
+                  <td className="text-right font-semibold">{timeBuckets.total}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="relative h-[260px]">
+            {timeBuckets.pieData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={timeBuckets.pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      onClick={(_, i) => setPieIndex(i)}
+                    >
+                      {timeBuckets.pieData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', color: '#0f172a' }}
+                    />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
+                  <div className="text-2xl font-bold text-blue-600">{activeSlice ? `${activeSlice.pct}%` : '0%'}</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">{activeSlice?.name || '15 mins'}</div>
+                </div>
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-[var(--color-text-muted)] text-sm">No invoices for this date</div>
+            )}
+          </div>
+        </Panel>
+
+        <Panel title="Payment Analysis" icon={Wallet}>
+          <div className="overflow-x-auto">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Payment Type</th>
+                  <th className="text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentRows.map(r => (
+                  <tr key={r.type}>
+                    <td>{r.type}</td>
+                    <td className="text-right font-semibold">{fmt(r.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="POS Stats" icon={Banknote}>
+        <div className="flex flex-wrap gap-3">
+          <MiniStat icon={Banknote} title="Sale" value={posStats.sale} iconColor="bg-blue-500" />
+          <MiniStat icon={Wallet} title="Settled" value={posStats.settled} iconColor="bg-emerald-500" />
+          <MiniStat icon={Tag} title="Discount" value={posStats.discount} iconColor="bg-amber-500" />
+          <MiniStat icon={UserX} title="Void" value={posStats.void} iconColor="bg-rose-500" />
         </div>
+      </Panel>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Bill Analysis" icon={CheckCircle2}>
+          <div className="flex flex-wrap gap-3">
+            <MiniStat icon={Banknote} title="Bill Booked" value={billAnalysis.billBooked} iconColor="bg-blue-500" />
+            <MiniStat icon={CheckCircle2} title="Bill Paid" value={billAnalysis.billPaid} iconColor="bg-emerald-500" />
+            <MiniStat icon={Wallet} title="Total Payable" value={billAnalysis.totalPayable} iconColor="bg-indigo-500" />
+          </div>
+        </Panel>
+
+        <Panel title="Expense Analysis" icon={Tag}>
+          <div className="flex flex-wrap gap-3">
+            <MiniStat icon={Banknote} title="Expense Booked" value={expenseAnalysis.booked} iconColor="bg-rose-500" />
+            <MiniStat icon={Wallet} title="Expense Paid" value={expenseAnalysis.paid} iconColor="bg-amber-500" />
+          </div>
+        </Panel>
       </div>
 
-      {/* moved charts to end */}
-
-      {/* Today summaries */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <ChartCard title="Total Sale in PKR" variant="blue">
-          <div className="p-2">
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-semibold text-gray-900 dark:text-gray-100">{saleAgg.gross.toLocaleString()}</div>
-              <select value={saleCardRange} onChange={e => setSaleCardRange(e.target.value)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs">
-                <option value="today">Today</option>
-                <option value="7">7d</option>
-                <option value="30">30d</option>
-                <option value="90">90d</option>
-              </select>
-            </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">Total Sales</div>
-            <ul className="mt-3 text-sm space-y-1 text-gray-700 dark:text-gray-300">
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-blue-500" /> Cash Sale : {(saleAgg.byMethod['cash']?.gross || 0).toLocaleString()}</li>
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-indigo-500" /> Online Sale : {(saleAgg.byMethod['online']?.gross || 0).toLocaleString()}</li>
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-red-500" /> Personal : {(saleAgg.byMethod['complimentary']?.gross || 0).toLocaleString()}</li>
-            </ul>
-          </div>
-        </ChartCard>
-
-        <ChartCard title="Total Sale Return in PKR" variant="red">
-          <div className="p-2">
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-semibold text-gray-900 dark:text-gray-100">{returnAgg.totalRefund.toLocaleString()}</div>
-              <select value={returnCardRange} onChange={e => setReturnCardRange(e.target.value)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs">
-                <option value="today">Today</option>
-                <option value="7">7d</option>
-                <option value="30">30d</option>
-                <option value="90">90d</option>
-              </select>
-            </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">Total Return</div>
-            <ul className="mt-3 text-sm space-y-1 text-gray-700 dark:text-gray-300">
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-blue-500" /> Cash Return : {(returnAgg.byMethod['cash']?.refund || 0).toLocaleString()}</li>
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-indigo-500" /> Online Return : {(returnAgg.byMethod['online']?.refund || returnAgg.byMethod['card']?.refund || 0).toLocaleString()}</li>
-            </ul>
-          </div>
-        </ChartCard>
-
-        <ChartCard title="Total Net Sales in PKR" variant="green">
-          <div className="p-2">
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-semibold text-gray-900 dark:text-gray-100">{Math.max(0, (netAgg.net || 0) - (netReturnAgg.totalRefund || 0)).toLocaleString()}</div>
-              <select value={netCardRange} onChange={e => setNetCardRange(e.target.value)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs">
-                <option value="today">Today</option>
-                <option value="7">7d</option>
-                <option value="30">30d</option>
-                <option value="90">90d</option>
-              </select>
-            </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">Total Net Sales</div>
-            <ul className="mt-3 text-sm space-y-1 text-gray-700 dark:text-gray-300">
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-green-600" /> Net Cash Sale : {(netAgg.byMethodNet['cash']?.net || 0).toLocaleString()}</li>
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-purple-600" /> Net Online Sale : {(netAgg.byMethodNet['online']?.net || netAgg.byMethodNet['card']?.net || 0).toLocaleString()}</li>
-              <li className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-orange-500" /> Returns : {-(netReturnAgg.totalRefund || 0).toLocaleString()}</li>
-            </ul>
-          </div>
-        </ChartCard>
-      </div>
-
-      {/* Item-wise and Category-wise tables (hidden per request) */}
-      {false && (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Item wise sales by value">
-          <div className="p-2">
-            <div className="mb-2 text-xs text-gray-500 flex items-center justify-between">
-              <span>Last {itemNDays} days</span>
-              <select value={itemTableRange} onChange={e => setItemTableRange(e.target.value)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs">
-                <option value="7">7d</option>
-                <option value="30">30d</option>
-                <option value="90">90d</option>
-              </select>
-            </div>
-            <div className="overflow-auto border rounded">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-100 dark:bg-gray-800">
-                  <tr>
-                    <th className="text-left px-3 py-2">PRODUCT</th>
-                    <th className="text-right px-3 py-2">QUANTITY</th>
-                    <th className="text-right px-3 py-2">AMOUNT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itemAgg.map((r) => (
-                    <tr key={r.product} className="border-t">
-                      <td className="px-3 py-2">{r.product}</td>
-                      <td className="px-3 py-2 text-right">{r.quantity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
-                      <td className="px-3 py-2 text-right">PKR {r.amount.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {itemAgg.length === 0 && (
-                    <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-500">No data</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </ChartCard>
-
-        <ChartCard title="Category wise sales by value">
-          <div className="p-2">
-            <div className="mb-2 text-xs text-gray-500 flex items-center justify-between">
-              <span>Last {categoryNDays} days</span>
-              <select value={categoryTableRange} onChange={e => setCategoryTableRange(e.target.value)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs">
-                <option value="7">7d</option>
-                <option value="30">30d</option>
-                <option value="90">90d</option>
-              </select>
-            </div>
-            <div className="overflow-auto border rounded">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-100 dark:bg-gray-800">
-                  <tr>
-                    <th className="text-left px-3 py-2">CATEGORY</th>
-                    <th className="text-right px-3 py-2">QUANTITY</th>
-                    <th className="text-right px-3 py-2">AMOUNT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {categoryAgg.map((r) => (
-                    <tr key={r.category} className="border-t">
-                      <td className="px-3 py-2">{r.category}</td>
-                      <td className="px-3 py-2 text-right">{r.quantity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</td>
-                      <td className="px-3 py-2 text-right">PKR {r.amount.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {categoryAgg.length === 0 && (
-                    <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-500">No data</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </ChartCard>
-      </div>
-      )}
-
-      {/* Charts at the end with selectors */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title={`Daily Sales`}>
-          <div className="mb-2 flex justify-end">
-            <select value={salesChartRange} onChange={e => setSalesChartRange(e.target.value)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs">
-              <option value="7">7d</option>
-              <option value="30">30d</option>
-              <option value="90">90d</option>
-            </select>
-          </div>
-          <LineChart data={salesSeries}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <Line type="monotone" dataKey="sales" stroke="#6366f1" strokeWidth={2} />
-          </LineChart>
-        </ChartCard>
-
-        <ChartCard title="Expense vs Revenue">
-          <div className="mb-2 flex justify-end">
-            <select value={expenseChartRange} onChange={e => setExpenseChartRange(e.target.value)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs">
-              <option value="7">7d</option>
-              <option value="30">30d</option>
-              <option value="90">90d</option>
-            </select>
-          </div>
-          <BarChart data={expenseVsRevenue}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Legend />
-            <Tooltip />
-            <Bar dataKey="amount" fill="#10b981" />
-          </BarChart>
-        </ChartCard>
-      </div>
-
+      <Panel title="HR Information" icon={Users}>
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Staff Designation</th>
+                <th className="text-right">Present</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hrRows.map(r => (
+                <tr key={r.designation}>
+                  <td>{r.designation}</td>
+                  <td className="text-right">{r.present}</td>
+                </tr>
+              ))}
+              {hrRows.length === 0 && (
+                <tr>
+                  <td colSpan={2} className="text-center text-[var(--color-text-muted)] py-6">
+                    No attendance recorded for {selectedDate}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   )
 }

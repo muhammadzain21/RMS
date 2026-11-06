@@ -37,32 +37,46 @@ r.post('/test-connection', authRequired, async (_req, res) => {
     if (!env.BIOMETRIC_ENABLED) return res.json({ ok: false, message: 'Biometric is disabled in settings' })
     if (!env.BIOMETRIC_IP) return res.json({ ok: false, message: 'Device IP is not configured' })
 
-    const { default: ZKLib } = await import('node-zklib')
+    const { connectZk, disconnectZk, formatZkErr } = await import('../zkConnect.js')
     const ip = String(env.BIOMETRIC_IP)
     const port = Number(env.BIOMETRIC_PORT || 4370)
     const password = Number(env.BIOMETRIC_COMM_PASSWORD || 0)
-    const zk = new ZKLib(ip, port, 10000, 5200, password)
 
+    // Strict: only the COMM Key saved in settings — no silent fallback to 0.
     try {
-      await zk.createSocket()
-      const info = await zk.getInfo().catch(() => ({}))
-      await zk.disconnect()
-      return res.json({ ok: true, message: 'Connected successfully', deviceInfo: info })
-    } catch (e) {
-      const msg = e?.message || String(e) || 'Unknown error'
-      // Retry once with password 0
-      if (password && password !== 0) {
-        const zk2 = new ZKLib(ip, port, 10000, 5200, 0)
-        try {
-          await zk2.createSocket()
-          const info = await zk2.getInfo().catch(() => ({}))
-          await zk2.disconnect()
-          return res.json({ ok: true, message: 'Connected with default password (0). Please set COMM password to 0 on device or update password in settings.', deviceInfo: info })
-        } catch (e2) {
-          return res.json({ ok: false, message: msg, ip, port })
+      const { zk } = await connectZk({ ip, port, password })
+      try {
+        const info = await zk.getInfo()
+        if (!info || (typeof info === 'object' && !Object.keys(info).length)) {
+          // Empty info often means auth failed on password-protected devices
+          if (password) {
+            return res.json({
+              ok: false,
+              message: `Connected to TCP but device did not accept COMM Key ${password}. Set the same Comm Key as on the machine.`,
+              ip,
+              port,
+            })
+          }
         }
+        return res.json({
+          ok: true,
+          message: 'Connected successfully',
+          deviceInfo: info,
+          usedPassword: password,
+          ip,
+          port,
+        })
+      } finally {
+        await disconnectZk(zk)
       }
-      return res.json({ ok: false, message: msg, ip, port })
+    } catch (e) {
+      return res.json({
+        ok: false,
+        message: formatZkErr(e) || 'Connection failed',
+        tip: 'COMM Key in settings must match the machine Comm Key exactly (no fallback).',
+        ip,
+        port,
+      })
     }
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) })

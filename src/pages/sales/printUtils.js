@@ -208,12 +208,23 @@ export async function printSaleReceiptUtil(opts = {}) {
     const billDiscount = Number(opts.billDiscount || 0)
     const taxAmt = Number(opts.taxAmt || 0)
     const serviceAmt = Number(opts.serviceAmt || 0)
-    const total = Math.max(0, subtotal - itemsDiscount - billDiscount + taxAmt + serviceAmt)
+    const deliveryAmt = Number(opts.deliveryAmt || 0)
+    const total = Math.max(0, subtotal - itemsDiscount - billDiscount + taxAmt + serviceAmt + deliveryAmt)
     const cashPaid = Number(opts.cashReceived ?? total)
-    const balance = Math.max(0, cashPaid - total)
+    const tipAmt = Math.max(0, Number(opts.tipAmount || 0))
+    const balance = tipAmt > 0 ? 0 : Math.max(0, cashPaid - total)
 
     const orderType = opts.orderType || 'Take-away'
-    const paymentType = (opts.paymentMethod || 'Cash').toString()
+    const BANK_CHANNELS = { bank_account: 'Bank Account', jazzcash: 'JazzCash', easypaisa: 'EasyPaisa', sadapay: 'SadaPay', nayapay: 'NayaPay', raast: 'Raast', upaisa: 'UPaisa', zindigi: 'Zindigi' }
+    const pmRaw = (opts.paymentMethod || 'Cash').toString()
+    const pmLower = pmRaw.toLowerCase()
+    const paymentType = pmLower === 'bank'
+      ? `Bank (${BANK_CHANNELS[opts.bankChannel] || opts.bankChannel || 'Transfer'}${opts.bankLast4 ? ` ····${opts.bankLast4}` : ''})`
+      : pmLower === 'card'
+        ? `Card${opts.bankLast4 ? ` ····${opts.bankLast4}` : ''}`
+      : pmLower === 'staff'
+        ? `Staff (${opts.staffName || 'Member'})`
+        : pmRaw.charAt(0).toUpperCase() + pmRaw.slice(1)
     const waiter = opts.waiter || (opts.waiterId ? (state.staff||[]).find(s=>s.id===opts.waiterId)?.name : '') || '-'
     const rider = opts.rider || (opts.riderId ? (state.riders||[]).find(r=>r.id===opts.riderId)?.name : '') || ''
     const tableNo = opts.tableNo || ''
@@ -335,11 +346,14 @@ export async function printSaleReceiptUtil(opts = {}) {
   <div class="hr"></div>
   <div class="kv"><span>Total Amount :</span><span>${fmt(subtotal)}</span></div>
   <div class="kv"><span>Discount :</span><span>${fmt(itemsDiscount + billDiscount)}</span></div>
-  ${serviceAmt ? `<div class=\"kv\"><span>Service Charges :</span><span>${fmt(serviceAmt)}</span></div>` : ''}
-  ${taxAmt ? `<div class=\"kv\"><span>Tax :</span><span>${fmt(taxAmt)}</span></div>` : ''}
+  ${serviceAmt ? `<div class="kv"><span>Service Charges :</span><span>${fmt(serviceAmt)}</span></div>` : ''}
+  ${deliveryAmt ? `<div class="kv"><span>Delivery Charges :</span><span>${fmt(deliveryAmt)}</span></div>` : ''}
+  ${taxAmt ? `<div class="kv"><span>Tax :</span><span>${fmt(taxAmt)}</span></div>` : ''}
   <div class="kv total"><span>Net Total :</span><span>${fmt(total)}</span></div>
   <div class="kv"><span>Cash Paid :</span><span>${fmt(cashPaid)}</span></div>
-  <div class="kv"><span>Cash Balance :</span><span>${fmt(balance)}</span></div>
+  ${tipAmt > 0
+    ? `<div class="kv"><span>Waiter Tip :</span><span>${fmt(tipAmt)}</span></div>`
+    : `<div class="kv"><span>Cash Balance :</span><span>${fmt(balance)}</span></div>`}
 
   ${state?.settings?.billingFooter ? `<div class="center muted emph" style="margin-top:4px; white-space:pre-wrap"><b>${escapeHtml(state.settings.billingFooter)}</b></div>` : ''}
 
@@ -537,3 +551,8 @@ export function buildKOTHtml(opts = {}) {
 
 function fmt(n){ return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:2}) }
 function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+
+// Report preview lives in the shared report-doc utility - re-exported here so
+// existing "./printUtils" imports keep working.
+export { previewHtmlReport } from '../../utils/reportDoc'

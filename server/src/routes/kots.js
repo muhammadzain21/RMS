@@ -74,14 +74,18 @@ router.patch('/:id', async (req, res, next) => {
     if (!valid.includes(String(status))) {
       return res.status(400).json({ error: 'Invalid status' })
     }
+    const now = new Date()
+    const patch = { status: String(status), statusUpdatedAt: now }
+    if (String(status) === 'completed') patch.completedAt = now
+    else patch.completedAt = null
     const updated = await Kot.findByIdAndUpdate(
       req.params.id,
-      { status: String(status), statusUpdatedAt: new Date() },
+      patch,
       { new: true }
     )
     if (!updated) return res.status(404).json({ error: 'KOT not found' })
     try { await logAudit(req, 'kot', `KOT ${updated.id} status → ${status}`, { id: updated.id, status }) } catch {}
-    res.json({ ...updated.toObject(), id: updated.id })
+    res.json({ ...updated.toObject({ flattenMaps: true }), id: updated.id })
   } catch (e) { next(e) }
 })
 

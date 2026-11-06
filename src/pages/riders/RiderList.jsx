@@ -8,7 +8,12 @@ import DatePicker from '../../components/DatePicker.jsx'
 import { Plus, X } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { openPdfPreview } from '../../utils/pdfPreview.js'
+import { format } from 'date-fns'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+
+const btnPrint = 'ui-btn ui-btn-print'
+const btnPdf = 'ui-btn ui-btn-pdf'
+const btnCsv = 'ui-btn ui-btn-csv'
 
 export default function RiderList() {
   const { state, businessDate } = useData()
@@ -140,7 +145,46 @@ export default function RiderList() {
  .catch(() => toast.error('Export failed'))
  }
 
- const printReport = async () => {
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([
+ { label: 'Total deliveries', amount: String(totals.deliveries) },
+ { label: 'Total amount', amount: `PKR ${Number(totals.amount || 0).toLocaleString()}` },
+ { label: 'Records', amount: String(filteredRecords.length) },
+ ]) +
+ reportSec('Rider cash records') +
+ reportTable({
+ headers: ['Date', 'Token No', 'Rider', { t: 'Deliveries', align: 'r' }, { t: 'Amount (PKR)', align: 'r' }, 'Method', 'Settled', 'Note'],
+ numbered: true,
+ rows: filteredRecords.map(r => [
+ r.date || '-',
+ r.tokenNo || '-',
+ r.riderName || '-',
+ { v: Number(r.deliveries || 0), align: 'r' },
+ { v: Number(r.amount || 0).toLocaleString(), align: 'r' },
+ r.method === 'COD' ? 'Cash on Delivery' : 'Paid to Owner',
+ r.settled ? 'Settled' : 'Unsettled',
+ r.note || '-',
+ ]),
+ emptyText: 'No records match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Rider Cash Records',
+ reportLabel: 'Rider Cash Report',
+ reportNo: `Rpt #: RC-${fromDate || 'all'}-${toDate || 'all'}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', fromDate || '—'], ['To', toDate || '—']],
+ metaRight: [['Rider filter', filterRider ? (riders.find(x => x.id === filterRider)?.name || filterRider) : 'All'], ['Settled', settledFilter]],
+ body,
+ })
+ await previewHtmlReport(html, `Rider-Cash-${fromDate || 'all'}-${toDate || 'all'}.pdf`)
+ } catch {
+ toast.error('Failed to open print preview')
+ }
+ }
+
+ const exportPDF = () => {
  try {
  const doc = new jsPDF()
  doc.setFontSize(14)
@@ -166,10 +210,10 @@ export default function RiderList() {
  headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 9, fontStyle: 'bold' },
  footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
  })
- const ok = await openPdfPreview(doc, `Rider Cash ${fromDate || ''} to ${toDate || ''}.pdf`)
- if (!ok) toast.error('Failed to open print preview')
+ doc.save(`rider_cash_${fromDate || 'all'}_to_${toDate || 'all'}.pdf`)
+ toast.success('PDF downloaded')
  } catch {
- toast.error('Failed to open print preview')
+ toast.error('Failed to download PDF')
  }
  }
 
@@ -209,15 +253,15 @@ export default function RiderList() {
  }
 
  return (
- <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Rider Cash Records</h1><button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"><Plus size={18} /> Add Record</button></div><div className="p-4 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 border-2 border-cyan-200 dark:border-cyan-800"><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v=>setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v=>setToDate(v)} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Rider</label><select value={filterRider} onChange={e=>setFilterRider(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[10rem]"><option value="">All Riders</option>
+ <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="page-title">Rider Cash Records</h1><button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg ui-btn ui-btn-primary"><Plus size={18} /> Add Record</button></div><div className="p-4 rounded-xl card card-pad"><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v=>setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v=>setToDate(v)} /></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Rider</label><select value={filterRider} onChange={e=>setFilterRider(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[10rem]"><option value="">All Riders</option>
  {riders.map(r =><option key={r.id} value={r.id}>{r.name}</option>)}
- </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Settled</label><select value={settledFilter} onChange={e=>setSettledFilter(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[8rem]"><option value="all">All</option><option value="settled">Settled</option><option value="unsettled">Unsettled</option></select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 tracking-wide">Search</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search records..." className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[12rem]" /></div><div className="flex items-end gap-3 flex-shrink-0"><button onClick={load} className="px-4 py-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Refresh</button><button onClick={()=>setShowRollup(s=>!s)} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">{showRollup ? 'Hide Rollup' : 'Show Rollup'}</button><button onClick={exportCsv} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Export CSV</button><button onClick={printReport} className="px-4 py-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Print</button></div></div></div>
+ </select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Settled</label><select value={settledFilter} onChange={e=>setSettledFilter(e.target.value)} className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[8rem]"><option value="all">All</option><option value="settled">Settled</option><option value="unsettled">Unsettled</option></select></div><div className="flex flex-col gap-1 flex-shrink-0"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search records..." className="px-3 py-2 border-2 border-cyan-200 dark:border-cyan-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-cyan-500 transition-all min-w-[12rem]" /></div><div className="flex items-end gap-3 flex-shrink-0"><button onClick={load} className="px-4 py-2 rounded-lg ui-btn ui-btn-print">Refresh</button><button onClick={()=>setShowRollup(s=>!s)} className="px-4 py-2 rounded-lg ui-btn ui-btn-primary font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">{showRollup ? 'Hide Rollup' : 'Show Rollup'}</button><button onClick={openPrintPreview} className={btnPrint}>Print</button><button onClick={exportPDF} className={btnPdf}>PDF</button><button onClick={exportCsv} className={btnCsv}>CSV</button></div></div></div>
 
  {showAddDialog && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={(e) => { if (e.target === e.currentTarget) setShowAddDialog(false) }}><div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4"><div className="flex items-center justify-between mb-5"><h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Add Rider Record</h3><button onClick={() => setShowAddDialog(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X size={20} /></button></div>
  <form onSubmit={(e) => { onAdd(e); setShowAddDialog(false) }} className="space-y-4"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Rider</label><select value={form.riderId} onChange={e=>setForm({...form, riderId:e.target.value})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all">
  {riders.map(r =><option key={r.id} value={r.id}>{r.name}</option>)}
- </select></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Deliveries</label><input type="number" placeholder="0" value={form.deliveries} onChange={e=>setForm({...form, deliveries:Number(e.target.value)})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all" /></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Amount</label><input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({...form, amount:Number(e.target.value)})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all" /></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Method</label><select value={form.method} onChange={e=>setForm({...form, method:e.target.value})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all"><option value="COD">Cash on Delivery</option><option value="PaidToOwner">Paid to Owner</option></select></div></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Note (optional)</label><input placeholder="Add a note..." value={form.note} onChange={e=>setForm({...form, note:e.target.value})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all" /></div><div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowAddDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="px-5 py-2.5 bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Add Record</button></div></form></div></div>
+ </select></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Deliveries</label><input type="number" placeholder="0" value={form.deliveries} onChange={e=>setForm({...form, deliveries:Number(e.target.value)})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all" /></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Amount</label><input type="number" placeholder="0" value={form.amount} onChange={e=>setForm({...form, amount:Number(e.target.value)})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all" /></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Method</label><select value={form.method} onChange={e=>setForm({...form, method:e.target.value})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all"><option value="COD">Cash on Delivery</option><option value="PaidToOwner">Paid to Owner</option></select></div></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Note (optional)</label><input placeholder="Add a note..." value={form.note} onChange={e=>setForm({...form, note:e.target.value})} className="px-3 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 w-full focus:ring-2 focus:ring-orange-500 transition-all" /></div><div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowAddDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="px-5 py-2.5 ui-btn ui-btn-primary rounded-lg font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Add Record</button></div></form></div></div>
  )}
 
 <div className="border-2 border-cyan-200 dark:border-cyan-800 rounded-xl overflow-x-auto shadow-sm"><DataTable
@@ -247,7 +291,7 @@ export default function RiderList() {
  { label: 'Unsettled', key: 'unsettled' },
  { label: 'Actions', render: r => (
  <div className="flex items-center justify-center gap-2">
- <button disabled={loading} onClick={()=>settleRider(r.riderId, true)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white text-xs font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Mark Settled</button>
+ <button disabled={loading} onClick={()=>settleRider(r.riderId, true)} className="px-3 py-1.5 rounded-lg ui-btn ui-btn-primary text-xs font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Mark Settled</button>
  <button disabled={loading} onClick={()=>settleRider(r.riderId, false)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-white text-xs font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Unsettle</button>
  </div>
  )},
@@ -260,7 +304,7 @@ export default function RiderList() {
  )}
 
  {/* Totals Summary (Bottom) */}
- <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-800 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1"> Delivery Count</div><div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{totals.deliveries}</div></div><div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1"> Total Amount</div><div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{Number(totals.amount||0).toFixed(2)}</div></div></div>
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div className="p-4 rounded-xl border-2 border-blue-300 dark:border-blue-800 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-[var(--color-text-muted)] mb-1"> Delivery Count</div><div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{totals.deliveries}</div></div><div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-gray-900 shadow-sm"><div className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1"> Total Amount</div><div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{Number(totals.amount||0).toFixed(2)}</div></div></div>
  {ConfirmDialog}
  </div>
  )

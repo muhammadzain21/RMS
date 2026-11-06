@@ -5,7 +5,14 @@ import Ingredient from '../models/Ingredient.js'
 import MenuItem from '../models/MenuItem.js'
 import Counter from '../models/Counter.js'
 import Recall from '../models/Recall.js'
+import Kot from '../models/Kot.js'
+import Void from '../models/Void.js'
+import Audit from '../models/Audit.js'
 import Settings from '../models/Settings.js'
+import Staff from '../models/Staff.js'
+import StaffAdvance from '../models/StaffAdvance.js'
+import StaffPurchase from '../models/StaffPurchase.js'
+import PayInOut from '../models/PayInOut.js'
 import { authRequired } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
 import { takeSnapshot } from './inventorySnapshots.js'
@@ -106,8 +113,74 @@ router.post('/', async (req, res) => {
         )
     const billNo = payload.billNo || `${dateStr}_${tokenNo}`
     const paymentMethod = String(payload.paymentMethod || 'cash').toLowerCase()
-    const doc = { ...payload, date: dateStr, tokenNo, billNo, total: totalComputed, paymentMethod, idempotencyKey: key || null }
+
+    // Staff purchase: validate the staff member BEFORE saving so a blocked
+    // purchase never leaves a half-recorded sale. The amount is always
+    // tracked as a pending StaffPurchase — deducted by payroll unless the
+    // staff pays it off first via /api/staff-purchases/:id/settle.
+    let staffDoc = null
+    if (paymentMethod === 'staff') {
+      if (!payload.staffId) return res.status(400).json({ error: 'Select the staff member' })
+      staffDoc = await Staff.findById(payload.staffId).lean()
+      if (!staffDoc) return res.status(404).json({ error: 'Staff not found' })
+    }
+
+    const tipAmount = paymentMethod === 'cash'
+      ? Math.max(0, Number(payload.tipAmount || 0) || Math.max(0, Number(payload.cashReceived || 0) - Number(totalComputed || 0)))
+      : 0
+    const doc = {
+      ...payload,
+      date: dateStr,
+      tokenNo,
+      billNo,
+      total: totalComputed,
+      paymentMethod,
+      tipAmount,
+      bankRef: paymentMethod === 'bank' ? '' : (payload.bankRef || ''),
+      idempotencyKey: key || null,
+    }
     const saved = await Sale.create(doc)
+
+    // Cash overpayment = waiter tip → Pay Out so drawer expected cash stays balanced
+    let tipPayOut = null
+    if (tipAmount > 0) {
+      try {
+        tipPayOut = await PayInOut.create({
+          date: dateStr,
+          type: 'OUT',
+          amount: tipAmount,
+          category: 'Waiter Tip',
+          note: `Auto tip from bill ${billNo}${payload.tokenNo ? ` / token ${payload.tokenNo}` : ''}`,
+          userId: req.user?.id || '',
+          userName: req.user?.username || 'system',
+        })
+        await logAudit(req, 'cash', `Waiter tip Pay Out ${tipAmount} for ${billNo}`, { id: tipPayOut._id, saleId: saved._id })
+      } catch (tipErr) {
+        console.error('[sales] tip pay-out failed for sale', String(saved._id), tipErr?.message)
+      }
+    }
+
+    // Record the staff purchase as pending — payroll deducts it unless the
+    // staff settles it in cash first (or it's converted early via /deduct).
+    if (paymentMethod === 'staff' && staffDoc) {
+      try {
+        await StaffPurchase.create({
+          staffId: staffDoc._id,
+          staffName: staffDoc.name || payload.staffName || '',
+          saleId: String(saved._id),
+          billNo,
+          date: dateStr,
+          month: dateStr.slice(0, 7),
+          amount: Number(totalComputed || 0),
+          status: 'pending',
+          userId: req.user?.id || '',
+          userName: req.user?.username || 'system',
+        })
+      } catch (spErr) {
+        // Sale already saved — log loudly so reconciliation is possible
+        console.error('[sales] staff purchase record failed for sale', String(saved._id), spErr?.message)
+      }
+    }
 
     // After saving the sale, decrement inventory based on recipes
     try {
@@ -267,9 +340,173 @@ router.post('/', async (req, res) => {
       await logAudit(req, 'sale', `Sale created - Bill #${saved.billNo}, Token #${saved.tokenNo}, Items: ${itemCount}, Total: ${totalDisplay}`, { billNo: saved.billNo, tokenNo: saved.tokenNo, total: saved.total, itemCount })
     } catch {}
 
-    res.status(201).json(saved)
+    const out = typeof saved.toObject === 'function' ? saved.toObject() : { ...saved }
+    if (tipPayOut) {
+      out.tipPayOut = {
+        ...(typeof tipPayOut.toObject === 'function' ? tipPayOut.toObject() : tipPayOut),
+        id: tipPayOut._id || tipPayOut.id,
+      }
+    }
+    res.status(201).json(out)
   } catch (e) {
     res.status(400).json({ error: 'Failed to create sale' })
+  }
+})
+
+// GET /api/sales/:id/timeline
+// Rebuilds the full lifecycle of an order: order placed -> KOT(s) sent ->
+// kitchen status changes -> voids -> recall updates -> bill saved.
+// Everything is matched on (date, tokenNo) which links Recall/Kot/Void/Sale docs.
+router.get('/:id/timeline', async (req, res) => {
+  try {
+    const sale = await Sale.findById(req.params.id).lean()
+    if (!sale) return res.status(404).json({ error: 'Sale not found' })
+
+    const date = sale.date || toYyyyMmDd(sale.createdAt)
+    const tokenNo = String(sale.tokenNo || '').trim()
+
+    if (!tokenNo) {
+      return res.json({
+        sale: { ...sale, id: sale._id },
+        kots: [], voids: [], recalls: [],
+        events: [{ at: sale.createdAt, kind: 'sale', title: 'Bill saved / payment received', detail: {} }],
+      })
+    }
+
+    // Token numbers reset daily -> audit lookups must be scoped to this
+    // business day, otherwise same-token events from other days leak in.
+    const dayStart = new Date(`${date}T00:00:00`)
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+    const inDay = (a) => {
+      const t = new Date(a?.at || 0)
+      return t >= dayStart && t < dayEnd
+    }
+    const billNo = String(sale.billNo || `${date}_${tokenNo}`)
+
+    const [kots, voids, recalls, tokenAuditsRaw, deletedAudits] = await Promise.all([
+      Kot.find({ tokenNo, date }).sort({ createdAt: 1 }).lean(),
+      Void.find({ tokenNo, date }).sort({ createdAt: 1 }).lean(),
+      Recall.find({ tokenNo, date }).lean(),
+      Audit.find({
+        type: { $in: ['recall', 'kot', 'void', 'sale'] },
+        $or: [{ 'meta.tokenNo': tokenNo }, { 'meta.patch.tokenNo': tokenNo }],
+      }).sort({ at: 1 }).lean(),
+      Audit.find({ type: 'deleted_sale', $or: [{ 'meta.billNo': billNo }, { 'meta.tokenNo': tokenNo }] }).sort({ at: 1 }).lean(),
+    ])
+    const tokenAudits = tokenAuditsRaw.filter(inDay)
+
+    // KOT status transitions are logged with meta.id (the kot id), not tokenNo
+    const kotIds = kots.map(k => String(k._id))
+    const kotAudits = kotIds.length
+      ? await Audit.find({ type: 'kot', 'meta.id': { $in: kotIds } }).sort({ at: 1 }).lean()
+      : []
+
+    const events = []
+    const STATUS_LABEL = { new: 'KOT sent to kitchen', preparing: 'Kitchen started preparing', ready: 'Order ready', completed: 'Order completed / served' }
+
+    // Order placed (earliest recall create or first KOT time as fallback)
+    const orderAt = (recalls[0] && recalls[0].createdAt)
+      || (kots[0] && kots[0].createdAt)
+      || sale.createdAt
+    const recallCreateAudit = tokenAudits.find(a => a.type === 'recall' && /created/i.test(a.action || ''))
+    events.push({
+      at: recallCreateAudit?.at || orderAt,
+      kind: 'order',
+      title: 'Order placed',
+      detail: { userName: recallCreateAudit?.userName || '' },
+    })
+
+    // Each KOT send (one per KOT doc — recalls/add-ons create additional KOTs)
+    for (const k of kots) {
+      events.push({
+        at: k.createdAt,
+        kind: 'kot',
+        title: 'KOT sent to kitchen',
+        detail: { items: k.items || [], remarks: k.remarks || '' },
+      })
+    }
+
+    // Kitchen status transitions from audit log
+    const auditedStatuses = new Set()
+    for (const a of kotAudits) {
+      const st = a?.meta?.status
+      if (!st) continue
+      auditedStatuses.add(`${a.meta.id}:${st}`)
+      events.push({
+        at: a.at,
+        kind: 'status',
+        status: st,
+        title: STATUS_LABEL[st] || `Kitchen status: ${st}`,
+        detail: { userName: a.userName || '' },
+      })
+    }
+    // Fallback for KOTs whose current status has no audit row (pre-audit data)
+    for (const k of kots) {
+      const st = String(k.status || 'new')
+      if (st !== 'new' && k.statusUpdatedAt && !auditedStatuses.has(`${k._id}:${st}`)) {
+        events.push({
+          at: k.statusUpdatedAt,
+          kind: 'status',
+          status: st,
+          title: STATUS_LABEL[st] || `Kitchen status: ${st}`,
+          detail: {},
+        })
+      }
+    }
+
+    // Voids (each doc holds the voided items + reason)
+    for (const v of voids) {
+      events.push({
+        at: v.createdAt,
+        kind: 'void',
+        title: 'Item(s) voided',
+        detail: { items: v.items || [], reason: v.reason || '', remarks: v.remarks || '' },
+      })
+    }
+
+    // Recall add/update activity (item additions/changes before billing)
+    for (const a of tokenAudits) {
+      if (a.type !== 'recall' || /created/i.test(a.action || '')) continue
+      const patch = a?.meta?.patch || {}
+      events.push({
+        at: a.at,
+        kind: 'update',
+        title: /deleted/i.test(a.action || '') ? 'Recall removed' : 'Order updated (items changed)',
+        detail: { items: Array.isArray(patch.items) ? patch.items : undefined, userName: a.userName || '' },
+      })
+    }
+
+    // Bill saved
+    events.push({
+      at: sale.createdAt,
+      kind: 'sale',
+      title: 'Bill saved / payment received',
+      detail: { paymentMethod: sale.paymentMethod || '', total: sale.total },
+    })
+
+    // Sale deletion events (if any)
+    for (const a of deletedAudits) {
+      events.push({ at: a.at, kind: 'deleted', title: a.action || 'Sale deleted', detail: { userName: a.userName || '' } })
+    }
+
+    // Deterministic order: chronological, with a fixed kind priority for
+    // same-timestamp events so the sequence always reads logically.
+    const KIND_ORDER = { order: 0, kot: 1, update: 2, void: 3, status: 4, sale: 5, deleted: 6 }
+    events.sort((a, b) => {
+      const dt = new Date(a.at) - new Date(b.at)
+      if (dt) return dt
+      return (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9)
+    })
+
+    res.json({
+      sale: { ...sale, id: sale._id },
+      kots,
+      voids,
+      recalls,
+      events,
+    })
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load order timeline' })
   }
 })
 
@@ -321,6 +558,14 @@ router.delete('/:id', async (req, res) => {
     
     // Delete from Sale collection
     await Sale.findByIdAndDelete(id)
+
+    // Reverse any staff liability recorded for this sale
+    try {
+      if (sale.paymentMethod === 'staff') {
+        await StaffAdvance.deleteMany({ saleId: String(id), type: 'issue' }).catch(()=>{})
+        await StaffPurchase.deleteMany({ saleId: String(id), status: 'pending' }).catch(()=>{})
+      }
+    } catch {}
     
     // Restore inventory: reverse the recipe consumption that was deducted when the sale was created
     try {

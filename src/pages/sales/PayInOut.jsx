@@ -9,6 +9,7 @@ import Pagination from '../../components/Pagination.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 
 export default function PayInOut() {
  const { state, dispatch, businessDate } = useData()
@@ -133,6 +134,46 @@ export default function PayInOut() {
  }
  }
 
+ const openPrintPreview = async () => {
+ try {
+ const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
+ const periodFrom = from || '—'
+ const periodTo = to || '—'
+ const body =
+ reportSummary([
+ { label: 'Total Pay In', amount: money(totals.IN), cls: 'pos' },
+ { label: 'Total Pay Out', amount: money(totals.OUT), cls: 'neg' },
+ { label: 'Net', amount: money(totals.NET), cls: totals.NET < 0 ? 'neg' : 'pos' },
+ { label: 'Records', amount: String(rows.length) },
+ ]) +
+ reportSec(`Pay In / Pay Out (${rows.length})`) +
+ reportTable({
+ headers: ['Date', 'Type', 'Category', { t: 'Amount', align: 'r' }, 'Note', 'User'],
+ numbered: true,
+ rows: rows.map(r => [
+ r.date,
+ r.type,
+ r.category || '-',
+ { v: (r.type === 'IN' ? '+' : '-') + money(r.amount), align: 'r', cls: r.type === 'IN' ? 'pos' : 'neg' },
+ r.note || '-',
+ r.userName || '-',
+ ]),
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Pay In / Pay Out',
+ reportLabel: 'Pay In/Out Report',
+ reportNo: `Rpt #: PIO-${format(new Date(), 'yyyyMMdd-HHmm')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaRight: [['Records', String(rows.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Pay-In-Out-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ } catch {
+ toast.error('Print preview failed')
+ }
+ }
+
  const exportCSV = () => {
  const header = ['Date','Type','Category','Amount','Note','User']
  const lines = [header.join(',')]
@@ -166,16 +207,16 @@ export default function PayInOut() {
  }
 
  return (
- <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Pay In / Pay Out</h1><div className="flex gap-2"><button onClick={() => { setType('IN'); setShowAddDialog(true) }} disabled={isSelectedDateClosed} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"><ArrowDownCircle size={18} /> Pay In</button><button onClick={() => { setType('OUT'); setShowAddDialog(true) }} disabled={isSelectedDateClosed} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-rose-500 to-rose-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"><ArrowUpCircle size={18} /> Pay Out</button></div></div><div className="p-4 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900"><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input placeholder="Date, type, category, note, user..." value={search} onChange={e=>setSearch(e.target.value)} className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex gap-3 flex-shrink-0"><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">CSV</button><button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">PDF</button></div></div></div>
+ <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="page-title">Pay In / Pay Out</h1><div className="flex gap-2"><button onClick={() => { setType('IN'); setShowAddDialog(true) }} disabled={isSelectedDateClosed} className="flex items-center gap-2 px-5 py-2.5 rounded-lg ui-btn ui-btn-primary disabled:cursor-not-allowed"><ArrowDownCircle size={18} /> Pay In</button><button onClick={() => { setType('OUT'); setShowAddDialog(true) }} disabled={isSelectedDateClosed} className="flex items-center gap-2 px-5 py-2.5 rounded-lg ui-btn ui-btn-secondary"><ArrowUpCircle size={18} /> Pay Out</button></div></div><div className="p-4 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900"><div className="flex flex-wrap items-center gap-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label><input placeholder="Date, type, category, note, user..." value={search} onChange={e=>setSearch(e.target.value)} className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex gap-3 flex-shrink-0"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button></div></div></div>
 
  {showAddDialog && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowAddDialog(false) }}><div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-6"><div className="flex items-center justify-between mb-5"><h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{type === 'IN' ? 'Pay In' : 'Pay Out'}</h3><button onClick={() => setShowAddDialog(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X size={20} /></button></div>
  {isSelectedDateClosed && (
  <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-800 dark:text-red-200 font-medium">Selected date is closed. Adding new entries is disabled.</div>
  )}
- <form onSubmit={onAdd} className="space-y-4"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 transition-all" /></div><div><label className="block text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">Type</label><div className={`w-full px-3 py-2.5 border-2 rounded-lg font-semibold ${type === 'IN' ? 'border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300' : 'border-rose-200 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300'}`}>{type === 'IN' ? 'Pay In (Cash In)' : 'Pay Out (Cash Out)'}</div></div><div><label className="block text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">Category</label><input list="payio-categories" value={category} onChange={e=>setCategory(e.target.value)} placeholder="Petty Cash / Supplies / ..." className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 transition-all" /><datalist id="payio-categories">
+ <form onSubmit={onAdd} className="space-y-4"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><DatePicker label="Date" value={date} onChange={v=>{ if (v) setDate(v) }} allowClear={false} /></div><div><label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">Type</label><div className={`w-full px-3 py-2.5 border-2 rounded-lg font-semibold ${type === 'IN' ? 'border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300' : 'border-rose-200 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300'}`}>{type === 'IN' ? 'Pay In (Cash In)' : 'Pay Out (Cash Out)'}</div></div><div><label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">Category</label><input list="payio-categories" value={category} onChange={e=>setCategory(e.target.value)} placeholder="Petty Cash / Supplies / ..." className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 transition-all" /><datalist id="payio-categories">
  {presetCategories.map(c =><option key={c} value={c} />)}
- </datalist></div><div><label className="block text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">Amount</label><div className="relative"><span className="absolute left-3 top-3 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="1" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" className="w-full pl-12 pr-3 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 transition-all" /></div></div></div><div><label className="block text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">Note</label><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional description..." className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 transition-all" /></div><div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowAddDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={isSelectedDateClosed} className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">Add {type === 'IN' ? 'Pay In' : 'Pay Out'}</button></div></form></div></div>
+ </datalist></div><div><label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">Amount</label><div className="relative"><span className="absolute left-3 top-3 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="1" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" className="w-full pl-12 pr-3 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 transition-all" /></div></div></div><div><label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">Note</label><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional description..." className="w-full px-3 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 transition-all" /></div><div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowAddDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={isSelectedDateClosed} className="px-5 py-2.5 rounded-lg ui-btn ui-btn-primary disabled:opacity-50 disabled:cursor-not-allowed">Add {type === 'IN' ? 'Pay In' : 'Pay Out'}</button></div></form></div></div>
  )}
 
  <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Transaction History</h2><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Type</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Amount</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>

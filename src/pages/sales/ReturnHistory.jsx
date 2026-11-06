@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 
 export default function ReturnHistory() {
  const { state, dispatch, businessDate } = useData()
@@ -139,16 +140,40 @@ export default function ReturnHistory() {
  const start = (page - 1) * limit
  const pagedRows = rows.slice(start, start + limit)
 
- const bulkPrint = () => {
- const win = window.open('', '_blank')
- if (!win) return
- const rowsHtml = rows.map(r => `<tr><td>${r.date}</td><td>${r.billNo}</td><td>${r.customer}</td><td>${r.refund}</td><td>${r.paymentMethod}</td><td>${r.reason}</td></tr>`).join('')
- win.document.write(`<!doctype html><html><head><title>Bulk Print</title><style>body{font-family:sans-serif} table{width:100%; border-collapse:collapse} th,td{border:1px solid #ddd;padding:6px;font-size:12px} th{background:#f3f4f6}</style></head><body><h3>Return History</h3><table><thead><tr><th>Date</th><th>Bill No</th><th>Customer</th><th>Refund</th><th>Payment</th><th>Reason</th></tr></thead><tbody>${rowsHtml}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`)
- win.document.close()
+ const openPrintPreview = async () => {
+ try {
+ const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
+ const totalRefund = rows.reduce((a, r) => a + Number(r.refund || 0), 0)
+ const periodFrom = fromDate || '—'
+ const periodTo = toDate || '—'
+ const body =
+ reportSummary([
+ { label: 'Total Refunds', amount: money(totalRefund) },
+ { label: 'Record Count', amount: String(rows.length) },
+ ]) +
+ reportSec(`Returns (${rows.length})`) +
+ reportTable({
+ headers: ['Date', 'Bill No', 'Customer', { t: 'Refund', align: 'r' }, 'Payment', 'Reason', 'Items'],
+ numbered: true,
+ rows: rows.map(r => [r.date, r.billNo, r.customer, { v: money(r.refund), align: 'r' }, r.paymentMethod, r.reason, r.itemsText]),
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Return History',
+ reportLabel: 'Returns Report',
+ reportNo: `Rpt #: RET-${format(new Date(), 'yyyyMMdd-HHmm')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaRight: [['Records', String(rows.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Return-History-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ } catch {
+ toast.error('Print preview failed')
+ }
  }
 
  return (
- <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Return History
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="page-title">Return History
  </h1></div>
 
  {isTodayClosed && (
@@ -158,7 +183,7 @@ export default function ReturnHistory() {
  <div className="p-4 rounded-xl bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800"><div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200"><span className="font-semibold">Selected date is closed. Deleting returns for this date is disabled.</span></div></div>
  )}
 
- <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-2 border-indigo-200 dark:border-indigo-800"><div className="flex gap-3 flex-shrink-0"><button onClick={exportPDF} className="px-4 py-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">PDF</button><button onClick={exportCSV} className="px-4 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">CSV</button><button onClick={bulkPrint} className="px-4 py-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 whitespace-nowrap">Bulk Print</button></div><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v => setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v => setToDate(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search returns..." className="w-full px-4 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div></div><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr>
+ <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl card card-pad"><div className="flex gap-3 flex-shrink-0"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button></div><div className="flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v => setFromDate(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v => setToDate(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search returns..." className="w-full px-4 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div></div><div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr>
  {cols.map(c => (
  <th key={c.key} className="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">{c.label}</th>
  ))}

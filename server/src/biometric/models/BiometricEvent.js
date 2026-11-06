@@ -9,7 +9,19 @@ const BiometricEventSchema = new Schema({
   timestamp: { type: Date, required: true, index: true },
   date: { type: String, required: true, index: true },
   time: { type: String, required: true },
-  type: { type: String, enum: ['check_in','check_out','ignored_duplicate','unknown_enroll'], required: true },
+  type: {
+    type: String,
+    enum: [
+      'check_in',
+      'check_out',
+      'ignored_duplicate',
+      'ignored_duplicate_checkin',
+      'ignored_duplicate_checkout',
+      'ignored_checkout_no_checkin',
+      'unknown_enroll',
+    ],
+    required: true,
+  },
   raw: { type: Schema.Types.Mixed },
 }, { timestamps: true })
 

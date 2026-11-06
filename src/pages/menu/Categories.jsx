@@ -5,6 +5,11 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { Plus, X } from 'lucide-react'
+import { format } from 'date-fns'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
 
 export default function Categories() {
  const { state, dispatch } = useData()
@@ -147,6 +152,84 @@ export default function Categories() {
  }
  }
 
+ const categoryReportRows = () => filteredItems.map(r => [
+   Number(r.sortOrder || 0),
+   r.name || '',
+   r.showOnPos ? 'Yes' : 'No',
+   r.active !== false ? 'Yes' : 'No',
+   Number(r.discount || 0),
+ ])
+
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([{ label: 'Categories', amount: String(filteredItems.length) }]) +
+ reportSec(`Categories (${filteredItems.length})`) +
+ reportTable({
+ headers: [{ t: 'Order', align: 'r' }, 'Name', 'Show on POS', 'Active', { t: 'Discount %', align: 'r' }],
+ numbered: true,
+ rows: filteredItems.map(r => [
+ { v: Number(r.sortOrder || 0), align: 'r' },
+ r.name,
+ r.showOnPos ? 'Yes' : 'No',
+ r.active !== false ? 'Yes' : 'No',
+ { v: Number(r.discount || 0), align: 'r' },
+ ]),
+ emptyText: 'No categories match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Categories',
+ reportLabel: 'Category Report',
+ reportNo: `Rpt #: CAT-${format(new Date(), 'yyyy-MM-dd')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+ metaRight: [['Records', String(filteredItems.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Categories-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
+ }
+
+ const exportPDF = () => {
+ try {
+ const doc = new jsPDF('p', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Categories', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${filteredItems.length} categories`, 40, 46)
+ doc.autoTable({
+ head: [['Order', 'Name', 'Show on POS', 'Active', 'Discount %']],
+ body: categoryReportRows(),
+ startY: 54,
+ styles: { fontSize: 8, cellPadding: 4 },
+ headStyles: { fillColor: [147, 51, 234], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`categories_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
+
+ const exportCSV = () => {
+ try {
+ downloadCsvFile(
+ `categories_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ ['Order', 'Name', 'Show on POS', 'Active', 'Discount %'],
+ categoryReportRows()
+ )
+ toast.success('CSV exported successfully')
+ } catch {
+ toast.error('Failed to export CSV')
+ }
+ }
+
  const onDelete = async (id) => {
  const confirmed = await confirm({ title: 'Delete Category', message: 'Delete this category?' })
  if (!confirmed) return
@@ -166,7 +249,7 @@ export default function Categories() {
 
  return (
  <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Categories
- </h1><div className="flex items-center gap-2"><button onClick={onAdd} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95"><Plus size={18} /> Add Category</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
+ </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button onClick={onAdd} className="ui-btn ui-btn-primary flex items-center gap-2"><Plus size={18} /> Add Category</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
  type="number"
  min={1}
  max={12}
@@ -196,7 +279,7 @@ export default function Categories() {
  {form.imageUrl && (
  <div className="mt-2"><img src={form.imageUrl} alt="Category preview" className="h-20 w-auto rounded-lg border-2 border-purple-200 dark:border-purple-700 shadow-sm" /></div>
  )}
- <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Update</button></div>
+ <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="ui-btn ui-btn-primary disabled:opacity-50">Update</button></div>
  </form>
  ) : (
  <form onSubmit={onSubmit} className="space-y-4">
@@ -221,7 +304,7 @@ export default function Categories() {
  ))}
  </div>
  <button type="button" onClick={() => setMultiRows([...multiRows, blankRow()])} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 font-medium hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all w-full justify-center"><Plus size={18} /> Add Another Category</button>
- <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Add All Categories</button></div>
+ <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="ui-btn ui-btn-primary disabled:opacity-50">Add All Categories</button></div>
  </form>
  )}
  </div></div>

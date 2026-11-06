@@ -1,6 +1,12 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useData } from '../state/DataContext.jsx'
+import { visibleItems } from '../layout/navConfig.js'
+
+// Paths that correspond to a gated feature (sidebar pages). Sub-routes of a
+// feature (e.g. /staff/payroll/summary/123) inherit its gate. Routes that don't
+// map to any feature (e.g. /staff/history/:id) are governed by roles only.
+const FEATURE_PATHS = visibleItems().map(i => i.path)
 
 export default function ProtectedRoute({ children, roles }) {
   const { user } = useAuth()
@@ -12,32 +18,54 @@ export default function ProtectedRoute({ children, roles }) {
   // SuperAdmin bypasses everything (including feature access)
   if (user.role === 'SuperAdmin') return children
 
-  // Feature access: only superadmin-enabled paths are reachable
+  const isMyWorkRoute = location.pathname === '/my' || location.pathname.startsWith('/my/')
+  const canSeeMyWork = Boolean(user.staffId) && user.myWorkAccess === true
+
+  const currentPath = location.pathname
   const enabledPaths = state?.settings?.enabledPaths
+  const isEnabled = (path) =>
+    !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
+
+  // Pages the user may actually render (visible permission + enabled feature)
+  const allowedPaths = Array.isArray(user.permissions)
+    ? user.permissions.filter(p => p.visible).map(p => p.path)
+    : null
+  const fallbackPath = allowedPaths ? allowedPaths.find(isEnabled) : null
+  const noAccess = (
+    <div className="flex items-center justify-center h-full p-10 text-sm text-gray-500 dark:text-gray-400">
+      You do not have access to any page. Please contact your administrator.
+    </div>
+  )
+
+  // Feature access: gated feature paths must be enabled by the superadmin
   if (Array.isArray(enabledPaths) && enabledPaths.length > 0) {
-    const currentPath = location.pathname
-    const featureEnabled = enabledPaths.some(p =>
-      currentPath === p || currentPath.startsWith(p + '/') || (p === '/' && currentPath === '/')
-    )
-    if (!featureEnabled) {
-      const firstEnabled = enabledPaths.find(p => p !== '/') || enabledPaths[0]
-      return <Navigate to={firstEnabled || '/'} replace />
+    // Longest feature path that owns this route (exact or prefix-segment match)
+    const featurePath = FEATURE_PATHS
+      .filter(p => currentPath === p || currentPath.startsWith(p + '/'))
+      .sort((a, b) => b.length - a.length)[0]
+    if (featurePath && !enabledPaths.includes(featurePath)) {
+      // Redirect to a page the user can render; never ping-pong between redirects
+      return fallbackPath && fallbackPath !== currentPath
+        ? <Navigate to={fallbackPath} replace />
+        : noAccess
     }
   }
-  
-  // Admin always has access
-  if (user.role === 'Admin') return children
-  
-  // Check if user's role is in allowed roles
-  if (roles && roles.includes(user.role)) return children
-  
-  // For custom roles, check if current path is in user's permissions
-  if (user.permissions && Array.isArray(user.permissions)) {
-    const currentPath = location.pathname
-    const allowedPaths = user.permissions
-      .filter(p => p.visible)
-      .map(p => p.path)
-    
+
+  if (isMyWorkRoute) {
+    if (canSeeMyWork) return children
+    return fallbackPath && fallbackPath !== currentPath
+      ? <Navigate to={fallbackPath} replace />
+      : noAccess
+  }
+
+  // Admin with full (role) access — custom pageAccess still goes through the permission check below
+  if (user.role === 'Admin' && !user.useCustomPermissions) return children
+
+  // Check if user's role is in allowed roles (unless they have an explicit custom permission set)
+  if (roles && roles.includes(user.role) && !user.useCustomPermissions) return children
+
+  // Custom / role permissions: check if current path is allowed
+  if (allowedPaths) {
     // Check if current path matches any allowed permission
     const isAllowed = allowedPaths.some(path => {
       // Exact match
@@ -46,17 +74,15 @@ export default function ProtectedRoute({ children, roles }) {
       if (currentPath.startsWith(path + '/')) return true
       return false
     })
-    
+
     if (isAllowed) return children
-    
-    // Not authorized, redirect to first allowed page
-    const firstAllowed = allowedPaths[0]
-    if (firstAllowed) return <Navigate to={firstAllowed} replace />
-    
-    // Custom role with no permissions — logout
-    return <Navigate to="/login" replace />
+
+    // Not authorized — send to their first usable page, or show no-access
+    return fallbackPath && fallbackPath !== currentPath
+      ? <Navigate to={fallbackPath} replace />
+      : noAccess
   }
-  
-  // Not authorized, redirect to dashboard
-  return <Navigate to="/" replace />
+
+  // Not authorized, redirect to dashboard (avoid self-redirect loop on '/')
+  return currentPath === '/' ? noAccess : <Navigate to="/" replace />
 }
