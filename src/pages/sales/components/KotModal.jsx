@@ -47,8 +47,8 @@ export default function KotModal({
   const selectedName = String(kotTable || '').trim()
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3 sm:p-6">
-      <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-5 sm:p-6 space-y-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/45 p-0 sm:p-6">
+      <div className="w-full max-w-5xl max-h-[92dvh] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-t-2xl sm:rounded-xl p-4 sm:p-6 space-y-5 shadow-2xl pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-gray-100">Select Order Details</div>

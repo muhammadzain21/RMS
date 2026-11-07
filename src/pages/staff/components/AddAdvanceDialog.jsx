@@ -47,8 +47,8 @@ export default function AddAdvanceDialog({
   const handleClose = () => { setForm(null); onClose(); };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="w-full max-w-md p-5 rounded-xl bg-white dark:bg-slate-800 shadow-2xl border border-slate-200 dark:border-slate-700">
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="w-full max-w-md max-h-[92dvh] overflow-y-auto p-5 rounded-t-2xl sm:rounded-xl bg-white dark:bg-slate-800 shadow-2xl border border-slate-200 dark:border-slate-700 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-semibold text-slate-800 dark:text-slate-200">{editing ? 'Edit Advance' : 'Add Advance'}</h3>
           <button className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-sm" onClick={handleClose}>Close</button>

@@ -7,11 +7,14 @@ import { UIProvider } from './state/UIContext.jsx'
 import { AuthProvider } from './state/AuthContext.jsx'
 import { DataProvider } from './state/DataContext.jsx'
 import { BranchProvider } from './state/BranchContext.jsx'
+import { setupNativeChrome } from './native/statusBar.js'
 
 const isElectron = /Electron/i.test(navigator.userAgent)
 const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent))
 // Use HashRouter for Electron and Capacitor (file:// / capacitor:// origins)
 const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
+
+setupNativeChrome()
 
 // Runtime API base discovery and fetch rewrite
 ;(function(){
@@ -22,13 +25,14 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
     const host = window.location.hostname || 'localhost'
     const guessBase = `http://${host}:5000`
     const isLocal = (u) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(String(u||''))
+    const strip = (u) => String(u || '').trim().replace(/\/+$/, '')
     const pickBase = () => {
-      // Electron/dev: prefer local API so stale cloud URLs don't break login
-      if (isElectron && import.meta.env.DEV) return guessBase
-      // Priority: saved server URL (mobile) > env base > guessed base
-      const s = String(savedBase||'').trim()
+      // Always prefer explicit user-saved URL (LAN / online) — including Electron
+      const s = strip(savedBase)
       if (s) return s
-      const e = String(envBase||'').trim()
+      // Electron/dev with nothing saved: local API
+      if (isElectron && import.meta.env.DEV) return guessBase
+      const e = strip(envBase)
       if (!e) return guessBase
       if (isLocal(e) && host !== 'localhost' && host !== '127.0.0.1') return guessBase
       return e
@@ -36,8 +40,38 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
     const initial = pickBase()
     const g = window
     g.API_BASE = initial
+    // Track previous bases so LAN↔online switches keep rewriting old absolute URLs
+    g.__API_BASE_CANDIDATES = new Set([
+      'http://localhost:5000',
+      'https://localhost:5000',
+      'http://127.0.0.1:5000',
+      'https://127.0.0.1:5000',
+    ])
+    const e0 = strip(envBase)
+    if (e0) g.__API_BASE_CANDIDATES.add(e0)
+    if (initial) g.__API_BASE_CANDIDATES.add(strip(initial))
+
+    const rememberBase = (next) => {
+      const n = strip(next)
+      if (!n) return
+      const prev = strip(g.API_BASE)
+      if (prev) g.__API_BASE_CANDIDATES.add(prev)
+      g.__API_BASE_CANDIDATES.add(n)
+      g.API_BASE = n
+    }
+    g.setAPIBase = (next) => {
+      rememberBase(next)
+      try { localStorage.setItem('server_url', strip(next)) } catch {}
+      try { g.dispatchEvent(new CustomEvent('server_url_changed', { detail: strip(next) })) } catch {}
+    }
+
+    window.addEventListener('server_url_changed', (ev) => {
+      const next = strip(ev?.detail || localStorage.getItem('server_url') || '')
+      if (next) rememberBase(next)
+    })
+
     const orig = g.fetch.bind(g)
-    // Rewrite hardcoded localhost / env API URLs to the active server (LAN or online)
+    // Rewrite hardcoded localhost / env / previous API URLs to the active server
     g.fetch = (input, init) => {
       try{
         const toUrl = (u) => typeof u === 'string' ? u : (u && 'url' in u ? u.url : '')
@@ -46,10 +80,6 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
         // Auto-attach active branch for multi-branch writes/reads
         try {
           const branchId = g.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || ''
-          // Skip auth/health/config — no branch scope needed (also avoids CORS preflight noise)
-          // Warehouse catalog is HQ-global (no branch). Auth/health/config skip too.
-          // Call-center list/inbox is cross-branch by default (pages may still pass branchId when needed)
-          // Shared/global: customers + call-center lists; warehouse is HQ catalog
           const skipBranch = /\/api\/(auth|health|client-config|warehouse|call-center-orders|customers)(\/|$|\?)/i.test(String(url || ''))
           if (branchId && !skipBranch && typeof url === 'string' && url.includes('/api/')) {
             const headers = new Headers(nextInit.headers || (input && input.headers) || {})
@@ -58,36 +88,35 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
           }
         } catch {}
         if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return orig(input, nextInit)
-        const base = String(g.API_BASE || '').replace(/\/+$/, '')
+        const base = strip(g.API_BASE)
         if (!base) return orig(input, nextInit)
-        const candidates = [
-          'http://localhost:5000',
-          'https://localhost:5000',
-          'http://127.0.0.1:5000',
-          'https://127.0.0.1:5000',
-        ]
-        const e = String(envBase || '').trim().replace(/\/+$/, '')
+        const candidates = [...(g.__API_BASE_CANDIDATES || [])]
+        const e = strip(envBase)
         if (e && !candidates.includes(e)) candidates.push(e)
         for (const c of candidates) {
-          if (c === base) continue
-          if (url === c || url.startsWith(c + '/')) {
-            return orig(base + url.slice(c.length), nextInit)
+          const cc = strip(c)
+          if (!cc || cc === base) continue
+          if (url === cc || url.startsWith(cc + '/')) {
+            return orig(base + url.slice(cc.length), nextInit)
           }
         }
         return orig(input, nextInit)
       }catch{}
       return orig(input, init)
     }
-    // Skip auto-discovery on Capacitor — user manually configures the server URL
-    if (!isCapacitor) {
+    // Auto-discovery only when user has NOT saved a URL (never overwrite LAN/online choice)
+    if (!isCapacitor && !strip(savedBase)) {
       const tryDiscover = async () => {
         try{
+          // Skip if user saved a URL while we were discovering
+          if (strip(localStorage.getItem('server_url'))) return
           const discoverHost = window.location.hostname || 'localhost'
           const discoverBase = `http://${discoverHost}:5000`
           const res = await fetch(`${discoverBase}/api/client-config`, { cache: 'no-store' })
           if (res.ok) {
+            if (strip(localStorage.getItem('server_url'))) return
             const j = await res.json()
-            if (j && j.apiBase) g.API_BASE = String(j.apiBase)
+            if (j && j.apiBase) rememberBase(j.apiBase)
           }
         }catch{}
       }

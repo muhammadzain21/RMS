@@ -93,6 +93,8 @@ export default function KDS() {
   const [soundOn, setSoundOn] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastNewCount, setLastNewCount] = useState(0)
+  // Mobile: show one kanban column at a time
+  const [mobileCol, setMobileCol] = useState('new')
   const audioRef = useRef(null)
   const pollRef = useRef(null)
 
@@ -316,7 +318,7 @@ export default function KDS() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col bg-gray-100 dark:bg-gray-950">
+    <div className="min-h-[calc(100dvh-4rem)] flex flex-col bg-gray-100 dark:bg-gray-950 -mx-4 sm:mx-0">
       {/* Hidden audio element for bell sound */}
       <audio ref={audioRef} preload="auto">
         <source src="data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQ==" type="audio/wav" />
@@ -324,7 +326,7 @@ export default function KDS() {
 
       {/* Header bar */}
       <div className="flex-shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-3 py-2 sm:px-4 sm:py-3">
-        <div className="flex items-center justify-between gap-2 sm:gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-lg shadow-orange-500/30 flex-shrink-0">
               <ChefHat size={20} className="text-white" />
@@ -335,8 +337,8 @@ export default function KDS() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            <div className="h-9 w-[10.5rem] sm:w-[11.5rem] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-visible">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <div className="h-9 w-full min-w-[9rem] max-w-[12rem] sm:w-[11.5rem] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-visible">
               <DatePicker
                 value={selectedDate}
                 onChange={(v) => {
@@ -363,24 +365,11 @@ export default function KDS() {
               })}
             </div>
 
-            {/* Stats badges - mobile compact */}
-            <div className="flex sm:hidden items-center gap-1 mr-1">
-              {COLUMNS.map(col => {
-                const c = colorMap[col.color]
-                const count = groupedByStatus[col.key]?.length || 0
-                return (
-                  <span key={col.key} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${c.count}`}>
-                    {count}
-                  </span>
-                )
-              })}
-            </div>
-
             {/* Sound toggle */}
             <button
               onClick={() => setSoundOn(s => !s)}
               title={soundOn ? 'Sound on' : 'Sound off'}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${soundOn ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}
+              className={`w-10 h-10 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center transition-colors ${soundOn ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}
             >
               {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
             </button>
@@ -389,7 +378,7 @@ export default function KDS() {
             <button
               onClick={() => setAutoRefresh(a => !a)}
               title={autoRefresh ? 'Auto-refresh on' : 'Auto-refresh off'}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${autoRefresh ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}
+              className={`w-10 h-10 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center transition-colors ${autoRefresh ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}
             >
               <RefreshCw size={18} className={autoRefresh ? 'animate-spin-slow' : ''} />
             </button>
@@ -397,7 +386,7 @@ export default function KDS() {
             {/* Print A4 preview */}
             <button
               onClick={openPrintPreview}
-              className="ui-btn ui-btn-print text-sm flex items-center gap-1.5"
+              className="ui-btn ui-btn-print text-sm flex items-center gap-1.5 min-h-10"
               title="Print A4 report"
             >
               <Printer size={16} />
@@ -407,26 +396,51 @@ export default function KDS() {
             {/* Manual refresh */}
             <button
               onClick={() => loadKots()}
-              className="px-3 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white text-sm font-medium hover:shadow-lg transition-all flex items-center gap-1.5"
+              className="px-3 py-2 min-h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white text-sm font-medium hover:shadow-lg transition-all flex items-center gap-1.5"
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
               <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
         </div>
+
+        {/* Mobile column tabs */}
+        <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5 lg:hidden -mx-1 px-1">
+          {COLUMNS.map(col => {
+            const c = colorMap[col.color]
+            const count = groupedByStatus[col.key]?.length || 0
+            const active = mobileCol === col.key
+            return (
+              <button
+                key={col.key}
+                type="button"
+                onClick={() => setMobileCol(col.key)}
+                className={`shrink-0 inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-extrabold transition ${
+                  active ? `${c.btn} text-white shadow` : `${c.count}`
+                }`}
+              >
+                {col.label.split(' ')[0]}
+                <span className={`rounded-md px-1.5 py-0.5 text-[11px] ${active ? 'bg-white/25' : 'bg-black/5 dark:bg-white/10'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Kanban board */}
-      <div className="flex-1 overflow-x-auto p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="flex-1 overflow-x-auto p-3 sm:p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
 
           {COLUMNS.map(col => {
             const c = colorMap[col.color]
             const items = groupedByStatus[col.key] || []
             const ColIcon = col.icon
+            const hideOnMobile = mobileCol !== col.key
 
             return (
-              <div key={col.key} className={`rounded-2xl border-2 ${c.border} ${c.bg} flex flex-col xl:max-h-[calc(100vh-12rem)]`}>
+              <div key={col.key} className={`rounded-2xl border-2 ${c.border} ${c.bg} flex flex-col min-h-[18rem] xl:max-h-[calc(100dvh-12rem)] ${hideOnMobile ? 'hidden lg:flex' : 'flex'}`}>
                 {/* Column header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/60 dark:border-gray-700/60">
                   <div className="flex items-center gap-2">
@@ -593,9 +607,9 @@ export default function KDS() {
                           {col.next && (
                             <button
                               onClick={() => updateStatus(kot.id || kot._id, col.next)}
-                              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg ${c.btn} text-white text-xs font-semibold transition-all hover:scale-105 active:scale-95`}
+                              className={`flex items-center gap-1.5 px-3 py-2.5 sm:px-2.5 sm:py-1.5 rounded-lg ${c.btn} text-white text-sm sm:text-xs font-bold transition-all active:scale-95 touch-manipulation`}
                             >
-                              {col.nextIcon && <col.nextIcon size={13} />}
+                              {col.nextIcon && <col.nextIcon size={14} />}
                               {col.nextLabel}
                               <ArrowRight size={12} />
                             </button>

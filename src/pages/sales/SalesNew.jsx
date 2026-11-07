@@ -209,7 +209,11 @@ export default function SalesNew() {
       try {
         if (cart.callCenterOrderId) sessionStorage.setItem('cc_order_id', String(cart.callCenterOrderId))
       } catch {}
-      toast.success('Call-center order loaded — review and press KOT')
+      toast.success(
+        cart.isAddOn
+          ? 'ADD-ON order (same customer) loaded — review and press KOT'
+          : 'Call-center order loaded — review and press KOT'
+      )
       window.history.replaceState({}, '', '/sales/new')
     } catch {}
   }, [])

@@ -35,6 +35,9 @@ const CallCenterOrderSchema = new mongoose.Schema({
   },
   items: { type: [CcItemSchema], default: [] },
   remarks: { type: String, default: '' },
+  // Add-on / reorder: same customer calling again to add items
+  isAddOn: { type: Boolean, default: false, index: true },
+  parentOrderId: { type: String, default: '', index: true },
   // Pricing snapshot (menu rates are shared; amounts frozen at submit time)
   subtotal: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },

@@ -5,7 +5,8 @@ import { toast } from 'react-hot-toast'
 import { useData } from '../../state/DataContext.jsx'
 import {
   Server, Eye, EyeOff, ArrowRight, UtensilsCrossed, Wifi, Cloud,
-  CheckCircle, AlertCircle, Smartphone, Monitor, Settings2,
+  CheckCircle, AlertCircle, Monitor, Settings2, Shield,
+  MapPin, Phone, Apple, Check, Sparkles,
 } from 'lucide-react'
 
 function normalizeUrl(raw) {
@@ -41,11 +42,25 @@ async function pingServer(rawUrl) {
 }
 
 function saveServerBase(base) {
-  try { localStorage.setItem('server_url', base) } catch {}
-  if (typeof window !== 'undefined') {
-    window.API_BASE = base
-    window.dispatchEvent(new CustomEvent('server_url_changed', { detail: base }))
-  }
+  const b = normalizeUrl(base)
+  if (!b) return
+  try {
+    if (typeof window.setAPIBase === 'function') {
+      window.setAPIBase(b)
+    } else {
+      localStorage.setItem('server_url', b)
+      window.API_BASE = b
+      window.dispatchEvent(new CustomEvent('server_url_changed', { detail: b }))
+    }
+  } catch {}
+}
+
+function AndroidIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M17.6 9.48l1.84-3.18a.5.5 0 00-.86-.5l-1.86 3.22A7.9 7.9 0 0012 8c-1.57 0-3.02.45-4.22 1.22L5.92 5.8a.5.5 0 10-.86.5L6.9 9.48C5.14 10.72 4 12.72 4 15v.5h16V15c0-2.28-1.14-4.28-2.9-5.52zM9.25 13.25a.75.75 0 110-1.5.75.75 0 010 1.5zm5.5 0a.75.75 0 110-1.5.75.75 0 010 1.5zM7 16.5h10v1.25c0 .97-.78 1.75-1.75 1.75h-.5v2a1 1 0 11-2 0v-2h-1.5v2a1 1 0 11-2 0v-2h-.5C7.78 19.5 7 18.72 7 17.75V16.5z" />
+    </svg>
+  )
 }
 
 export default function Login() {
@@ -56,7 +71,7 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
-  const [installHelp, setInstallHelp] = useState('') // 'android' | 'iphone' | 'desktop' | ''
+  const [installHelp, setInstallHelp] = useState('')
 
   const [connMode, setConnMode] = useState(() => {
     try { return guessMode(localStorage.getItem('server_url') || window.API_BASE || '') } catch { return 'lan' }
@@ -71,12 +86,21 @@ export default function Login() {
   const [connTesting, setConnTesting] = useState(false)
   const [connStatus, setConnStatus] = useState(null)
   const [connError, setConnError] = useState('')
-  // Hidden by default — only opens when Administrator is clicked
   const [connOpen, setConnOpen] = useState(false)
 
   useEffect(() => {
     setConnOpen(false)
     setInstallHelp('')
+  }, [])
+
+  useEffect(() => {
+    const id = 'login-fonts'
+    if (document.getElementById(id)) return
+    const link = document.createElement('link')
+    link.id = id
+    link.rel = 'stylesheet'
+    link.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap'
+    document.head.appendChild(link)
   }, [])
 
   const deferredPromptRef = useRef(null)
@@ -92,8 +116,11 @@ export default function Login() {
   const onAndroid = /Android/i.test(ua)
   const onIos = /iPhone|iPad|iPod/i.test(ua)
 
-  const brand = state?.settings?.companyName || 'Restaurant POS'
-  const logo = state?.settings?.logo || null
+  const settings = state?.settings || {}
+  const brand = settings.companyName || 'Restaurant POS'
+  const logo = settings.logo || null
+  const phone = String(settings.phone || '').trim()
+  const address = String(settings.address || '').trim()
   const connectedUrl = normalizeUrl(serverUrl)
     || (typeof window !== 'undefined' ? String(window.API_BASE || '') : '')
     || 'Not configured'
@@ -130,36 +157,27 @@ export default function Login() {
     navigate(firstAllowed || '/')
   }, [user, navigate])
 
-  /** Native Chrome Install prompt when available — never downloads a file */
   const installPwa = async (platform) => {
     if (pwaInstalled) {
       toast.success('App is already installed')
       return
     }
-
     if (platform === 'iphone' || onIos) {
       setInstallHelp('iphone')
       return
     }
-
-    // Always try the system Install dialog first (Android / Desktop)
     if (deferredPromptRef.current) {
       try {
         deferredPromptRef.current.prompt()
         const choice = await deferredPromptRef.current.userChoice
         deferredPromptRef.current = null
         setCanPwaInstall(false)
-        if (choice?.outcome === 'accepted') {
-          toast.success('Installing EpicSpire RMS…')
-          // If Play Protect appears next, tap "Install without scanning"
-        }
+        if (choice?.outcome === 'accepted') toast.success('Installing EpicSpire RMS…')
         return
       } catch (err) {
         console.warn('PWA prompt failed', err)
       }
     }
-
-    // Prompt not ready yet — show short steps (no downloads)
     if (platform === 'android') setInstallHelp('android')
     else setInstallHelp('desktop')
     toast('Open Chrome menu → Install app', { icon: '📱' })
@@ -169,7 +187,8 @@ export default function Login() {
     setConnMode(mode)
     setConnStatus(null)
     setConnError('')
-    if (!serverUrl.trim()) {
+    const cur = String(serverUrl || '').trim()
+    if (!cur || cur === 'http://' || cur === 'https://' || cur === 'http://192.168.') {
       if (mode === 'lan') {
         const host = typeof window !== 'undefined' ? window.location.hostname : ''
         if (host && host !== 'localhost' && host !== '127.0.0.1') {
@@ -204,39 +223,35 @@ export default function Login() {
     setConnError(result.error || '')
     saveServerBase(base)
     setServerUrl(base)
+    setConnMode(guessMode(base))
     if (result.ok) toast.success('Connected — you can sign in')
     else toast('Saved. Server not reachable yet — check network.', { icon: '⚠️' })
   }
 
-  // Ensure Electron/dev always has a usable local API target
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       const current = normalizeUrl(serverUrl) || normalizeUrl(typeof window !== 'undefined' ? window.API_BASE : '')
-      const local = 'http://localhost:5000'
       if (!current) {
-        saveServerBase(local)
-        if (!cancelled) setServerUrl(local)
+        const local = 'http://localhost:5000'
+        const localPing = await pingServer(local)
+        if (cancelled) return
+        if (localPing.ok) {
+          saveServerBase(local)
+          setServerUrl(local)
+          setConnStatus('ok')
+        }
         return
       }
       const ping = await pingServer(current)
       if (cancelled) return
       if (ping.ok) {
         setConnStatus('ok')
+        saveServerBase(current)
         return
       }
-      const localPing = await pingServer(local)
-      if (cancelled) return
-      if (localPing.ok) {
-        saveServerBase(local)
-        setServerUrl(local)
-        setConnStatus('ok')
-        setConnError('')
-        toast.success('Connected to local server')
-      } else {
-        setConnStatus('fail')
-        setConnError(ping.error || 'Server not reachable')
-      }
+      setConnStatus('fail')
+      setConnError(ping.error || 'Server not reachable')
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -246,7 +261,7 @@ export default function Login() {
     e.preventDefault()
     setError('')
     if (!form.username || !form.password) { setError('Username and password are required'); return }
-    const base = normalizeUrl(serverUrl) || 'http://localhost:5000'
+    const base = normalizeUrl(serverUrl) || normalizeUrl(typeof window !== 'undefined' ? window.API_BASE : '') || 'http://localhost:5000'
     saveServerBase(base)
     setServerUrl(base)
     try {
@@ -257,7 +272,6 @@ export default function Login() {
         toast.error(res?.error || 'Invalid credentials')
       } else {
         toast.success('Welcome!')
-        // Admin / full-access accounts go home; others to first allowed page
         if (res?.user?.role === 'Admin' || res?.user?.role === 'SuperAdmin') {
           navigate('/')
         } else {
@@ -279,251 +293,359 @@ export default function Login() {
     ? 'http://192.168.1.40:5000'
     : 'https://pos.yourrestaurant.com'
 
+  const installBtn =
+    'inline-flex h-11 w-11 items-center justify-center rounded-2xl border transition touch-manipulation focus:outline-none focus:ring-2 focus:ring-blue-400/40'
+
   return (
-    <div className="relative min-h-[100dvh] max-h-[100dvh] overflow-y-auto bg-[#070d1f] text-white flex items-center justify-center p-3 sm:p-5" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-40 -top-40 h-[32rem] w-[32rem] rounded-full bg-blue-600/20 blur-[120px]" />
-        <div className="absolute -right-48 bottom-0 h-[36rem] w-[36rem] rounded-full bg-indigo-600/15 blur-[130px]" />
+    <div
+      className="relative min-h-[100dvh] overflow-y-auto text-slate-900"
+      style={{
+        fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        background: 'linear-gradient(180deg, #f4f8ff 0%, #eef4ff 40%, #ffffff 100%)',
+      }}
+    >
+      {/* soft blue atmosphere */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-24 -top-24 h-[28rem] w-[28rem] rounded-full bg-blue-400/20 blur-3xl" />
+        <div className="absolute -right-20 top-1/3 h-[24rem] w-[24rem] rounded-full bg-sky-300/25 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-indigo-300/15 blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 1px 1px, rgba(37,99,235,0.08) 1px, transparent 0)',
+            backgroundSize: '22px 22px',
+          }}
+        />
       </div>
 
-      <div className="relative z-10 w-full max-w-md my-auto">
-        <div className="mb-4 sm:mb-6 text-center">
-          <div className="mx-auto mb-3 sm:mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-xl shadow-blue-500/30">
-            {logo
-              ? <img src={logo} alt={brand} className="h-full w-full object-cover" />
-              : <UtensilsCrossed className="h-6 w-6 sm:h-7 sm:w-7 text-white" />}
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-            <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-              {brand}
-            </span>
-          </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-400">Restaurant POS &amp; Management</p>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-xl p-4 sm:p-6 shadow-2xl">
-          <h2 className="mb-0.5 text-lg sm:text-xl font-bold text-white">Welcome back</h2>
-          <p className="mb-4 sm:mb-5 text-xs sm:text-sm text-slate-400">Sign in to access your dashboard</p>
-
-          <form onSubmit={submit} className="space-y-3.5 sm:space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-300">Username</label>
-              <input
-                type="text"
-                value={form.username}
-                onChange={e => setForm({ ...form, username: e.target.value })}
-                autoComplete="username"
-                placeholder="Enter your username"
-                className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-3 text-sm sm:text-base text-white placeholder-slate-500 outline-none transition focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20"
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl items-center p-4 sm:p-6 lg:p-8">
+        <div className="grid w-full overflow-hidden rounded-[2rem] border border-blue-100 bg-white shadow-[0_30px_80px_-40px_rgba(37,99,235,0.35)] lg:grid-cols-2">
+          {/* Brand half */}
+          <section className="relative flex min-h-[220px] flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#0ea5e9] px-6 py-7 text-white sm:min-h-[280px] sm:px-10 sm:py-10 lg:min-h-[640px]">
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+              <div className="absolute -bottom-20 -left-10 h-64 w-64 rounded-full bg-sky-300/20 blur-2xl" />
+              <div
+                className="absolute inset-0 opacity-20"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px)',
+                  backgroundSize: '36px 36px',
+                }}
               />
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-300">Password</label>
-              <div className="relative">
-                <input
-                  type={showPass ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={e => setForm({ ...form, password: e.target.value })}
-                  autoComplete="current-password"
-                  placeholder="Enter your password"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-3 pr-11 text-sm sm:text-base text-white placeholder-slate-500 outline-none transition focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPass(v => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-                >
-                  {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+
+            <div className="relative">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white/95 backdrop-blur">
+                <Sparkles size={12} /> EpicSpire RMS
               </div>
+
+              <div className="mt-6 flex items-center gap-4 lg:mt-12 lg:flex-col lg:items-start lg:gap-7">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-white shadow-xl shadow-blue-950/20 ring-4 ring-white/25 sm:h-20 sm:w-20 lg:h-28 lg:w-28 lg:rounded-[1.75rem]">
+                  {logo
+                    ? <img src={logo} alt={brand} className="h-full w-full object-cover" />
+                    : <UtensilsCrossed className="h-8 w-8 text-blue-600 sm:h-9 sm:w-9 lg:h-12 lg:w-12" strokeWidth={2.2} />}
+                </div>
+                <div className="min-w-0">
+                  <h1
+                    className="text-2xl font-bold leading-[1.1] tracking-tight text-white sm:text-3xl lg:text-[2.75rem]"
+                    style={{ fontFamily: '"Fraunces", "Plus Jakarta Sans", serif' }}
+                  >
+                    {brand}
+                  </h1>
+                  <p className="mt-2 max-w-sm text-sm leading-relaxed text-blue-50/90 sm:text-base lg:mt-3">
+                    Sell faster. Run the kitchen. Manage every branch — from one calm workspace.
+                  </p>
+                </div>
+              </div>
+
+              <ul className="mt-6 hidden space-y-3 lg:mt-10 lg:block">
+                {[
+                  'Counter, KOT & delivery in one flow',
+                  'Call center ready for busy nights',
+                  'Works on local LAN or cloud URL',
+                ].map((line) => (
+                  <li key={line} className="flex items-center gap-3 text-sm text-white/95">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white">
+                      <Check size={13} strokeWidth={3} />
+                    </span>
+                    {line}
+                  </li>
+                ))}
+              </ul>
             </div>
-            {error && (
-              <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-300">{error}</div>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-0.5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 sm:py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
-            >
-              {loading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              ) : (
-                <>Sign In <ArrowRight className="h-4 w-4" /></>
-              )}
-            </button>
-          </form>
 
-          {/* Small administrator control — opens Offline LAN / Online URL */}
-          <div className="mt-3 flex justify-center">
-            <button
-              type="button"
-              onClick={() => setConnOpen(v => !v)}
-              title="Administrator — Offline LAN / Online URL"
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-                connOpen
-                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
-              }`}
-            >
-              <Settings2 size={13} />
-              Administrator
-              <Server size={12} className="opacity-70" />
-            </button>
-          </div>
-
-          {connOpen && (
-            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-bold text-white">Server URL</div>
-                <div className="text-[10px] text-slate-500 truncate max-w-[60%]">{connectedUrl}</div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 p-1 rounded-lg bg-black/30">
-                <button
-                  type="button"
-                  onClick={() => setMode('lan')}
-                  className={`flex items-center justify-center gap-1.5 rounded-md py-2 text-xs font-bold transition-colors ${
-                    connMode === 'lan' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Wifi size={14} /> Offline LAN
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('online')}
-                  className={`flex items-center justify-center gap-1.5 rounded-md py-2 text-xs font-bold transition-colors ${
-                    connMode === 'online' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Cloud size={14} /> Online URL
-                </button>
-              </div>
-
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                {connMode === 'lan'
-                  ? 'Same Wi‑Fi as the PC. Example: http://192.168.1.40:5000'
-                  : 'Hosted link. Example: https://pos.yourrestaurant.com'}
+            <div className="relative mt-6 space-y-2 border-t border-white/20 pt-5 text-sm text-blue-50">
+              {phone ? (
+                <div className="flex items-center gap-2">
+                  <Phone size={15} className="shrink-0 text-white" />
+                  <span className="truncate font-medium">{phone}</span>
+                </div>
+              ) : null}
+              {address ? (
+                <div className="flex items-start gap-2">
+                  <MapPin size={15} className="mt-0.5 shrink-0 text-white" />
+                  <span className="leading-snug font-medium">{address}</span>
+                </div>
+              ) : null}
+              {!phone && !address ? (
+                <p className="text-xs text-blue-100/80">Restaurant phone & address show here from Settings.</p>
+              ) : null}
+              <p className="pt-1 text-[11px] text-blue-100/70">
+                &copy; {new Date().getFullYear()} EpicSpire
               </p>
+            </div>
+          </section>
 
-              <input
-                type="url"
-                inputMode="url"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck="false"
-                placeholder={placeholder}
-                value={serverUrl}
-                onChange={e => { setServerUrl(e.target.value); setConnStatus(null); setConnError('') }}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20"
-              />
+          {/* Form half */}
+          <section className="flex items-center bg-white px-5 py-7 sm:px-10 sm:py-10">
+            <div className="mx-auto w-full max-w-md">
+              <div className="mb-6 flex items-start justify-between gap-3">
+                <div>
+                  <h2
+                    className="text-2xl font-bold tracking-tight text-slate-900"
+                    style={{ fontFamily: '"Fraunces", serif' }}
+                  >
+                    Welcome back
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">Sign in with your staff account</p>
+                </div>
+                <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                  connStatus === 'ok'
+                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                    : connStatus === 'fail'
+                    ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                    : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200'
+                }`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    connStatus === 'ok' ? 'bg-emerald-500' : connStatus === 'fail' ? 'bg-rose-500' : 'bg-slate-400'
+                  }`} />
+                  {connStatus === 'ok' ? 'Online' : connStatus === 'fail' ? 'Offline' : 'Ready'}
+                </div>
+              </div>
 
-              {connStatus === 'ok' && (
-                <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-300">
-                  <CheckCircle size={14} /> Server connected
+              <form onSubmit={submit} className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Username</label>
+                  <input
+                    type="text"
+                    value={form.username}
+                    onChange={e => setForm({ ...form, username: e.target.value })}
+                    autoComplete="username"
+                    placeholder="Enter username"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-[15px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPass ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={e => setForm({ ...form, password: e.target.value })}
+                      autoComplete="current-password"
+                      placeholder="Enter password"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-[15px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(v => !v)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                {error && (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{error}</div>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-sky-500 px-4 py-3.5 text-sm font-bold text-white shadow-[0_14px_30px_-12px_rgba(37,99,235,0.7)] transition hover:brightness-105 disabled:opacity-60"
+                >
+                  {loading ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  ) : (
+                    <>Sign in <ArrowRight className="h-4 w-4" /></>
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConnOpen(v => !v)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                    connOpen
+                      ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                  }`}
+                >
+                  <Shield size={12} />
+                  Administrator
+                  <Settings2 size={12} className="opacity-70" />
+                </button>
+
+                <div className="flex items-center gap-2">
+                  {pwaInstalled ? (
+                    <span
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-600"
+                      title="App installed"
+                    >
+                      <CheckCircle size={18} />
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => installPwa('android')}
+                        title={canPwaInstall && onAndroid ? 'Install on Android' : 'Android'}
+                        aria-label="Install on Android"
+                        className={`${installBtn} border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
+                      >
+                        <AndroidIcon size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => installPwa('iphone')}
+                        title="Install on iPhone"
+                        aria-label="Install on iPhone"
+                        className={`${installBtn} border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100`}
+                      >
+                        <Apple size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => installPwa('desktop')}
+                        title="Install on Desktop"
+                        aria-label="Install on Desktop"
+                        className={`${installBtn} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
+                      >
+                        <Monitor size={18} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {connOpen && (
+                <div className="mt-4 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                      <Server size={13} className="text-blue-600" /> Server connection
+                    </div>
+                    <div className="mt-1 break-all text-[10px] text-slate-500">{connectedUrl}</div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-white p-1 ring-1 ring-blue-100">
+                    <button
+                      type="button"
+                      onClick={() => setMode('lan')}
+                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-xs font-bold transition ${
+                        connMode === 'lan' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <Wifi size={14} /> Offline LAN
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode('online')}
+                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-xs font-bold transition ${
+                        connMode === 'online' ? 'bg-sky-500 text-white shadow' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <Cloud size={14} /> Online URL
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] leading-relaxed text-slate-500">
+                    {connMode === 'lan'
+                      ? 'Same Wi‑Fi as the PC running the server. Example: http://192.168.1.40:5000'
+                      : 'Hosted / cloud link. Example: https://pos.yourrestaurant.com'}
+                  </p>
+
+                  <input
+                    type="url"
+                    inputMode="url"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck="false"
+                    placeholder={placeholder}
+                    value={serverUrl}
+                    onChange={e => { setServerUrl(e.target.value); setConnStatus(null); setConnError('') }}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                  />
+
+                  {connStatus === 'ok' && (
+                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                      <CheckCircle size={14} /> Server connected
+                    </div>
+                  )}
+                  {connStatus === 'fail' && (
+                    <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      <AlertCircle size={14} /> {connError || 'Connection failed'}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestConnection}
+                      disabled={connTesting || !serverUrl.trim()}
+                      className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {connTesting ? 'Testing…' : 'Test'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveConnection}
+                      disabled={connTesting || !serverUrl.trim()}
+                      className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+                    >
+                      Save & use
+                    </button>
+                  </div>
                 </div>
               )}
-              {connStatus === 'fail' && (
-                <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-2 text-xs text-rose-300">
-                  <AlertCircle size={14} /> {connError || 'Connection failed'}
+
+              {installHelp && (
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left text-[11px] leading-relaxed text-slate-600">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="font-bold text-slate-800">
+                      {installHelp === 'android' && 'Install on Android'}
+                      {installHelp === 'iphone' && 'Install on iPhone'}
+                      {installHelp === 'desktop' && 'Install on Desktop'}
+                    </span>
+                    <button type="button" onClick={() => setInstallHelp('')} className="px-1 text-slate-400 hover:text-slate-700">✕</button>
+                  </div>
+                  {installHelp === 'android' && (
+                    <ol className="list-decimal space-y-1 pl-4">
+                      <li>Stay in <b>Chrome</b> and tap the Android icon again when ready.</li>
+                      <li>Or Chrome menu <b>(⋮)</b> → <b>Install app</b>.</li>
+                      <li>If <b>Play Protect</b> appears, tap <b>Install without scanning</b>.</li>
+                    </ol>
+                  )}
+                  {installHelp === 'iphone' && (
+                    <ol className="list-decimal space-y-1 pl-4">
+                      <li>Open this page in <b>Safari</b>.</li>
+                      <li>Tap <b>Share</b> → <b>Add to Home Screen</b> → <b>Add</b>.</li>
+                    </ol>
+                  )}
+                  {installHelp === 'desktop' && (
+                    <ol className="list-decimal space-y-1 pl-4">
+                      <li>In Chrome/Edge use the address-bar <b>install</b> icon.</li>
+                      <li>Or menu → <b>Install EpicSpire RMS…</b>.</li>
+                    </ol>
+                  )}
                 </div>
               )}
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleTestConnection}
-                  disabled={connTesting || !serverUrl.trim()}
-                  className="flex-1 rounded-lg border border-white/15 py-2.5 text-xs font-bold text-slate-200 hover:bg-white/5 disabled:opacity-50"
-                >
-                  {connTesting ? 'Testing…' : 'Test'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveConnection}
-                  disabled={connTesting || !serverUrl.trim()}
-                  className="flex-1 rounded-lg bg-blue-600 py-2.5 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-50"
-                >
-                  Save
-                </button>
-              </div>
             </div>
-          )}
-
-          {/* Android / iPhone / Desktop — PWA only, no APK */}
-          <div className="mt-4 sm:mt-5 border-t border-white/10 pt-4">
-            <div className="mb-2.5 text-center text-[10px] font-bold uppercase tracking-[2px] text-slate-500">
-              {pwaInstalled ? 'App installed' : 'Get the App'}
-            </div>
-
-            {pwaInstalled ? (
-              <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5 text-center text-xs text-emerald-300 font-semibold">
-                Installed — updates apply automatically
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => installPwa('android')}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#0b7a3e] py-2.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
-                >
-                  <Smartphone size={14} />
-                  {canPwaInstall && onAndroid ? 'Install' : 'Android'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => installPwa('iphone')}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/10 py-2.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
-                >
-                  iPhone
-                </button>
-                <button
-                  type="button"
-                  onClick={() => installPwa('desktop')}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-600 py-2.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
-                >
-                  <Monitor size={14} /> Desktop
-                </button>
-              </div>
-            )}
-
-            {installHelp && (
-              <div className="mt-3 rounded-lg bg-white/5 p-3 text-left text-[11px] leading-relaxed text-slate-300">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="font-bold text-white">
-                    {installHelp === 'android' && 'Install on Android'}
-                    {installHelp === 'iphone' && 'Install on iPhone'}
-                    {installHelp === 'desktop' && 'Install on Desktop'}
-                  </span>
-                  <button type="button" onClick={() => setInstallHelp('')} className="px-1 text-slate-400 hover:text-white">✕</button>
-                </div>
-                {installHelp === 'android' && (
-                  <ol className="list-decimal space-y-1 pl-4">
-                    <li>Stay in <b>Chrome</b> and tap <b>Android</b> again when ready.</li>
-                    <li>Or Chrome menu <b>(⋮)</b> → <b>Install app</b>.</li>
-                    <li>If <b>Play Protect</b> appears, tap <b>Install without scanning</b> (safe — this is our web app, not a downloaded APK).</li>
-                    <li>On HTTP LAN only: <b>chrome://flags</b> → enable <b>Insecure origins treated as secure</b> → add this site → Relaunch.</li>
-                  </ol>
-                )}
-                {installHelp === 'iphone' && (
-                  <ol className="list-decimal space-y-1 pl-4">
-                    <li>Open this page in <b>Safari</b>.</li>
-                    <li>Tap <b>Share</b> → <b>Add to Home Screen</b> → <b>Add</b>.</li>
-                  </ol>
-                )}
-                {installHelp === 'desktop' && (
-                  <ol className="list-decimal space-y-1 pl-4">
-                    <li>In Chrome/Edge use the address-bar <b>install</b> icon.</li>
-                    <li>Or menu → <b>Install EpicSpire RMS…</b> / <b>Install page as app</b>.</li>
-                  </ol>
-                )}
-              </div>
-            )}
-          </div>
+          </section>
         </div>
-
-        <p className="mt-4 sm:mt-6 text-center text-xs text-slate-600">
-          &copy; {new Date().getFullYear()} EpicSpire · Restaurant POS
-        </p>
       </div>
     </div>
   )

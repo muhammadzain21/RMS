@@ -82,6 +82,13 @@ html, body, #root {
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+  /* Android WebView often reports 0 inset — keep a usable minimum */
+  --safe-top-min: 0px;
+}
+
+html.capacitor-native,
+html.standalone-pwa {
+  --safe-top-min: 28px;
 }
 
 body {
@@ -113,16 +120,71 @@ label {
 }
 
 .app-header-safe {
-  padding-top: calc(0.75rem + var(--safe-top)) !important;
+  padding-top: calc(0.65rem + max(var(--safe-top), var(--safe-top-min))) !important;
+  padding-bottom: 0.65rem !important;
 }
 
 .app-sidebar-safe-top {
-  padding-top: calc(1rem + var(--safe-top));
+  padding-top: calc(1rem + max(var(--safe-top), var(--safe-top-min)));
 }
 
 .app-drawer-safe {
-  padding-top: var(--safe-top);
+  padding-top: max(var(--safe-top), var(--safe-top-min));
   padding-bottom: var(--safe-bottom);
+}
+
+/*
+ * Mobile filter bars (Sales History pattern):
+ * date / dropdown / search wrap into a 2-col grid; actions + search span full width.
+ */
+.filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+@media (max-width: 639px) {
+  .filter-toolbar,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl,
+  .flex.flex-wrap.items-end.gap-3.p-3.rounded-xl,
+  .flex.flex-wrap.items-end.gap-4.p-4.rounded-xl {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    align-items: end;
+    gap: 0.75rem !important;
+  }
+
+  .filter-toolbar > .filter-actions,
+  .filter-toolbar > .filter-search,
+  .filter-toolbar > .filter-span-2,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl > .flex.gap-3,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl > .flex-1,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl > .basis-full {
+    grid-column: 1 / -1;
+  }
+
+  .filter-toolbar > .filter-field,
+  .filter-toolbar > .filter-select,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl > .flex-shrink-0,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl > .flex.items-center.gap-2 {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  .filter-toolbar select,
+  .filter-toolbar input[type="search"],
+  .filter-toolbar input[type="text"],
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl select,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filter-toolbar .ui-btn,
+  .flex.flex-wrap.items-center.gap-4.p-4.rounded-xl .ui-btn {
+    flex: 1 1 auto;
+  }
 }
 
 html.dark body {
@@ -534,6 +596,23 @@ main h3,
 .fixed.inset-0 button {
   font-size: 0.975rem;
   font-weight: 600;
+}
+
+/* Mobile dialog safety: keep overlays usable on small screens */
+@media (max-width: 640px) {
+  .fixed.inset-0 {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .fixed.inset-0 > [class*='max-w-'],
+  .fixed.inset-0 > .relative {
+    max-height: min(92dvh, 100%) !important;
+    overflow-y: auto !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
 }
 
 /* Forms / selects in pages */

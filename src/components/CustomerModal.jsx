@@ -100,12 +100,12 @@ export default function CustomerModal({ open, onClose, initial }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30" onClick={() => onClose(false)} />
-      <div className="relative bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md p-5">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={() => onClose(false)} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-xl shadow-xl w-full max-w-md max-h-[92dvh] overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">{initial?.id ? 'Edit Customer' : 'Add Customer'}</h3>
-          <button type="button" onClick={() => onClose(false)} className="px-2 py-1 rounded border">×</button>
+          <button type="button" onClick={() => onClose(false)} className="min-h-10 min-w-10 px-2 py-1 rounded border">×</button>
         </div>
         <form onSubmit={save} className="space-y-3">
           {/* Phone first — same order as Sell / Call Center */}

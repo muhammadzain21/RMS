@@ -66,9 +66,12 @@ export default function ServerConfig({ onSaved }) {
       setStatus('ok')
     }
     try {
-      localStorage.setItem('server_url', base)
-      window.API_BASE = base
-      window.dispatchEvent(new CustomEvent('server_url_changed', { detail: base }))
+      if (typeof window.setAPIBase === 'function') window.setAPIBase(base)
+      else {
+        localStorage.setItem('server_url', base)
+        window.API_BASE = base
+        window.dispatchEvent(new CustomEvent('server_url_changed', { detail: base }))
+      }
     } catch {}
     if (onSaved) onSaved(base)
   }
@@ -79,6 +82,7 @@ export default function ServerConfig({ onSaved }) {
     setStatus(null)
     setError('')
     window.API_BASE = ''
+    try { window.__API_BASE_CANDIDATES?.clear?.() } catch {}
     window.dispatchEvent(new CustomEvent('server_url_changed', { detail: '' }))
   }
 

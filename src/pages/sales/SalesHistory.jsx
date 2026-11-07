@@ -45,7 +45,7 @@ export default function SalesHistory() {
  try {
  setDeleteBusy(true)
  setDeleteErr('')
- const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const API = ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
  const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'X-Delete-Key': deleteKey }
  const res = await fetch(`${API}/api/sales/${deleteTarget.id}`, { method: 'DELETE', headers })
  if (!res.ok) {
@@ -78,7 +78,7 @@ export default function SalesHistory() {
 
  // Ensure sales are hydrated from backend on mount and when date filter changes
  useEffect(() => {
- const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const API = ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
  const headers = token ? { Authorization: `Bearer ${token}` } : {}
  let cancelled = false
  ;(async () => {
@@ -548,7 +548,48 @@ export default function SalesHistory() {
  <div className="px-4 py-3 rounded-xl bg-yellow-50 border-2 border-yellow-200 text-yellow-900 text-sm flex items-center gap-2">Selected date is closed. Deleting sales for this date is disabled.
  </div>
  )}
- <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-indigo-100 to-purple-100 dark:from-indigo-950/40 dark:to-purple-950/40 border-2 border-indigo-300 dark:border-indigo-800"><div className="flex gap-3 flex-shrink-0"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button></div><div className="flex items-center gap-2 flex-shrink-0"><DatePicker label="From" value={fromDate} onChange={v => { setFromDate(v); setPage(1); }} /></div><div className="flex items-center gap-2 flex-shrink-0"><DatePicker label="To" value={toDate} onChange={v => { setToDate(v); setPage(1); }} /></div><div className="flex items-center gap-2 flex-shrink-0"><label className="text-sm font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">Mode</label><select value={paymentFilter} onChange={e => { setPaymentFilter(e.target.value); setPage(1); }} className="px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Modes</option><option value="cash">Cash</option><option value="bank">Bank</option><option value="online">Online (old)</option><option value="complimentary">Personal</option><option value="staff">Staff</option></select></div><div className="flex items-center gap-2 flex-shrink-0"><label className="text-sm font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">Waiter</label><select value={waiterFilter} onChange={e => { setWaiterFilter(e.target.value); setPage(1); }} className="px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Waiters</option>{(state.staff||[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div className="flex items-center gap-2 flex-shrink-0"><label className="text-sm font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">Rider</label><select value={riderFilter} onChange={e => { setRiderFilter(e.target.value); setPage(1); }} className="px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">All Riders</option>{(state.riders||[]).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="w-full px-4 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div></div><div className="border-2 border-indigo-300 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Rider</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="filter-toolbar p-3 sm:p-4 rounded-xl bg-gradient-to-r from-indigo-100 to-purple-100 dark:from-indigo-950/40 dark:to-purple-950/40 border-2 border-indigo-300 dark:border-indigo-800">
+  <div className="filter-actions flex flex-wrap gap-2">
+    <button type="button" onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button>
+    <button type="button" onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button>
+    <button type="button" onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button>
+  </div>
+  <div className="filter-field min-w-0">
+    <DatePicker label="From" value={fromDate} onChange={v => { setFromDate(v); setPage(1); }} className="w-full" />
+  </div>
+  <div className="filter-field min-w-0">
+    <DatePicker label="To" value={toDate} onChange={v => { setToDate(v); setPage(1); }} className="w-full" />
+  </div>
+  <div className="filter-select min-w-0">
+    <label className="mb-1 block text-xs font-semibold text-indigo-700 dark:text-indigo-300">Mode</label>
+    <select value={paymentFilter} onChange={e => { setPaymentFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500">
+      <option value="">All Modes</option>
+      <option value="cash">Cash</option>
+      <option value="bank">Bank</option>
+      <option value="online">Online (old)</option>
+      <option value="complimentary">Personal</option>
+      <option value="staff">Staff</option>
+    </select>
+  </div>
+  <div className="filter-select min-w-0">
+    <label className="mb-1 block text-xs font-semibold text-indigo-700 dark:text-indigo-300">Waiter</label>
+    <select value={waiterFilter} onChange={e => { setWaiterFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500">
+      <option value="">All Waiters</option>
+      {(state.staff||[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+    </select>
+  </div>
+  <div className="filter-select min-w-0">
+    <label className="mb-1 block text-xs font-semibold text-indigo-700 dark:text-indigo-300">Rider</label>
+    <select value={riderFilter} onChange={e => { setRiderFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500">
+      <option value="">All Riders</option>
+      {(state.riders||[]).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+    </select>
+  </div>
+  <div className="filter-search min-w-0 flex-1 basis-full sm:basis-auto">
+    <label className="mb-1 block text-xs font-semibold text-indigo-700 dark:text-indigo-300 sm:sr-only">Search</label>
+    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-full px-4 py-2.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500" />
+  </div>
+ </div><div className="border-2 border-indigo-300 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Rider</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedRows.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300">{r.date}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.billNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.customer}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.orderType}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.tableNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.waiterName}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.riderName}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span></td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deliveryDate}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => setViewSale(r)} className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600" title="View Order Details">View</button><button onClick={() => reprintSale(r)} className="px-2 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600" title="Reprint Receipt">Print</button><button onClick={() => {
  if (closedDates.has(r.date)) return
@@ -593,7 +634,7 @@ export default function SalesHistory() {
  <OrderViewDialog
  open={!!viewSale}
  sale={viewSale}
- API={import.meta.env.VITE_API_BASE || 'http://localhost:5000'}
+ API={(typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'}
  token={token}
  menu={state.menu || []}
  onClose={() => setViewSale(null)}

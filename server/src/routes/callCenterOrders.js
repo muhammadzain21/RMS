@@ -88,6 +88,24 @@ router.post('/', authRequired, requireRole('Admin', 'Manager', 'CallCenter'), as
       if (existing) return res.json(existing)
     }
 
+    const parentOrderId = String(body.parentOrderId || '').trim()
+    let isAddOn = Boolean(body.isAddOn) || Boolean(parentOrderId)
+    let parent = null
+    if (parentOrderId) {
+      parent = await CallCenterOrder.findById(parentOrderId).lean()
+      if (!parent) return res.status(400).json({ error: 'Parent order not found' })
+      assertBranchAccess(req, parent.branchId)
+      isAddOn = true
+    }
+
+    let remarks = String(body.remarks || '').trim()
+    if (isAddOn) {
+      const tag = parent
+        ? `[ADD-ON · same customer · linked to ${String(parent._id).slice(-6).toUpperCase()}]`
+        : '[ADD-ON · same customer]'
+      remarks = remarks ? `${tag} ${remarks}` : tag
+    }
+
     const doc = await CallCenterOrder.create({
       branchId,
       branchName: String(branch.name || branch.code || '').trim(),
@@ -108,17 +126,20 @@ router.post('/', authRequired, requireRole('Admin', 'Manager', 'CallCenter'), as
         notes: it.notes || '',
         mods: it.mods || {},
       })),
-      remarks: body.remarks || '',
+      remarks,
+      isAddOn,
+      parentOrderId: parentOrderId || '',
       ...totals,
       createdBy: req.user?.id || '',
       createdByName: req.user?.username || '',
       idempotencyKey: idem,
     })
 
-    await logAudit(req, 'call_center', 'Order submitted (pending KOT)', {
+    await logAudit(req, 'call_center', isAddOn ? 'Add-on order submitted (same customer)' : 'Order submitted (pending KOT)', {
       orderId: doc._id?.toString?.(),
       branchId,
       total: doc.total,
+      parentOrderId: parentOrderId || undefined,
     })
 
     res.status(201).json(doc)
@@ -194,6 +215,8 @@ function buildCart(doc) {
     orderType: doc.orderType || 'Delivery',
     customer: doc.customer || {},
     remarks: doc.remarks || '',
+    isAddOn: Boolean(doc.isAddOn),
+    parentOrderId: doc.parentOrderId || '',
     items: (doc.items || []).map(it => ({
       itemId: it.itemId,
       name: it.name,

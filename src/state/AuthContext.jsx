@@ -107,11 +107,17 @@ export function AuthProvider({ children }) {
     try {
       let base = getAPI()
       let { res, data } = await tryLogin(base)
-      // Electron/dev: if saved cloud/LAN URL fails, retry local server
+      // Electron DEV only: if no intentional remote URL and local works, fall back once.
+      // Never overwrite a user-saved LAN/online URL from the Administrator panel.
       if (!res.ok) {
         const local = 'http://localhost:5000'
         const current = String(base || '').replace(/\/+$/, '')
-        if (current !== local) {
+        let saved = ''
+        try { saved = String(localStorage.getItem('server_url') || '').replace(/\/+$/, '') } catch {}
+        const isElectron = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent)
+        const isDev = !!import.meta.env.DEV
+        const userPinnedRemote = saved && saved !== local && !/localhost|127\.0\.0\.1/i.test(saved)
+        if (isElectron && isDev && !userPinnedRemote && current !== local) {
           try {
             const retry = await tryLogin(local)
             if (retry.res.ok) {
@@ -119,9 +125,12 @@ export function AuthProvider({ children }) {
               res = retry.res
               data = retry.data
               try {
-                localStorage.setItem('server_url', local)
-                window.API_BASE = local
-                window.dispatchEvent(new CustomEvent('server_url_changed', { detail: local }))
+                if (typeof window.setAPIBase === 'function') window.setAPIBase(local)
+                else {
+                  localStorage.setItem('server_url', local)
+                  window.API_BASE = local
+                  window.dispatchEvent(new CustomEvent('server_url_changed', { detail: local }))
+                }
               } catch {}
             }
           } catch {}

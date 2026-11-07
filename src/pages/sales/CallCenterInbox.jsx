@@ -176,6 +176,11 @@ export default function CallCenterInbox() {
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Customer</div>
           <div className="font-bold text-gray-900 dark:text-gray-100">{r.customer?.name || '—'}</div>
           <div className="text-xs text-slate-500">{r.customer?.phone || '—'}</div>
+          {r.isAddOn ? (
+            <span className="mt-1 inline-flex rounded-md border border-violet-400 bg-violet-100 px-2 py-0.5 text-[10px] font-extrabold text-violet-900 dark:border-violet-500 dark:bg-violet-900/50 dark:text-violet-100">
+              ADD-ON · same customer
+            </span>
+          ) : null}
         </div>
       ),
     },
@@ -212,9 +217,16 @@ export default function CallCenterInbox() {
       label: 'Status',
       key: 'status',
       render: r => (
-        <span className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-bold ${ccStatusStyle(r.status)}`}>
-          {ccStatusLabel(r.status)}
-        </span>
+        <div className="flex flex-col items-start gap-1">
+          <span className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-bold ${ccStatusStyle(r.status)}`}>
+            {ccStatusLabel(r.status)}
+          </span>
+          {r.isAddOn ? (
+            <span className="inline-flex rounded-md border border-violet-400 bg-violet-100 px-2 py-0.5 text-[10px] font-extrabold text-violet-900 dark:border-violet-500 dark:bg-violet-900/50 dark:text-violet-100">
+              Same customer
+            </span>
+          ) : null}
+        </div>
       ),
     },
   ]
@@ -229,10 +241,12 @@ export default function CallCenterInbox() {
             type="button"
             disabled={!!busyId}
             onClick={() => acceptToCart(r)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-60"
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60 ${
+              r.isAddOn ? 'bg-violet-600 hover:bg-violet-500' : 'bg-emerald-600 hover:bg-emerald-500'
+            }`}
           >
             <ShoppingCart size={14} />
-            {busyId === r._id ? 'Loading…' : 'Add to cart & KOT'}
+            {busyId === r._id ? 'Loading…' : (r.isAddOn ? 'ADD-ON → cart & KOT' : 'Add to cart & KOT')}
           </button>
         ) : (
           <span className="text-xs text-slate-400">—</span>
@@ -242,23 +256,23 @@ export default function CallCenterInbox() {
   }
 
   return (
-    <div className="space-y-4 p-4 sm:p-6">
+    <div className="space-y-4">
       <PageHero
         title="Call-center inbox"
         subtitle="All branches — branch, customer, and live status (Pending → In cart → KOT → Ready → Completed)."
         icon={Inbox}
         actions={
-          <button type="button" onClick={load} className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold">
+          <button type="button" onClick={load} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold">
             <RefreshCw size={16} /> Refresh
           </button>
         }
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         <button
           type="button"
           onClick={() => setTab('remaining')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+          className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-3 sm:px-4 sm:py-2.5 text-sm font-semibold transition ${
             tab === 'remaining'
               ? 'bg-amber-500 text-white shadow-sm'
               : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-gray-800 dark:text-slate-200'
@@ -275,7 +289,7 @@ export default function CallCenterInbox() {
         <button
           type="button"
           onClick={() => setTab('complete')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+          className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-3 sm:px-4 sm:py-2.5 text-sm font-semibold transition ${
             tab === 'complete'
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-gray-800 dark:text-slate-200'
@@ -291,37 +305,41 @@ export default function CallCenterInbox() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex-shrink-0">
-            <DatePicker label="From" value={from} onChange={v => setFrom(v || '')} />
+      <div className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:contents">
+            <div className="min-w-0 sm:flex-shrink-0">
+              <DatePicker label="From" value={from} onChange={v => setFrom(v || '')} />
+            </div>
+            <div className="min-w-0 sm:flex-shrink-0">
+              <DatePicker label="To" value={to} onChange={v => setTo(v || '')} />
+            </div>
           </div>
-          <div className="flex-shrink-0">
-            <DatePicker label="To" value={to} onChange={v => setTo(v || '')} />
-          </div>
-          <div className="min-w-[180px] flex-1">
+          <div className="min-w-0 flex-1">
             <label className="text-xs font-bold tracking-wide text-[var(--color-text-body)]">Search</label>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Customer, phone, branch, item…"
-              className="mt-1 w-full rounded-lg border-2 border-indigo-200 bg-white px-3 py-2 text-gray-900 transition-all focus:ring-2 focus:ring-indigo-500 dark:border-indigo-700 dark:bg-gray-800 dark:text-gray-100"
+              className="mt-1 w-full rounded-lg border-2 border-indigo-200 bg-white px-3 py-2.5 text-gray-900 transition-all focus:ring-2 focus:ring-indigo-500 dark:border-indigo-700 dark:bg-gray-800 dark:text-gray-100"
             />
           </div>
-          <button type="button" onClick={load} className="ui-btn ui-btn-secondary whitespace-nowrap">Refresh</button>
+          <button type="button" onClick={load} className="ui-btn ui-btn-secondary w-full sm:w-auto whitespace-nowrap">Refresh</button>
         </div>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={rows}
-        searchable={false}
-        exportable={false}
-        pageSize={9999}
-        showLimit={false}
-        hidePagination
-        maxHeight={520}
-      />
+      <div className="overflow-x-auto -mx-1 px-1">
+        <DataTable
+          columns={columns}
+          data={rows}
+          searchable={false}
+          exportable={false}
+          pageSize={9999}
+          showLimit={false}
+          hidePagination
+          maxHeight={520}
+        />
+      </div>
 
       <Pagination
         page={pageSafe}

@@ -17,8 +17,8 @@ export default function StaffFormDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:px-4 sm:py-6">
+      <div className="w-full max-w-2xl max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5 pb-[env(safe-area-inset-bottom,0px)]">
         <div className="flex items-center justify-between px-5 py-3 text-white" style={{ background: 'linear-gradient(90deg, #0284c7, #2563eb)' }}>
           <h3 className="text-base font-semibold">{isEditing ? 'Edit Staff' : 'Add Staff'}</h3>
           <button className="rounded-md bg-white/15 px-2 py-1 text-sm hover:bg-white/25" onClick={onClose}>Close</button>

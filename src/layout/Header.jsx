@@ -81,12 +81,12 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  const openLicenseDialog = () => window.dispatchEvent(new CustomEvent('app:open-license-dialog'))
 
  return (
- <header className="no-print sticky top-0 z-20 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-white shadow-lg px-3 sm:px-5 py-3 app-header-safe">
- <div className="flex items-center justify-between"><div className="flex items-center gap-3">
+ <header className="no-print sticky top-0 z-20 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-white shadow-lg px-2.5 sm:px-5 app-header-safe">
+ <div className="flex items-center justify-between gap-2 min-h-[2.75rem]"><div className="flex items-center gap-2 sm:gap-3 min-w-0">
  {/* Mobile menu button */}
  <button
  onClick={onMenuClick}
- className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
+ className="md:hidden inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors touch-manipulation"
  title="Open menu"
  ><PanelLeft size={20} /></button>
  {/* Desktop collapse button */}
@@ -106,7 +106,7 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar (nav moves to header)'}
  >
  {sidebarHidden ? <PanelLeftOpen size={18} /> : <PanelLeftDashed size={18} />}
- </button><div className="md:hidden font-bold text-white drop-shadow">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-3">
+ </button><div className="md:hidden font-bold text-white drop-shadow truncate max-w-[42vw]">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
  {branches.length > 0 ? (
   <select
     value={activeBranchId || ''}
@@ -154,11 +154,11 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
   type="button"
   onClick={() => { logout(); navigate('/login') }}
   title="Log out"
-  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition-colors"
+  className="inline-flex items-center justify-center gap-1.5 min-h-10 min-w-10 sm:min-w-0 px-2.5 sm:px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition-colors touch-manipulation"
  >
-  <LogOut size={14} /> <span className="hidden sm:inline">Log Out</span>
+  <LogOut size={16} /> <span className="hidden sm:inline">Log Out</span>
  </button>
- <div className="bg-white/20 rounded-lg p-1"><ThemeToggle /></div></div></div>
+ <div className="bg-white/20 rounded-lg p-1 shrink-0"><ThemeToggle /></div></div></div>
 
  {/* Section nav shown when sidebar is hidden */}
  {sidebarHidden && (
