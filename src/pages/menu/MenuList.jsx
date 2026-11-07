@@ -1,6 +1,7 @@
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
-import { useState, useEffect, useMemo } from 'react'
+import { useBranch } from '../../state/BranchContext.jsx'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
@@ -9,12 +10,15 @@ import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv } from '../../utils/listReportExport.js'
+import { parseSpreadsheetFile, exportMenuSpreadsheet, rowsToMenuImportPayload } from '../../utils/spreadsheetIo.js'
 
 export default function MenuList() {
  const { state, dispatch } = useData()
- const { token } = useAuth()
+ const { token, user: currentUser } = useAuth()
+ const { activeBranchId, activeBranch } = useBranch()
  const { confirm, ConfirmDialog } = useConfirm()
+ const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
  const [form, setForm] = useState({
     name: '',
     category: '',
@@ -25,6 +29,7 @@ export default function MenuList() {
     discount: 0,
   })
  const [editingId, setEditingId] = useState(null)
+ const [editingMeta, setEditingMeta] = useState(null)
  const [loading, setLoading] = useState(false)
  const [showDialog, setShowDialog] = useState(false)
  const [multiRows, setMultiRows] = useState([])
@@ -33,7 +38,82 @@ export default function MenuList() {
  const [jump, setJump] = useState(1)
  const [search, setSearch] = useState('')
  const [itemTilesPerRow, setItemTilesPerRow] = useState(4)
- const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const [importing, setImporting] = useState(false)
+ // Admin can edit the shared catalog; otherwise edits apply to the active branch
+ const [catalogMode, setCatalogMode] = useState('branch') // 'branch' | 'shared'
+ const fileInputRef = useRef(null)
+ const API = ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
+ const editingSharedCatalog = isAdminUser && catalogMode === 'shared'
+
+ const refreshMenu = async () => {
+  try {
+   const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const menuUrl = editingSharedCatalog ? `${API}/api/menu?scope=shared` : `${API}/api/menu`
+   const [menuRes, catRes] = await Promise.all([
+    fetch(menuUrl, { headers }),
+    fetch(`${API}/api/categories`, { headers }),
+   ])
+   const payload = {}
+   if (menuRes.ok) {
+    const rows = await menuRes.json()
+    payload.menu = (rows || []).map(x => ({ ...x, id: x.id || x._id }))
+   }
+   if (catRes.ok) {
+    const rows = await catRes.json()
+    payload.categories = (rows || []).map(x => ({ ...x, id: x.id || x._id }))
+   }
+   if (Object.keys(payload).length) dispatch({ type: 'HYDRATE', payload })
+  } catch {}
+ }
+
+ const seedDefaultMenu = async () => {
+  try {
+   setImporting(true)
+   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const res = await fetch(`${API}/api/menu/seed`, { method: 'POST', headers, body: '{}' })
+   const j = await res.json().catch(() => ({}))
+   if (!res.ok) throw new Error(j.error || 'Seed failed')
+   await refreshMenu()
+   toast.success(`Seeded ${j.count || 0} shared menu items (all branches)`)
+  } catch (e) {
+   toast.error(e.message || 'Failed to seed menu')
+  } finally {
+   setImporting(false)
+  }
+ }
+
+ const exportMenuSheet = (format) => {
+  try {
+   exportMenuSpreadsheet(format, items)
+   toast.success(format === 'xlsx' ? 'Excel exported' : 'CSV exported')
+  } catch (e) {
+   toast.error(e.message || 'Export failed')
+  }
+ }
+
+ const importMenuFile = async (file) => {
+  if (!file) return
+  try {
+   setImporting(true)
+   const rows = await parseSpreadsheetFile(file)
+   const payload = rowsToMenuImportPayload(rows)
+   if (!payload.items.length) throw new Error('No menu rows found (need a Name column)')
+   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const res = await fetch(`${API}/api/menu/import`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+   })
+   const j = await res.json().catch(() => ({}))
+   if (!res.ok) throw new Error(j.error || 'Import failed')
+   await refreshMenu()
+   toast.success(`Imported ${j.items || 0} items, ${j.categories || 0} categories (shared for all branches)`)
+  } catch (e) {
+   toast.error(e.message || 'Invalid CSV / Excel file')
+  } finally {
+   setImporting(false)
+  }
+ }
 
  const items = state.menu || []
  const cats = (state.categories || [])
@@ -54,13 +134,15 @@ export default function MenuList() {
 
  const blankRow = () => ({ name:'', category:'', price:0, sortOrder:0, active:true, imageUrl:'', discount:0 })
  const reset = () => {
- setEditingId(null);
+ setEditingId(null)
+ setEditingMeta(null)
  setForm({ name:'', category:'', price:0, sortOrder:0, active:true, imageUrl:'', discount:0 })
  setMultiRows([])
  setShowDialog(false)
  }
  const onEdit = (row) => {
  setEditingId(row.id)
+ setEditingMeta({ isShared: !!row.isShared, isBranchOnly: !!row.isBranchOnly, hasOverride: !!row.hasOverride, basePrice: row.basePrice })
  setForm({
       name: row.name||'',
       category: row.category||'',
@@ -74,6 +156,7 @@ export default function MenuList() {
  }
  const onAdd = () => {
  setEditingId(null)
+ setEditingMeta(null)
  setMultiRows([blankRow()])
  setShowDialog(true)
  }
@@ -81,7 +164,14 @@ export default function MenuList() {
  const onSubmit = async (e) => {
  e.preventDefault()
  if (editingId) {
- const payload = { ...form, price: Number(form.price||0), sortOrder: Number(form.sortOrder||0), imageUrl: form.imageUrl || '', discount: Number(form.discount||0) }
+ const payload = {
+  ...form,
+  price: Number(form.price||0),
+  sortOrder: Number(form.sortOrder||0),
+  imageUrl: form.imageUrl || '',
+  discount: Number(form.discount||0),
+ }
+ if (editingSharedCatalog) payload.editShared = true
  if (!payload.name?.trim()) { toast.error('Name is required'); return }
  try {
  setLoading(true)
@@ -90,7 +180,10 @@ export default function MenuList() {
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const res = await fetch(`${API}/api/menu/${editingId}`, { method:'PATCH', headers, body: JSON.stringify(payload) })
  if (!res.ok) throw new Error('Failed to update')
- toast.success('Menu item updated')
+ const updated = await res.json().catch(() => null)
+ if (updated) dispatch({ type:'UPDATE_MENU', payload:{ id: editingId, data: { ...updated, id: updated.id || updated._id } } })
+ toast.success(editingSharedCatalog ? 'Shared menu updated (all branches)' : (updated?.hasOverride ? 'Branch price/item override saved' : 'Menu item updated'))
+ await refreshMenu()
  } catch {
  toast.error('Updated locally. Backend update failed.')
  }
@@ -108,12 +201,23 @@ export default function MenuList() {
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  let ok = 0, fail = 0
  for (const row of validRows) {
- const payload = { ...row, price: Number(row.price||0), sortOrder: Number(row.sortOrder||0), imageUrl: row.imageUrl || '', discount: Number(row.discount||0) }
+ const payload = {
+  ...row,
+  price: Number(row.price||0),
+  sortOrder: Number(row.sortOrder||0),
+  imageUrl: row.imageUrl || '',
+  discount: Number(row.discount||0),
+ }
+ if (editingSharedCatalog) payload.editShared = true
+ else payload.branchOnly = !isAdminUser || catalogMode === 'branch'
+ // Admin in branch mode adding: branch-only item for this branch
+ if (isAdminUser && catalogMode === 'branch') payload.branchOnly = true
+ if (isAdminUser && catalogMode === 'shared') { payload.editShared = true; delete payload.branchOnly }
  try {
  const res = await fetch(`${API}/api/menu`, { method:'POST', headers, body: JSON.stringify(payload) })
  if (res.ok) {
  const created = await res.json()
- dispatch({ type:'ADD_MENU', payload: { ...payload, id: created._id || created.id } })
+ dispatch({ type:'ADD_MENU', payload: { ...created, id: created._id || created.id } })
  ok++
  } else { fail++ }
  } catch { fail++ }
@@ -121,6 +225,7 @@ export default function MenuList() {
  if (ok && !fail) toast.success(`${ok} menu item${ok>1?'s':''} added`)
  else if (ok && fail) toast.success(`${ok} added, ${fail} failed`)
  else toast.error('Failed to add items')
+ await refreshMenu()
  } catch {
  toast.error('Network error.')
  } finally {
@@ -130,34 +235,40 @@ export default function MenuList() {
  }
  }
 
- // Fetch menu + categories list on mount to ensure latest data
+ const resetOverride = async (row) => {
+  if (!row?.hasOverride) return
+  const confirmed = await confirm({ title: 'Reset branch override', message: 'Restore this item to the shared catalog values for this branch?' })
+  if (!confirmed) return
+  try {
+   setLoading(true)
+   const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const res = await fetch(`${API}/api/menu/${row.id}/override`, { method: 'DELETE', headers })
+   if (!res.ok) throw new Error('Failed')
+   toast.success('Override cleared — using shared values again')
+   await refreshMenu()
+  } catch {
+   toast.error('Failed to reset override')
+  } finally {
+   setLoading(false)
+  }
+ }
+
+ // Fetch menu for active branch / shared scope
  useEffect(() => {
- const refresh = async () => {
- try {
- const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
- const [menuRes, catRes] = await Promise.all([
- fetch(`${API}/api/menu`, { headers }),
- fetch(`${API}/api/categories`, { headers }),
- ])
- const mapId = (x) => ({ ...x, id: x.id || x._id })
- if (menuRes.ok) {
- const menuRows = await menuRes.json()
- dispatch({ type: 'HYDRATE', payload: { menu: (menuRows||[]).map(mapId) } })
+ refreshMenu()
+ const loadTiles = async () => {
+  try {
+   const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const sres = await fetch(`${API}/api/settings`, { headers })
+   if (sres.ok) {
+    const s = await sres.json()
+    setItemTilesPerRow(Number(s.posItemTilesPerRow || 4))
+   }
+  } catch {}
  }
- if (catRes.ok) {
- const catRows = await catRes.json()
- dispatch({ type: 'HYDRATE', payload: { categories: (catRows||[]).map(mapId) } })
- }
- // Load tiles per row setting
- const sres = await fetch(`${API}/api/settings`, { headers })
- if (sres.ok) {
- const s = await sres.json()
- setItemTilesPerRow(Number(s.posItemTilesPerRow || 4))
- }
- } catch {}
- }
- refresh()
- }, [])
+ loadTiles()
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [token, activeBranchId, catalogMode])
 
  // Seed function removed per request
 
@@ -231,19 +342,6 @@ export default function MenuList() {
  }
  }
 
- const exportFilteredCSV = () => {
- try {
- downloadCsvFile(
- `menu_${format(new Date(), 'yyyy-MM-dd')}.csv`,
- ['Order', 'Name', 'Category', 'Price (PKR)', 'Discount %', 'Active'],
- menuReportRows()
- )
- toast.success('CSV exported successfully')
- } catch {
- toast.error('Failed to export CSV')
- }
- }
-
  const saveTilesPerRow = async (val) => {
  const n = Math.max(1, Math.min(12, Number(val) || 4))
  setItemTilesPerRow(n)
@@ -260,16 +358,26 @@ export default function MenuList() {
  }
  }
 
- const onDelete = async (id) => {
- const confirmed = await confirm({ title: 'Delete Menu Item', message: 'Delete this menu item?' })
+ const onDelete = async (rowOrId) => {
+ const row = typeof rowOrId === 'object' ? rowOrId : items.find(r => r.id === rowOrId)
+ const id = row?.id || rowOrId
+ const isShared = row?.isShared !== false && !row?.isBranchOnly
+ let message = 'Delete this menu item?'
+ if (editingSharedCatalog && isShared) message = 'Permanently delete this item from the shared catalog (all branches)?'
+ else if (!editingSharedCatalog && isShared) message = 'Hide this shared item on this branch only? (Other branches keep it.)'
+ else message = 'Delete this branch-only menu item?'
+ const confirmed = await confirm({ title: 'Delete Menu Item', message })
  if (!confirmed) return
  dispatch({ type:'DELETE_MENU', payload:{ id } })
  try {
  setLoading(true)
  const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
- const res = await fetch(`${API}/api/menu/${id}`, { method:'DELETE', headers })
+ const qs = editingSharedCatalog ? '?scope=shared' : ''
+ const res = await fetch(`${API}/api/menu/${id}${qs}`, { method:'DELETE', headers })
  if (!res.ok) throw new Error('Failed')
- toast.success('Menu item deleted')
+ const body = await res.json().catch(() => ({}))
+ toast.success(body.hiddenOnBranch ? 'Hidden on this branch' : 'Menu item deleted')
+ await refreshMenu()
  } catch {
  toast.error('Deleted locally. Backend delete failed.')
  } finally {
@@ -279,7 +387,7 @@ export default function MenuList() {
 
  return (
  <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Menu
- </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportFilteredCSV} className={btnCsv}>CSV</button><button onClick={onAdd} className="ui-btn ui-btn-primary flex items-center gap-2"><Plus size={18} /> Add Menu Item</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
+ </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={() => exportMenuSheet('csv')} className={btnCsv}>Export CSV</button><button type="button" disabled={importing} onClick={() => exportMenuSheet('xlsx')} className="ui-btn ui-btn-secondary disabled:opacity-50">Export Excel</button><button type="button" disabled={importing} onClick={() => fileInputRef.current?.click()} className="ui-btn ui-btn-secondary disabled:opacity-50">{importing ? 'Importing…' : 'Import CSV / Excel'}</button><input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; importMenuFile(f) }} /><button type="button" disabled={importing} onClick={seedDefaultMenu} className="ui-btn ui-btn-secondary disabled:opacity-50">Seed default</button><button onClick={onAdd} className="ui-btn ui-btn-primary flex items-center gap-2"><Plus size={18} /> Add Menu Item</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
  type="number"
  min={1}
  max={12}
@@ -287,13 +395,42 @@ export default function MenuList() {
  onChange={e => saveTilesPerRow(e.target.value)}
  className="w-16 px-2 py-1.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white text-sm text-center focus:ring-2 focus:ring-orange-500"
  /></div></div>
+ <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+  {isAdminUser && (
+   <div className="inline-flex rounded-lg border border-orange-200 dark:border-orange-700 overflow-hidden text-sm font-semibold">
+    <button type="button" onClick={() => setCatalogMode('branch')} className={`px-3 py-1.5 ${catalogMode === 'branch' ? 'bg-orange-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200'}`}>
+     Branch: {activeBranch?.name || 'Current'}
+    </button>
+    <button type="button" onClick={() => setCatalogMode('shared')} className={`px-3 py-1.5 ${catalogMode === 'shared' ? 'bg-orange-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200'}`}>
+     Shared catalog
+    </button>
+   </div>
+  )}
+  <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100 flex-1">
+   {editingSharedCatalog
+     ? 'Editing the shared catalog — changes apply to every branch (unless a branch has its own override).'
+     : `Editing menu for ${activeBranch?.name || 'this branch'}. Change price/availability here without affecting other branches. Shared items can be overridden; new items are branch-only.`}
+  </p>
+ </div>
 
  <div className="flex items-center gap-3">
  <input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Search by item name or category..." className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-orange-500 transition-all" />
  </div>
 
  {showDialog && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false) }}><div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6"><div className="flex items-center justify-between mb-5"><h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{editingId ? 'Edit Menu Item' : 'Add Menu Items'}</h3><button onClick={() => setShowDialog(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X size={20} /></button></div>
+ <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false) }}><div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6"><div className="flex items-center justify-between mb-2"><h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{editingId ? 'Edit Menu Item' : 'Add Menu Items'}</h3><button onClick={() => setShowDialog(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X size={20} /></button></div>
+ {!editingSharedCatalog && (
+  <p className="mb-4 text-xs font-medium text-amber-800 dark:text-amber-200">
+   {editingId
+     ? (editingMeta?.isBranchOnly ? `Branch-only item for ${activeBranch?.name || 'this branch'}.`
+       : `Saving updates this branch only (${activeBranch?.name || 'current'}). Shared catalog stays unchanged.`)
+     : `New items are added for ${activeBranch?.name || 'this branch'} only.`}
+  </p>
+ )}
+ {editingSharedCatalog && (
+  <p className="mb-4 text-xs font-medium text-sky-800 dark:text-sky-200">Editing shared catalog — applies to all branches.</p>
+ )}
+
  {editingId ? (
  <form onSubmit={onSubmit} className="space-y-4"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Item Name</label><input placeholder="e.g. Zinger Burger" className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-orange-500 transition-all" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} /></div><div><label className="block text-xs font-semibold text-orange-700 dark:text-orange-300 mb-1.5">Category</label><select className="w-full px-4 py-2.5 border-2 border-orange-200 dark:border-orange-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-orange-500 transition-all" value={form.category} onChange={e=>setForm(v=>({...v,category:e.target.value}))}><option value="">Select category...</option>
  {cats.map(c => (
@@ -343,7 +480,7 @@ export default function MenuList() {
  </div></div>
 )}
 
- <div className="border-2 border-orange-200 dark:border-orange-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Image</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Discount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Active</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="border-2 border-orange-200 dark:border-orange-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Image</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Discount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Active</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Scope</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedItems.map((r, idx) => (
  <tr key={r.id || idx} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-600 dark:text-gray-400">{Number(r.sortOrder||0)}</td><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td><td className="p-3">
  {r.imageUrl ? (
@@ -351,10 +488,10 @@ export default function MenuList() {
  ) : (
  <span className="text-gray-400 text-xs">—</span>
  )}
- </td><td className="p-3 text-gray-600 dark:text-gray-400">{r.category}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.price||0).toLocaleString()}</td><td className="p-3">{Number(r.discount||0) > 0 ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200">{Number(r.discount)}%</span> : <span className="text-gray-400 text-xs">—</span>}</td><td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Edit</button><button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
+ </td><td className="p-3 text-gray-600 dark:text-gray-400">{r.category}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.price||0).toLocaleString()}{r.hasOverride && r.basePrice != null && Number(r.basePrice) !== Number(r.price) ? <span className="block text-[10px] text-amber-600">shared {Number(r.basePrice).toLocaleString()}</span> : null}</td><td className="p-3">{Number(r.discount||0) > 0 ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200">{Number(r.discount)}%</span> : <span className="text-gray-400 text-xs">—</span>}</td><td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td><td className="p-3">{r.isBranchOnly ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800">Branch only</span> : r.hasOverride ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Branch override</span> : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">Shared</span>}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2 flex-wrap"><button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Edit</button>{r.hasOverride && !editingSharedCatalog && (<button disabled={loading} onClick={()=>resetOverride(r)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-50">Reset</button>)}<button disabled={loading} onClick={()=>onDelete(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
  ))}
  {!filteredItems.length && (
- <tr><td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No menu items found</div></td></tr>
+ <tr><td colSpan={9} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No menu items found</div></td></tr>
  )}
  </tbody></table></div>
 

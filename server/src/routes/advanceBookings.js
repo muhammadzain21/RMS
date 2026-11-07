@@ -10,9 +10,11 @@ router.use(authRequired)
 router.get('/', async (req, res, next) => {
   try {
     const { from, to, status } = req.query
-    const query = {}
+    let query = {}
     if (from || to) query.date = { ...(from ? { $gte: String(from) } : {}), ...(to ? { $lte: String(to) } : {}) }
     if (status) query.status = String(status)
+    const { mergeBranchFilter } = await import('../utils/branchScope.js')
+    query = mergeBranchFilter(req, query)
     const rows = await AdvanceBooking.find(query).sort({ date: -1, createdAt: -1 })
     res.json(rows)
   } catch (e) { next(e) }
@@ -20,7 +22,8 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
-    const b = await AdvanceBooking.create({
+    const { stampBranchId } = await import('../utils/branchScope.js')
+    const b = await AdvanceBooking.create(stampBranchId(req, {
       date: String(req.body?.date),
       time: req.body?.time || '',
       customer: req.body?.customer || '',
@@ -31,7 +34,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       settledSaleId: req.body?.settledSaleId || '',
       userId: req.user?.id || '',
       userName: req.user?.username || '',
-    })
+    }))
     await logAudit(req, 'booking', `Advance booking ${b.customer || b.phone || b._id} on ${b.date}`, { id: b._id })
     res.status(201).json(b)
   } catch (e) { next(e) }

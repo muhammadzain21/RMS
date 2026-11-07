@@ -15,8 +15,8 @@ export default function ProtectedRoute({ children, roles }) {
   
   if (!user) return <Navigate to="/login" replace />
 
-  // SuperAdmin bypasses everything (including feature access)
-  if (user.role === 'SuperAdmin') return children
+  // Admin / SuperAdmin always have full access
+  if (user.role === 'SuperAdmin' || user.role === 'Admin') return children
 
   const isMyWorkRoute = location.pathname === '/my' || location.pathname.startsWith('/my/')
   const canSeeMyWork = Boolean(user.staffId) && user.myWorkAccess === true
@@ -57,9 +57,6 @@ export default function ProtectedRoute({ children, roles }) {
       ? <Navigate to={fallbackPath} replace />
       : noAccess
   }
-
-  // Admin with full (role) access — custom pageAccess still goes through the permission check below
-  if (user.role === 'Admin' && !user.useCustomPermissions) return children
 
   // Check if user's role is in allowed roles (unless they have an explicit custom permission set)
   if (roles && roles.includes(user.role) && !user.useCustomPermissions) return children

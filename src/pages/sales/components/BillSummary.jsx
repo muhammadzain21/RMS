@@ -53,7 +53,19 @@ export default function BillSummary({
   onCashReceivedChange = ()=>{},
   // Settings: show Personal (complimentary) payment option
   showPersonalPayment = false,
+  // Settings Restriction tab — which bill fields appear on Sell (default all hidden)
+  sellPageFields = {},
 }) {
+  const fields = {
+    totalTax: false,
+    amountIncTax: false,
+    totalItemsDiscount: false,
+    billDiscPct: false,
+    billDiscAmt: false,
+    serviceCharges: false,
+    taxAmt: false,
+    ...(sellPageFields || {}),
+  }
   // Local controlled string for Bill Disc (PKR) to avoid keystroke misinterpretation
   const [billAmtStr, setBillAmtStr] = useState(String(Math.floor(billDiscAmt||0)))
   const billAmtTimer = useRef(null)
@@ -88,8 +100,20 @@ export default function BillSummary({
     if (key === 'card') setShowCardDialog(true)
     if (key === 'staff') setShowStaffDialog(true)
   }
+  // When restriction fields are off, Delivery / Total / Amount move up.
+  // Invisible row spacers at the bottom keep bill+cart height stable.
+  const hiddenFieldCount = [
+    fields.totalTax,
+    fields.amountIncTax,
+    fields.totalItemsDiscount,
+    fields.billDiscPct,
+    fields.billDiscAmt,
+    fields.serviceCharges,
+    fields.taxAmt,
+  ].filter(v => !v).length
+
   return (
-    <div className="border-2 border-amber-200 rounded-lg p-2 space-y-2 bg-gradient-to-br from-amber-50/60 to-white dark:from-amber-950/30 dark:to-gray-900 dark:border-amber-800 shadow-sm lg:overflow-y-auto lg:min-h-0">
+    <div className="border-2 border-amber-200 rounded-lg p-2 space-y-2 bg-gradient-to-br from-amber-50/60 to-white dark:from-amber-950/30 dark:to-gray-900 dark:border-amber-800 shadow-sm lg:overflow-y-auto lg:min-h-0 lg:flex-shrink-0">
       {/* Order Type buttons row */}
       <div className="flex flex-wrap gap-1.5">
         {ORDER_TYPES.map((t)=> (
@@ -194,86 +218,114 @@ export default function BillSummary({
         <div className="text-right dark:text-gray-100">{totalItems}</div>
         <div className="text-gray-600 dark:text-gray-400">Total Qty • Sub Total:</div>
         <div className="text-right dark:text-gray-100">{totalQty} • {subTotal.toFixed(2)}</div>
-        <div className="text-gray-600 dark:text-gray-400">Total Tax:</div>
-        <div className="text-right dark:text-gray-100">{taxAmt.toFixed(2)}</div>
-        <div className="text-gray-600 dark:text-gray-400">Amount inc Tax:</div>
-        <div className="text-right dark:text-gray-100">{(subTotal + taxAmt + serviceAmt + deliveryAmt - itemsDiscount - billDiscAmt).toFixed(2)}</div>
-        <div className="text-gray-600 dark:text-gray-400">Total Items Discount:</div>
-        <div className="text-right dark:text-gray-100">{itemsDiscount.toFixed(2)}</div>
-        <div className="text-gray-600 dark:text-gray-400">Bill Disc (%):</div>
-        <div className="flex items-center justify-end gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="w-20 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
-            value={String(Math.floor(billDiscPct||0))}
-            onChange={e=>{
-              const raw = (e.target.value||'').replace(/\D+/g,'')
-              const v = parseInt(raw||'0',10)
-              onBillDiscPctChange(isNaN(v) ? 0 : Math.min(100, Math.max(0, v)))
-            }}
-          />
-          <span>%</span>
-        </div>
-        <div className="text-gray-600 dark:text-gray-400">Bill Disc Amount (PKR):</div>
-        <div className="flex items-center justify-end gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="w-28 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
-            value={billAmtStr}
-            onChange={e=>{
-              const raw = (e.target.value||'').replace(/\D+/g, '')
-              setBillAmtStr(raw)
-              const v = parseInt((raw||'').replace(/\D+/g, '')||'0', 10)
-              const base = Math.max(0, Math.floor(subTotal - itemsDiscount))
-              const clamped = Math.min(base, Math.max(0, isNaN(v) ? 0 : v))
-              onBillDiscAmtChange(clamped)
-            }}
-            onFocus={()=> setIsAmtFocused(true)}
-            onBlur={() => {
-              const v = parseInt((billAmtStr||'').replace(/\D+/g, '')||'0', 10)
-              const base = Math.max(0, Math.floor(subTotal - itemsDiscount))
-              const clamped = Math.min(base, Math.max(0, isNaN(v) ? 0 : v))
-              onBillDiscAmtChange(clamped)
-              setBillAmtStr(String(clamped))
-              setIsAmtFocused(false)
-            }}
-          />
-          <span>PKR</span>
-        </div>
-        <div className="text-gray-600 dark:text-gray-400">Ser Charges (PKR):</div>
-        <div className="flex items-center justify-end gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="w-28 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
-            value={String(Math.trunc(serviceAmt)||0)}
-            onChange={e=>{
-              const raw = (e.target.value||'').replace(/\D+/g,'')
-              onServiceAmtChange(parseInt(raw||'0',10)||0)
-            }}
-          />
-          <span>PKR</span>
-        </div>
-        <div className="text-gray-600 dark:text-gray-400">Tax (PKR):</div>
-        <div className="flex items-center justify-end gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="w-28 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
-            value={String(Math.trunc(taxAmt)||0)}
-            onChange={e=>{
-              const raw = (e.target.value||'').replace(/\D+/g,'')
-              onTaxAmtChange(parseInt(raw||'0',10)||0)
-            }}
-          />
-          <span>PKR</span>
-        </div>
+        {fields.totalTax && (
+          <>
+            <div className="text-gray-600 dark:text-gray-400">Total Tax:</div>
+            <div className="text-right dark:text-gray-100">{taxAmt.toFixed(2)}</div>
+          </>
+        )}
+        {fields.amountIncTax && (
+          <>
+            <div className="text-gray-600 dark:text-gray-400">Amount inc Tax:</div>
+            <div className="text-right dark:text-gray-100">{(subTotal + taxAmt + serviceAmt + deliveryAmt - itemsDiscount - billDiscAmt).toFixed(2)}</div>
+          </>
+        )}
+        {fields.totalItemsDiscount && (
+          <>
+            <div className="text-gray-600 dark:text-gray-400">Total Items Discount:</div>
+            <div className="text-right dark:text-gray-100">{itemsDiscount.toFixed(2)}</div>
+          </>
+        )}
+        {fields.billDiscPct && (
+          <>
+            <div className="text-gray-600 dark:text-gray-400">Bill Disc (%):</div>
+            <div className="flex items-center justify-end gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="w-20 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                value={String(Math.floor(billDiscPct||0))}
+                onChange={e=>{
+                  const raw = (e.target.value||'').replace(/\D+/g,'')
+                  const v = parseInt(raw||'0',10)
+                  onBillDiscPctChange(isNaN(v) ? 0 : Math.min(100, Math.max(0, v)))
+                }}
+              />
+              <span>%</span>
+            </div>
+          </>
+        )}
+        {fields.billDiscAmt && (
+          <>
+            <div className="text-gray-600 dark:text-gray-400">Bill Disc Amount (PKR):</div>
+            <div className="flex items-center justify-end gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="w-28 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                value={billAmtStr}
+                onChange={e=>{
+                  const raw = (e.target.value||'').replace(/\D+/g, '')
+                  setBillAmtStr(raw)
+                  const v = parseInt((raw||'').replace(/\D+/g, '')||'0', 10)
+                  const base = Math.max(0, Math.floor(subTotal - itemsDiscount))
+                  const clamped = Math.min(base, Math.max(0, isNaN(v) ? 0 : v))
+                  onBillDiscAmtChange(clamped)
+                }}
+                onFocus={()=> setIsAmtFocused(true)}
+                onBlur={() => {
+                  const v = parseInt((billAmtStr||'').replace(/\D+/g, '')||'0', 10)
+                  const base = Math.max(0, Math.floor(subTotal - itemsDiscount))
+                  const clamped = Math.min(base, Math.max(0, isNaN(v) ? 0 : v))
+                  onBillDiscAmtChange(clamped)
+                  setBillAmtStr(String(clamped))
+                  setIsAmtFocused(false)
+                }}
+              />
+              <span>PKR</span>
+            </div>
+          </>
+        )}
+        {fields.serviceCharges && (
+          <>
+            <div className="text-gray-600 dark:text-gray-400">Ser Charges (PKR):</div>
+            <div className="flex items-center justify-end gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="w-28 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                value={String(Math.trunc(serviceAmt)||0)}
+                onChange={e=>{
+                  const raw = (e.target.value||'').replace(/\D+/g,'')
+                  onServiceAmtChange(parseInt(raw||'0',10)||0)
+                }}
+              />
+              <span>PKR</span>
+            </div>
+          </>
+        )}
+        {fields.taxAmt && (
+          <>
+            <div className="text-gray-600 dark:text-gray-400">Tax (PKR):</div>
+            <div className="flex items-center justify-end gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="w-28 px-2 py-1 border rounded text-right bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600"
+                value={String(Math.trunc(taxAmt)||0)}
+                onChange={e=>{
+                  const raw = (e.target.value||'').replace(/\D+/g,'')
+                  onTaxAmtChange(parseInt(raw||'0',10)||0)
+                }}
+              />
+              <span>PKR</span>
+            </div>
+          </>
+        )}
         <div className="text-gray-600 dark:text-gray-400">Delivery Charges (PKR):</div>
         <div className="flex items-center justify-end gap-2">
           <input
@@ -349,6 +401,15 @@ export default function BillSummary({
         </div>
       </div>
       ) : null}
+
+      {/* Bottom padding so cart/bill height matches “all fields checked” layout */}
+      {hiddenFieldCount > 0 && (
+        <div
+          aria-hidden
+          className="pointer-events-none select-none"
+          style={{ height: `${hiddenFieldCount * 1.75}rem` }}
+        />
+      )}
     </div>
   )
 }

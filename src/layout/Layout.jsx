@@ -1,14 +1,17 @@
-import { Outlet } from 'react-router-dom'
-import { useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useData } from '../state/DataContext.jsx'
+import { useBranch } from '../state/BranchContext.jsx'
 import Header from './Header.jsx'
 import Sidebar from './Sidebar.jsx'
 
 export default function Layout() {
   const { user, logout } = useAuth()
-  const { state } = useData()
+  const { state, rehydrate } = useData()
+  const { activeBranchId } = useBranch()
+  const location = useLocation()
   const brand = state?.settings?.companyName || 'Restaurant POS'
 
   const [collapsed, setCollapsed] = useState(false)
@@ -23,6 +26,18 @@ export default function Layout() {
       return next
     })
   }
+
+  // Fresh shared data whenever the user navigates to another page
+  useEffect(() => {
+    if (!user) return
+    rehydrate?.()
+    try {
+      window.dispatchEvent(new CustomEvent('route_changed', {
+        detail: { path: location.pathname, branchId: activeBranchId || '' },
+      }))
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on route change; branch handled by DataContext + Outlet key
+  }, [user, location.pathname])
 
   const toaster = (
     <Toaster
@@ -53,6 +68,9 @@ export default function Layout() {
     toast.error('Selling is locked. Please open the day from Day Opening to continue.')
   }
 
+  // Remount the active page when route OR header branch changes → each page reloads its data
+  const pageKey = `${location.pathname}::${activeBranchId || 'none'}`
+
   return (
     <div className="min-h-[100dvh] flex bg-transparent">
       <Sidebar
@@ -82,7 +100,7 @@ export default function Layout() {
           onToggleSidebarHidden={toggleSidebarHidden}
         />
         <main className="px-4 py-4 sm:px-6 sm:py-6 overflow-x-auto flex-1 bg-transparent pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
-          <Outlet />
+          <Outlet key={pageKey} />
         </main>
       </div>
 

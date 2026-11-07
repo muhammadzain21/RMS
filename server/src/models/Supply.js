@@ -13,6 +13,7 @@ const SupplySchema = new mongoose.Schema({
   supplier: { type: String, default: '' },
   items: { type: [SupplyItemSchema], default: [] },
   cost: { type: Number, default: 0 },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('Supply', SupplySchema)

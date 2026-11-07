@@ -44,34 +44,100 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
-  // Hydrate users from backend for Admin when token is present
-  useEffect(() => {
-    const fetchUsers = async () => {
-      if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return
-      try {
-        const res = await fetch(`${getAPI()}/api/users`, { headers: { Authorization: `Bearer ${token}` } })
-        if (res.ok) {
-          const list = await res.json()
-          setUsers(list)
+  const refreshUsers = async (branchIdOverride) => {
+    if (!token || !user) return []
+    try {
+      const hq = user.role === 'Admin' || user.role === 'SuperAdmin' || !!user.isHq
+      let branchId = branchIdOverride !== undefined
+        ? String(branchIdOverride || '')
+        : (
+          (typeof window !== 'undefined' && (window.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id')))
+          || user.homeBranchId
+          || ''
+        )
+      // Managers always scope to a branch they own
+      if (!hq) {
+        const allowed = [
+          ...(Array.isArray(user.branchIds) ? user.branchIds : []),
+          user.homeBranchId,
+        ].filter(Boolean).map(String)
+        if (!branchId || (allowed.length && !allowed.includes(String(branchId)))) {
+          branchId = user.homeBranchId || allowed[0] || ''
         }
-      } catch {}
-    }
-    fetchUsers()
-  }, [token, user?.role])
+      }
+      const qs = branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''
+      const res = await fetch(`${getAPI()}/api/users${qs}`, { headers: { Authorization: `Bearer ${token}` } })
+      if (res.ok) {
+        const list = await res.json()
+        setUsers(list)
+        return list
+      }
+      // Fallback: ask server to filter by actor branches
+      if (!hq && res.status === 403) {
+        const r2 = await fetch(`${getAPI()}/api/users`, { headers: { Authorization: `Bearer ${token}` } })
+        if (r2.ok) {
+          const list = await r2.json()
+          setUsers(list)
+          return list
+        }
+      }
+    } catch {}
+    return []
+  }
+
+  // Hydrate users list for anyone who can open User Management (API enforces branch scope)
+  useEffect(() => {
+    refreshUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user?.role, user?.isHq, user?.homeBranchId])
 
   const login = async (username, password) => {
+    const userName = String(username || '').trim()
+    const pass = String(password || '')
+    const tryLogin = async (base) => {
+      const url = `${String(base || '').replace(/\/+$/, '')}/api/auth/login`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: userName, password: pass }),
+      })
+      const data = await res.json().catch(() => ({}))
+      return { res, data }
+    }
     try {
-      const res = await fetch(`${getAPI()}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
-      if (res.ok) {
-        const data = await res.json()
+      let base = getAPI()
+      let { res, data } = await tryLogin(base)
+      // Electron/dev: if saved cloud/LAN URL fails, retry local server
+      if (!res.ok) {
+        const local = 'http://localhost:5000'
+        const current = String(base || '').replace(/\/+$/, '')
+        if (current !== local) {
+          try {
+            const retry = await tryLogin(local)
+            if (retry.res.ok) {
+              base = local
+              res = retry.res
+              data = retry.data
+              try {
+                localStorage.setItem('server_url', local)
+                window.API_BASE = local
+                window.dispatchEvent(new CustomEvent('server_url_changed', { detail: local }))
+              } catch {}
+            }
+          } catch {}
+        }
+      }
+      if (res.ok && data?.token && data?.user) {
         setToken(data.token)
         setUser(data.user)
         sessionStorage.setItem('auth_token', data.token)
         sessionStorage.setItem('auth_user', JSON.stringify(data.user))
         return { ok: true, user: data.user }
       }
-    } catch {}
-    return { ok: false, error: 'Invalid credentials' }
+      return { ok: false, error: data?.error || 'Invalid credentials' }
+    } catch (e) {
+      return { ok: false, error: 'Cannot reach server. Check server URL / connection.' }
+    }
   }
 
   const logout = () => {
@@ -93,16 +159,21 @@ export function AuthProvider({ children }) {
     sessionStorage.removeItem('auth_user')
   }
 
+  const canManageUsers = () => !!(token && user)
+
   const addUser = async (u) => {
-    if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return { ok: false, error: 'Unauthorized' }
+    if (!canManageUsers()) return { ok: false, error: 'Unauthorized' }
     try {
       const res = await fetch(`${getAPI()}/api/users`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(u) })
       if (res.ok) {
         const created = await res.json()
         setUsers(prev => [...prev, created])
-        // refresh list from server to be safe
         try {
-          const r = await fetch(`${getAPI()}/api/users`, { headers: { Authorization: `Bearer ${token}` } })
+          const branchId = (typeof window !== 'undefined' && (window.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id'))) || user?.homeBranchId || ''
+          const qs = branchId && user?.role !== 'Admin' && user?.role !== 'SuperAdmin' && !user?.isHq
+            ? `?branchId=${encodeURIComponent(branchId)}`
+            : ''
+          const r = await fetch(`${getAPI()}/api/users${qs}`, { headers: { Authorization: `Bearer ${token}` } })
           if (r.ok) setUsers(await r.json())
         } catch {}
         return { ok: true }
@@ -117,7 +188,7 @@ export function AuthProvider({ children }) {
   }
 
   const removeUser = async (id) => {
-    if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return { ok: false, error: 'Unauthorized' }
+    if (!canManageUsers()) return { ok: false, error: 'Unauthorized' }
     try {
       const res = await fetch(`${getAPI()}/api/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       if (res.ok) {
@@ -134,8 +205,7 @@ export function AuthProvider({ children }) {
   }
 
   const updateUser = async (id, data) => {
-    // data may contain: name, role, password
-    if (!token || (user?.role !== 'Admin' && user?.role !== 'SuperAdmin')) return { ok: false, error: 'Unauthorized' }
+    if (!canManageUsers()) return { ok: false, error: 'Unauthorized' }
     try {
       const res = await fetch(`${getAPI()}/api/users/${id}`, {
         method: 'PATCH',
@@ -170,7 +240,11 @@ export function AuthProvider({ children }) {
     } catch {}
   }, [user])
 
-  const value = useMemo(() => ({ user, token, users, login, logout, addUser, removeUser, updateUser }), [user, token, users])
+  const value = useMemo(
+    () => ({ user, token, users, login, logout, addUser, removeUser, updateUser, refreshUsers }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, token, users]
+  )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

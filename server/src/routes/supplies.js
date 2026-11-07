@@ -3,6 +3,7 @@ import Supply from '../models/Supply.js'
 import Ingredient from '../models/Ingredient.js'
 import Audit from '../models/Audit.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
+import { mergeBranchFilter, stampBranchId } from '../utils/branchScope.js'
 
 const router = Router()
 router.use(authRequired)
@@ -18,6 +19,7 @@ router.get('/', async (req, res, next) => {
     if (supplierId) {
       filter.supplierId = String(supplierId)
     }
+    filter = mergeBranchFilter(req, filter)
     const rows = await Supply.find(filter).sort({ date: -1, createdAt: -1 })
     res.json(rows)
   } catch (e) { next(e) }
@@ -29,7 +31,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const { date, supplierId = '', supplier = '', items = [], cost = 0, skipInventoryUpdate = false } = req.body
     if (!date) return res.status(400).json({ error: 'date required' })
     // persist supply
-    const created = await Supply.create({ date, supplierId, supplier, items, cost })
+    const created = await Supply.create(stampBranchId(req, { date, supplierId, supplier, items, cost }))
     // update ingredient quantities by item name (skip if already updated elsewhere)
     if (!skipInventoryUpdate) {
       for (const it of items) {

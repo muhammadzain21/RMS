@@ -28,6 +28,8 @@ const KotSchema = new mongoose.Schema({
   statusUpdatedAt: { type: Date, default: null },
   completedAt: { type: Date, default: null }, // set when status becomes 'completed'
   userId: { type: String },
+  branchId: { type: String, default: '', index: true },
+  callCenterOrderId: { type: String, default: '', index: true },
   idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
 }, { timestamps: true })
 

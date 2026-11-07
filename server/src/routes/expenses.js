@@ -4,13 +4,14 @@ import Settings from '../models/Settings.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { blockIfClosedFromBody, blockIfClosedFromModel } from '../middleware/dayClosed.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { mergeBranchFilter } from '../utils/branchScope.js'
 
 const router = Router()
 router.use(authRequired)
 
 const DEFAULT_HEADS = ['Rent', 'Utilities', 'Wages', 'Salaries', 'Supplies', 'Transport', 'Marketing', 'Maintenance', 'Misc']
 
-function buildFilter(query) {
+function buildFilter(query, req) {
   const {
     from = '0000-00-00',
     to = '9999-12-31',
@@ -38,7 +39,8 @@ function buildFilter(query) {
     ]}] : []),
     ...(min ? [{ amount: { $gte: Number(min) } }] : []),
   ]
-  return $and.length ? { $and } : {}
+  const base = $and.length ? { $and } : {}
+  return req ? mergeBranchFilter(req, base) : base
 }
 
 function who(req) {
@@ -52,7 +54,7 @@ function normalizeBody(body, req) {
     ? body.paymentMethod
     : (accountHead === 'bank' ? 'bank_transfer' : 'cash')
   const paidBy = String(body.paidBy || who(req)).trim()
-  return {
+  const out = {
     date: body.date,
     category,
     expenseHead: category,
@@ -66,6 +68,8 @@ function normalizeBody(body, req) {
     userId: String(req.user?.id || req.user?._id || ''),
     userName: who(req),
   }
+  if (body.branchId) out.branchId = String(body.branchId)
+  return out
 }
 
 // Expense heads list (from settings)
@@ -96,7 +100,7 @@ router.put('/heads', requireRole('Admin', 'Manager'), async (req, res, next) => 
 // Summary breakdowns for analytics
 router.get('/summary', async (req, res, next) => {
   try {
-    const filter = buildFilter(req.query)
+    const filter = buildFilter(req.query, req)
     const rows = await Expense.find(filter).lean()
     const sumBy = (keyFn) => {
       const map = new Map()
@@ -130,7 +134,7 @@ router.get('/', async (req, res, next) => {
   try {
     const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1)
     const limitNum = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 50))
-    const filter = buildFilter(req.query)
+    const filter = buildFilter(req.query, req)
     const total = await Expense.countDocuments(filter)
     const rows = await Expense.find(filter)
       .sort({ date: -1, createdAt: -1 })
@@ -142,7 +146,7 @@ router.get('/', async (req, res, next) => {
 
 router.get('/export', async (req, res, next) => {
   try {
-    const filter = buildFilter(req.query)
+    const filter = buildFilter(req.query, req)
     const rows = await Expense.find(filter).sort({ date: -1, createdAt: -1 })
     const header = ['date', 'expenseHead', 'accountHead', 'paymentMethod', 'paidBy', 'amount', 'description', 'note']
     const csv = [
@@ -166,7 +170,8 @@ router.get('/export', async (req, res, next) => {
 
 router.post('/', requireRole('Admin', 'Manager'), blockIfClosedFromBody('date'), async (req, res, next) => {
   try {
-    const payload = normalizeBody(req.body || {}, req)
+    const { stampBranchId } = await import('../utils/branchScope.js')
+    const payload = stampBranchId(req, normalizeBody(req.body || {}, req))
     const exp = await Expense.create(payload)
     await logAudit(req, 'expense', `Added expense ${exp.category}: ${exp.amount} via ${exp.accountHead}`, { id: exp._id })
     res.status(201).json(exp)

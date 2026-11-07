@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { toast } from 'react-hot-toast'
@@ -34,9 +34,10 @@ function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, confirmText
 }
 
 export default function SidebarPermissions() {
-  const { token } = useAuth()
+  const { token, user: currentUser } = useAuth()
   const { state } = useData()
   const getAPI = () => ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
+  const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
 
   // Pages disabled via the SuperAdmin portal are hidden from this list entirely
   const enabledPaths = state?.settings?.enabledPaths
@@ -58,7 +59,18 @@ export default function SidebarPermissions() {
     fetchRoles()
   }, [token])
 
-  const visiblePaths = new Set(sidebarItems.filter(i => !i.hidden && i.path !== '/my' && isFeatureEnabled(i.path)).map(i => i.path))
+  const grantablePaths = useMemo(() => {
+    if (isAdminUser) return null
+    const perms = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+    return new Set(perms.filter(p => p?.visible && p.path && p.path !== '/my').map(p => p.path))
+  }, [isAdminUser, currentUser?.permissions])
+
+  const visiblePaths = new Set(
+    sidebarItems
+      .filter(i => !i.hidden && i.path !== '/my' && isFeatureEnabled(i.path))
+      .filter(i => isAdminUser || grantablePaths?.has(i.path))
+      .map(i => i.path)
+  )
 
   const normalizePermissions = (perms) => {
     if (!perms || !Array.isArray(perms)) return defaultPermissionItems().filter(p => visiblePaths.has(p.path))
@@ -104,6 +116,14 @@ export default function SidebarPermissions() {
       updated[index] = { ...updated[index], visible: !updated[index].visible }
       return updated
     })
+  }
+
+  const toggleSection = (sectionItems) => {
+    const paths = new Set(sectionItems.map(i => i.path))
+    const allOn = sectionItems.every(i => i.visible)
+    setRolePermissions(prev => prev.map(p => (
+      paths.has(p.path) ? { ...p, visible: !allOn } : p
+    )))
   }
 
   const saveChanges = async () => {
@@ -280,33 +300,40 @@ export default function SidebarPermissions() {
         </div>
       </div>
 
-      {/* Create New Role */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Create New Role</h3>
-        <form onSubmit={createRole} className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            placeholder="Role name (e.g. ward-admin)"
-            value={newRoleName}
-            onChange={e => setNewRoleName(e.target.value)}
-            className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          />
-          <input
-            type="text"
-            placeholder="Description (optional)"
-            value={newRoleDescription}
-            onChange={e => setNewRoleDescription(e.target.value)}
-            className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          />
-          <button
-            type="submit"
-            disabled={saving || !newRoleName.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? 'Creating...' : 'Create Role'}
-          </button>
-        </form>
-      </div>
+      {/* Create New Role — Admin only */}
+      {isAdminUser && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Create New Role</h3>
+          <form onSubmit={createRole} className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              placeholder="Role name (e.g. ward-admin)"
+              value={newRoleName}
+              onChange={e => setNewRoleName(e.target.value)}
+              className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            />
+            <input
+              type="text"
+              placeholder="Description (optional)"
+              value={newRoleDescription}
+              onChange={e => setNewRoleDescription(e.target.value)}
+              className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            />
+            <button
+              type="submit"
+              disabled={saving || !newRoleName.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Creating...' : 'Create Role'}
+            </button>
+          </form>
+        </div>
+      )}
+      {!isAdminUser && (
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          You can edit page toggles for roles using only the pages Admin gave you. Creating or deleting roles is Admin-only.
+        </p>
+      )}
 
       {/* Permissions Tiles */}
       {selectedRole && (
@@ -319,13 +346,15 @@ export default function SidebarPermissions() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={resetToDefaults}
-                disabled={saving}
-                className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-50"
-              >
-                Reset to Defaults
-              </button>
+              {isAdminUser && (
+                <button
+                  onClick={resetToDefaults}
+                  disabled={saving}
+                  className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 disabled:opacity-50"
+                >
+                  Reset to Defaults
+                </button>
+              )}
               <button
                 onClick={saveChanges}
                 disabled={saving}
@@ -333,7 +362,7 @@ export default function SidebarPermissions() {
               >
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
-              {!selectedRole.isDefault && (
+              {isAdminUser && !selectedRole.isDefault && (
                 <button
                   onClick={() => deleteRole(selectedRole.id)}
                   disabled={saving}
@@ -352,7 +381,7 @@ export default function SidebarPermissions() {
               if (!grouped[s]) grouped[s] = []
               grouped[s].push(item)
             })
-            const sectionOrder = ['Dashboard', 'Sales', 'Operations', 'Staff Management', 'Finance', 'Admin']
+            const sectionOrder = ['Dashboard', 'Sales', 'Operations', 'Warehouse', 'Staff Management', 'Finance', 'Admin']
             const sortedSections = Object.keys(grouped).sort((a, b) => {
               const ia = sectionOrder.indexOf(a)
               const ib = sectionOrder.indexOf(b)
@@ -365,6 +394,7 @@ export default function SidebarPermissions() {
               Dashboard: 'border-blue-500',
               Sales: 'border-orange-500',
               Operations: 'border-indigo-500',
+              Warehouse: 'border-cyan-500',
               'Staff Management': 'border-emerald-500',
               Finance: 'border-green-500',
               Admin: 'border-purple-500',
@@ -373,6 +403,7 @@ export default function SidebarPermissions() {
               Dashboard: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300',
               Sales: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300',
               Operations: 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300',
+              Warehouse: 'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300',
               'Staff Management': 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300',
               Finance: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300',
               Admin: 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300',
@@ -381,11 +412,30 @@ export default function SidebarPermissions() {
               <div className="grid grid-cols-1 gap-4">
                 {sortedSections.map(section => {
                   const items = grouped[section].sort((a, b) => a.order - b.order)
+                  const enabledCount = items.filter(i => i.visible).length
+                  const sectionOn = enabledCount === items.length && items.length > 0
                   return (
                     <div key={section} className={`bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden border-t-4 ${sectionColors[section] || 'border-gray-300'}`}>
-                      <div className={`px-4 py-3 border-b border-gray-200 dark:border-gray-700 ${sectionHeaders[section] || 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300'}`}>
-                        <h3 className="font-semibold">{section}</h3>
-                        <p className="text-xs opacity-75">{items.filter(i => i.visible).length} of {items.length} enabled</p>
+                      <div className={`px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 ${sectionHeaders[section] || 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300'}`}>
+                        <div>
+                          <h3 className="font-semibold">{section}</h3>
+                          <p className="text-xs opacity-75">{enabledCount} of {items.length} enabled</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleSection(items)}
+                          className="inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white/70 dark:bg-gray-900/40 border border-black/5 dark:border-white/10 hover:bg-white dark:hover:bg-gray-900"
+                          title={sectionOn ? 'Disable full section' : 'Enable full section'}
+                        >
+                          <span>{sectionOn ? 'Full section on' : 'Enable section'}</span>
+                          <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                            sectionOn ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                          }`}>
+                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#ffffff] transition-transform ${
+                              sectionOn ? 'translate-x-4' : 'translate-x-1'
+                            }`} />
+                          </span>
+                        </button>
                       </div>
                       <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         {items.map(item => (

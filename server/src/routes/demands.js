@@ -19,6 +19,8 @@ router.get('/', async (req, res, next) => {
     if (status && ['pending', 'sent', 'completed'].includes(status)) {
       filter.status = status
     }
+    const { mergeBranchFilter } = await import('../utils/branchScope.js')
+    filter = mergeBranchFilter(req, filter)
     const total = await Demand.countDocuments(filter)
     const rows = await Demand.find(filter)
       .sort({ date: -1, createdAt: -1 })
@@ -60,7 +62,8 @@ router.post('/', requireRole('Admin', 'Manager'), async (req, res, next) => {
       createdBy: req.user?.id || '',
       createdByName: req.user?.username || req.user?.name || '',
     }
-    const created = await Demand.create(payload)
+    const { stampBranchId } = await import('../utils/branchScope.js')
+    const created = await Demand.create(stampBranchId(req, payload))
     await logAudit(req, 'demand', `Created demand for ${date}`, { id: created._id, items: items.length })
     res.status(201).json(created)
   } catch (e) { next(e) }

@@ -208,24 +208,64 @@ export default function Login() {
     else toast('Saved. Server not reachable yet — check network.', { icon: '⚠️' })
   }
 
+  // Ensure Electron/dev always has a usable local API target
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const current = normalizeUrl(serverUrl) || normalizeUrl(typeof window !== 'undefined' ? window.API_BASE : '')
+      const local = 'http://localhost:5000'
+      if (!current) {
+        saveServerBase(local)
+        if (!cancelled) setServerUrl(local)
+        return
+      }
+      const ping = await pingServer(current)
+      if (cancelled) return
+      if (ping.ok) {
+        setConnStatus('ok')
+        return
+      }
+      const localPing = await pingServer(local)
+      if (cancelled) return
+      if (localPing.ok) {
+        saveServerBase(local)
+        setServerUrl(local)
+        setConnStatus('ok')
+        setConnError('')
+        toast.success('Connected to local server')
+      } else {
+        setConnStatus('fail')
+        setConnError(ping.error || 'Server not reachable')
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const submit = async (e) => {
     e.preventDefault()
     setError('')
     if (!form.username || !form.password) { setError('Username and password are required'); return }
-    const base = normalizeUrl(serverUrl)
-    if (base) saveServerBase(base)
+    const base = normalizeUrl(serverUrl) || 'http://localhost:5000'
+    saveServerBase(base)
+    setServerUrl(base)
     try {
       setLoading(true)
-      const res = await login(form.username, form.password)
+      const res = await login(form.username.trim(), form.password)
       if (!res?.ok) {
         setError(res?.error || 'Login failed')
         toast.error(res?.error || 'Invalid credentials')
       } else {
         toast.success('Welcome!')
-        const firstAllowed = res?.user?.permissions
-          ?.filter(p => p.visible)
-          ?.map(p => p.path)?.[0]
-        navigate(firstAllowed || '/')
+        // Admin / full-access accounts go home; others to first allowed page
+        if (res?.user?.role === 'Admin' || res?.user?.role === 'SuperAdmin') {
+          navigate('/')
+        } else {
+          const firstAllowed = res?.user?.permissions
+            ?.filter(p => p.visible)
+            ?.map(p => p.path)?.[0]
+          navigate(firstAllowed || '/')
+        }
       }
     } catch {
       setError('Login failed')
@@ -240,45 +280,45 @@ export default function Login() {
     : 'https://pos.yourrestaurant.com'
 
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-[#070d1f] text-white flex items-center justify-center p-4 sm:p-6" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+    <div className="relative min-h-[100dvh] max-h-[100dvh] overflow-y-auto bg-[#070d1f] text-white flex items-center justify-center p-3 sm:p-5" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-40 -top-40 h-[32rem] w-[32rem] rounded-full bg-blue-600/20 blur-[120px]" />
         <div className="absolute -right-48 bottom-0 h-[36rem] w-[36rem] rounded-full bg-indigo-600/15 blur-[130px]" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-xl shadow-blue-500/30">
+      <div className="relative z-10 w-full max-w-md my-auto">
+        <div className="mb-4 sm:mb-6 text-center">
+          <div className="mx-auto mb-3 sm:mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-xl shadow-blue-500/30">
             {logo
               ? <img src={logo} alt={brand} className="h-full w-full object-cover" />
-              : <UtensilsCrossed className="h-7 w-7 text-white" />}
+              : <UtensilsCrossed className="h-6 w-6 sm:h-7 sm:w-7 text-white" />}
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
             <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-cyan-400 bg-clip-text text-transparent">
               {brand}
             </span>
           </h1>
-          <p className="mt-1.5 text-sm text-slate-400">Restaurant POS &amp; Management</p>
+          <p className="mt-1 text-xs sm:text-sm text-slate-400">Restaurant POS &amp; Management</p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-xl p-6 sm:p-8 shadow-2xl">
-          <h2 className="mb-1 text-xl font-bold text-white">Welcome back</h2>
-          <p className="mb-7 text-sm text-slate-400">Sign in to access your dashboard</p>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-xl p-4 sm:p-6 shadow-2xl">
+          <h2 className="mb-0.5 text-lg sm:text-xl font-bold text-white">Welcome back</h2>
+          <p className="mb-4 sm:mb-5 text-xs sm:text-sm text-slate-400">Sign in to access your dashboard</p>
 
-          <form onSubmit={submit} className="space-y-5">
+          <form onSubmit={submit} className="space-y-3.5 sm:space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-300">Username</label>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-300">Username</label>
               <input
                 type="text"
                 value={form.username}
                 onChange={e => setForm({ ...form, username: e.target.value })}
                 autoComplete="username"
                 placeholder="Enter your username"
-                className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3.5 text-white placeholder-slate-500 outline-none transition focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-3 text-sm sm:text-base text-white placeholder-slate-500 outline-none transition focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-300">Password</label>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-300">Password</label>
               <div className="relative">
                 <input
                   type={showPass ? 'text' : 'password'}
@@ -286,7 +326,7 @@ export default function Login() {
                   onChange={e => setForm({ ...form, password: e.target.value })}
                   autoComplete="current-password"
                   placeholder="Enter your password"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3.5 pr-11 text-white placeholder-slate-500 outline-none transition focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-3 pr-11 text-sm sm:text-base text-white placeholder-slate-500 outline-none transition focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20"
                 />
                 <button
                   type="button"
@@ -298,12 +338,12 @@ export default function Login() {
               </div>
             </div>
             {error && (
-              <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">{error}</div>
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-300">{error}</div>
             )}
             <button
               type="submit"
               disabled={loading}
-              className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-4 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
+              className="mt-0.5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 sm:py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
             >
               {loading ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -410,8 +450,8 @@ export default function Login() {
           )}
 
           {/* Android / iPhone / Desktop — PWA only, no APK */}
-          <div className="mt-6 border-t border-white/10 pt-5">
-            <div className="mb-3 text-center text-[10px] font-bold uppercase tracking-[2px] text-slate-500">
+          <div className="mt-4 sm:mt-5 border-t border-white/10 pt-4">
+            <div className="mb-2.5 text-center text-[10px] font-bold uppercase tracking-[2px] text-slate-500">
               {pwaInstalled ? 'App installed' : 'Get the App'}
             </div>
 
@@ -481,7 +521,7 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="mt-8 text-center text-xs text-slate-600">
+        <p className="mt-4 sm:mt-6 text-center text-xs text-slate-600">
           &copy; {new Date().getFullYear()} EpicSpire · Restaurant POS
         </p>
       </div>

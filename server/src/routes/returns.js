@@ -3,6 +3,7 @@ import Return from '../models/Return.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { blockIfClosedFromBody, blockIfClosedFromModel } from '../middleware/dayClosed.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { mergeBranchFilter, stampBranchId } from '../utils/branchScope.js'
 
 const router = Router()
 
@@ -12,9 +13,10 @@ router.use(authRequired)
 router.get('/', async (req, res, next) => {
   try {
     const { date, from, to } = req.query
-    const q = {}
+    let q = {}
     if (date) q.date = date
     if (from || to) q.date = { ...(q.date || {}), ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) }
+    q = mergeBranchFilter(req, q)
     const rows = await Return.find(q).sort({ createdAt: -1 })
     res.json(rows)
   } catch (e) { next(e) }
@@ -24,7 +26,7 @@ router.get('/', async (req, res, next) => {
 router.post('/', blockIfClosedFromBody('date'), async (req, res, next) => {
   try {
     const body = req.body || {}
-    const doc = {
+    const doc = stampBranchId(req, {
       date: body.date,
       saleId: body.saleId || undefined,
       customer: body.customer || undefined,
@@ -32,7 +34,7 @@ router.post('/', blockIfClosedFromBody('date'), async (req, res, next) => {
       refund: Number(body.refund || 0),
       reason: body.reason || undefined,
       paymentMethod: body.paymentMethod || 'cash',
-    }
+    })
     const saved = await Return.create(doc)
     await logAudit(req, 'return', `Created return ${saved.id} for sale ${saved.saleId || '-'}`, { id: saved.id, refund: saved.refund })
     res.status(201).json(saved)

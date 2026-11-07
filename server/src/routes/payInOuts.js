@@ -14,7 +14,7 @@ router.get('/', async (req, res, next) => {
     const pageNum = Math.max(1, parseInt(page, 10) || 1)
     const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 20))
 
-    const query = {}
+    let query = {}
     if (from || to) query.date = { ...(from ? { $gte: String(from) } : {}), ...(to ? { $lte: String(to) } : {}) }
     if (type) query.type = String(type)
     if (search.trim()) {
@@ -27,6 +27,8 @@ router.get('/', async (req, res, next) => {
         { userName: regex },
       ]
     }
+    const { mergeBranchFilter } = await import('../utils/branchScope.js')
+    query = mergeBranchFilter(req, query)
 
     const total = await PayInOut.countDocuments(query)
     const rows = await PayInOut.find(query)
@@ -41,7 +43,8 @@ router.get('/', async (req, res, next) => {
 router.post('/', requireRole('Admin','Manager'), blockIfClosedFromBody('date'), async (req, res, next) => {
   try {
     const body = req.body || {}
-    const rec = await PayInOut.create({
+    const { stampBranchId } = await import('../utils/branchScope.js')
+    const rec = await PayInOut.create(stampBranchId(req, {
       date: String(body.date),
       type: String(body.type || 'IN'),
       amount: Number(body.amount || 0),
@@ -49,7 +52,7 @@ router.post('/', requireRole('Admin','Manager'), blockIfClosedFromBody('date'), 
       note: body.note || '',
       userId: req.user?.id || '',
       userName: req.user?.username || '',
-    })
+    }))
     await logAudit(req, 'cash', `Pay ${rec.type} ${rec.amount} on ${rec.date}`, { id: rec._id })
     res.status(201).json(rec)
   } catch (e) { next(e) }

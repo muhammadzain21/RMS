@@ -20,6 +20,11 @@ const MenuItemSchema = new mongoose.Schema({
 
   active: { type: Boolean, default: true },
   discount: { type: Number, default: 0 },
+
+  // Empty/null = shared across all branches. Set = only visible for that branch.
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
+
+MenuItemSchema.index({ name: 1, category: 1, branchId: 1 })
 
 export default mongoose.model('MenuItem', MenuItemSchema)

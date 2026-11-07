@@ -64,13 +64,15 @@ async function requireDeleteKey(req, res) {
 router.get('/', async (req, res, next) => {
   try {
     const { from, to, page, limit, search, q } = req.query
-    const query = {}
+    let query = {}
     if (from || to) query.date = { ...(from ? { $gte: String(from) } : {}), ...(to ? { $lte: String(to) } : {}) }
     const s = String(search || q || '').trim()
     if (s) {
       const rx = new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
       query.$or = [{ date: rx }, { note: rx }, { userName: rx }]
     }
+    const { mergeBranchFilter } = await import('../utils/branchScope.js')
+    query = mergeBranchFilter(req, query)
     if (page) {
       const p = Math.max(1, parseInt(page, 10) || 1)
       const lim = Math.max(1, Math.min(500, parseInt(limit, 10) || 50))
@@ -91,7 +93,9 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
     const body = req.body || {}
     const date = String(body.date)
-    const existing = await DayClose.findOne({ date })
+    const { stampBranchId, resolveBranchId } = await import('../utils/branchScope.js')
+    const branchIdForClose = String(resolveBranchId(req) || '')
+    const existing = await DayClose.findOne({ date, branchId: branchIdForClose })
     if (existing) return res.status(409).json({ error: 'Day already closed for this date' })
 
     const openRecalls = await countOpenRecalls()
@@ -104,7 +108,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       })
     }
 
-    const rec = await DayClose.create({
+    const rec = await DayClose.create(stampBranchId(req, {
       date,
       openingCash: Number(body.openingCash||0),
       cashSales: Number(body.cashSales||0),
@@ -125,7 +129,8 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       note: body.note || '',
       userId: req.user?.id || '',
       userName: req.user?.username || '',
-    })
+    }))
+    const branchId = resolveBranchId(req) || ''
 
     // Cash left at counter → next business day's opening (create or overwrite auto entry)
     const left = Math.max(0, Number(body.leftAtCounter || 0))
@@ -134,10 +139,11 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       const nextDate = addOneDayYmd(date)
       if (nextDate) {
         nextOpening = await CashOpening.findOneAndUpdate(
-          { date: nextDate },
+          { date: nextDate, branchId: String(branchId || '') },
           {
             $set: {
               date: nextDate,
+              branchId: String(branchId || ''),
               openingCash: left,
               note: `Auto from day close ${date}`,
               userId: req.user?.id || '',
@@ -178,10 +184,12 @@ router.post('/reopen', requireRole('Admin','Manager'), async (req, res, next) =>
     if (!(await requireDeleteKey(req, res))) return
     const date = String(req.body?.date || '')
     if (!date) return res.status(400).json({ error: 'date is required' })
-    const existing = await DayClose.findOne({ date })
+    const { resolveBranchId } = await import('../utils/branchScope.js')
+    const branchId = String(resolveBranchId(req) || '')
+    const existing = await DayClose.findOne({ date, branchId })
     if (!existing) return res.status(404).json({ error: 'No day close found for date' })
     await DayClose.deleteOne({ _id: existing._id })
-    await logAudit(req, 'day', `Re-opened day ${date}`, { date, id: existing._id })
+    await logAudit(req, 'day', `Re-opened day ${date}`, { date, id: existing._id, branchId })
     res.json({ ok: true })
   } catch (e) { next(e) }
 })

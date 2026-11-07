@@ -16,6 +16,27 @@ const SettingsSchema = new mongoose.Schema({
   taxRate: { type: Number, default: 0 },
   // Sell page: show Personal (complimentary) payment option
   showPersonalPayment: { type: Boolean, default: false },
+  // Sell page bill fields — unchecked = hidden on Sell (all branches). Default all off.
+  sellPageFields: {
+    type: {
+      totalTax: { type: Boolean, default: false },
+      amountIncTax: { type: Boolean, default: false },
+      totalItemsDiscount: { type: Boolean, default: false },
+      billDiscPct: { type: Boolean, default: false },
+      billDiscAmt: { type: Boolean, default: false },
+      serviceCharges: { type: Boolean, default: false },
+      taxAmt: { type: Boolean, default: false },
+    },
+    default: () => ({
+      totalTax: false,
+      amountIncTax: false,
+      totalItemsDiscount: false,
+      billDiscPct: false,
+      billDiscAmt: false,
+      serviceCharges: false,
+      taxAmt: false,
+    }),
+  },
   // Dashboard behavior: whether 'Today' widgets should use business day (tied to day close)
   useBusinessDayForToday: { type: Boolean, default: true },
   // Business day cutoff hour (0-23). If now < cutoff, "business today" is yesterday.

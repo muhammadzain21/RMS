@@ -4,7 +4,7 @@ import Pagination from './Pagination.jsx'
 export default function DataTable({
  columns,
  data,
- pageSize = 20,
+ pageSize = 100,
  pageSizeOptions = [20, 30, 50, 100],
  searchable = true,
  compact = false,

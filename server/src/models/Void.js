@@ -22,6 +22,7 @@ const VoidSchema = new mongoose.Schema({
   remarks: { type: String },
   items: { type: [VoidItemSchema], default: [] },
   userId: { type: String },
+  branchId: { type: String, default: '', index: true },
   idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
 }, { timestamps: true })
 

@@ -6,6 +6,7 @@ import './index.css'
 import { UIProvider } from './state/UIContext.jsx'
 import { AuthProvider } from './state/AuthContext.jsx'
 import { DataProvider } from './state/DataContext.jsx'
+import { BranchProvider } from './state/BranchContext.jsx'
 
 const isElectron = /Electron/i.test(navigator.userAgent)
 const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent))
@@ -22,6 +23,8 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
     const guessBase = `http://${host}:5000`
     const isLocal = (u) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(String(u||''))
     const pickBase = () => {
+      // Electron/dev: prefer local API so stale cloud URLs don't break login
+      if (isElectron && import.meta.env.DEV) return guessBase
       // Priority: saved server URL (mobile) > env base > guessed base
       const s = String(savedBase||'').trim()
       if (s) return s
@@ -38,10 +41,25 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
     g.fetch = (input, init) => {
       try{
         const toUrl = (u) => typeof u === 'string' ? u : (u && 'url' in u ? u.url : '')
-        const url = toUrl(input)
-        if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return orig(input, init)
+        let url = toUrl(input)
+        const nextInit = init ? { ...init } : {}
+        // Auto-attach active branch for multi-branch writes/reads
+        try {
+          const branchId = g.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || ''
+          // Skip auth/health/config — no branch scope needed (also avoids CORS preflight noise)
+          // Warehouse catalog is HQ-global (no branch). Auth/health/config skip too.
+          // Call-center list/inbox is cross-branch by default (pages may still pass branchId when needed)
+          // Shared/global: customers + call-center lists; warehouse is HQ catalog
+          const skipBranch = /\/api\/(auth|health|client-config|warehouse|call-center-orders|customers)(\/|$|\?)/i.test(String(url || ''))
+          if (branchId && !skipBranch && typeof url === 'string' && url.includes('/api/')) {
+            const headers = new Headers(nextInit.headers || (input && input.headers) || {})
+            if (!headers.has('X-Branch-Id')) headers.set('X-Branch-Id', branchId)
+            nextInit.headers = headers
+          }
+        } catch {}
+        if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return orig(input, nextInit)
         const base = String(g.API_BASE || '').replace(/\/+$/, '')
-        if (!base) return orig(input, init)
+        if (!base) return orig(input, nextInit)
         const candidates = [
           'http://localhost:5000',
           'https://localhost:5000',
@@ -53,9 +71,10 @@ const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
         for (const c of candidates) {
           if (c === base) continue
           if (url === c || url.startsWith(c + '/')) {
-            return orig(base + url.slice(c.length), init)
+            return orig(base + url.slice(c.length), nextInit)
           }
         }
+        return orig(input, nextInit)
       }catch{}
       return orig(input, init)
     }
@@ -82,9 +101,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <Router>
       <UIProvider>
         <AuthProvider>
-          <DataProvider>
-            <App />
-          </DataProvider>
+          <BranchProvider>
+            <DataProvider>
+              <App />
+            </DataProvider>
+          </BranchProvider>
         </AuthProvider>
       </UIProvider>
     </Router>

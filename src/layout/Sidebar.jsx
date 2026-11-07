@@ -1,15 +1,16 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { dashboardItem, navSections, myWorkItem, myWorkNavItems } from './navConfig.js'
+import { dashboardItem, navSections, myWorkItem, myWorkNavItems, expandEnabledPaths } from './navConfig.js'
 import { LogOut, X, Menu as MenuIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useData } from '../state/DataContext.jsx'
 
 // ─── Tailwind token strings ─────────────────────────────────────────────────
 const SB_BG = 'bg-gradient-to-b from-[#0f2d5c] via-[#0c2449] to-[#0a1e3c]'
 const SB_BORDER = 'border-white/10'
-const SB_ITEM_BASE = 'flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer w-full'
+const SB_ITEM_BASE = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.9375rem] font-medium transition-all duration-150 cursor-pointer w-full'
 const SB_ITEM_INACTIVE = 'text-slate-300 hover:bg-white/10 hover:text-white'
 const SB_ITEM_ACTIVE = 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
-const SB_SECTION_LABEL = 'px-3 pt-3 pb-1 text-[10px] font-semibold tracking-widest uppercase text-sky-200/50 select-none'
+const SB_SECTION_LABEL = 'px-3 pt-3 pb-1 text-[11px] font-semibold tracking-widest uppercase text-sky-200/50 select-none'
+const SB_SECTION_WAREHOUSE = 'px-3 pt-3 pb-1 text-[11px] font-bold tracking-widest uppercase text-cyan-300/80 select-none'
 
 // ─── Permission helpers ───────────────────────────────────────────────────
 // enabledPaths = superadmin-managed feature access (null/empty array = all enabled)
@@ -17,13 +18,10 @@ const isEnabled = (enabledPaths, path) =>
  !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
 
 export function isDashboardVisible(user, enabledPaths) {
- if (user?.role === 'SuperAdmin') return true
+ enabledPaths = expandEnabledPaths(enabledPaths)
+ // Admin / SuperAdmin always see everything
+ if (user?.role === 'SuperAdmin' || user?.role === 'Admin') return true
  if (!isEnabled(enabledPaths, '/')) return false
- // Custom per-user permissions apply even to Admin accounts
- if (user?.useCustomPermissions && Array.isArray(user.permissions)) {
- return user.permissions.some(p => p.path === '/' && p.visible)
- }
- if (user?.role === 'Admin') return true
  if (user?.permissions && Array.isArray(user.permissions)) {
  return user.permissions.some(p => p.path === '/' && p.visible)
  }
@@ -41,19 +39,23 @@ function withStaffMyWork(sections, user, enabledPaths) {
 }
 
 export function getVisibleSections(user, enabledPaths) {
+ enabledPaths = expandEnabledPaths(enabledPaths)
  const sections = navSections()
- if (user?.role === 'SuperAdmin') return withStaffMyWork(sections, user, enabledPaths)
- if (user?.role === 'Admin' && !user?.useCustomPermissions) {
- return withStaffMyWork(
-  sections
-   .map(s => ({ ...s, items: s.items.filter(i => i.to !== '/my' && isEnabled(enabledPaths, i.to)) }))
-   .filter(s => s.items.length > 0),
-  user,
-  enabledPaths
- )
+ // Admin / SuperAdmin always get every page
+ if (user?.role === 'SuperAdmin' || user?.role === 'Admin') {
+ return withStaffMyWork(sections, user, enabledPaths)
  }
  if (user?.permissions && Array.isArray(user.permissions)) {
  const allowedPaths = new Set(user.permissions.filter(p => p.visible && p.path !== '/my').map(p => p.path))
+ const roleName = String(user?.role || '')
+ if (roleName === 'Manager') {
+  for (const p of ['/warehouse/stock', '/warehouse/suppliers', '/warehouse/transfers', '/warehouse/transfer-history']) {
+   if (!allowedPaths.has(p)) {
+    const perm = user.permissions.find(x => x.path === p)
+    if (!perm || perm.visible !== false) allowedPaths.add(p)
+   }
+  }
+ }
  return withStaffMyWork(
   sections
    .map(s => ({ ...s, items: s.items.filter(i => i.to !== '/my' && allowedPaths.has(i.to) && isEnabled(enabledPaths, i.to)) }))
@@ -110,7 +112,7 @@ const NavItem = ({ item, onClick }) => {
  <aside
  className={`
  no-print hidden md:flex flex-none flex-col
- ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-52 min-w-[13rem]'}
+ ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-60 min-w-[15rem]'}
  sticky top-0 h-[100dvh] overflow-y-auto overflow-x-visible app-drawer-safe
  ${SB_BG} border-r ${SB_BORDER}
  transition-[width] duration-200 z-[1000]
@@ -121,7 +123,7 @@ const NavItem = ({ item, onClick }) => {
  {(brand?.[0] || 'R').toUpperCase()}
  </span></div>
  {!collapsed && (
- <div><div className="text-xs font-bold text-white leading-tight tracking-wide truncate max-w-[130px]">{brand}</div><div className="text-[10px] text-slate-400 dark:text-gray-400 font-medium tracking-wider uppercase">POS System</div></div>
+ <div><div className="text-sm font-bold text-white leading-tight tracking-wide truncate max-w-[160px]">{brand}</div><div className="text-[11px] text-slate-400 dark:text-gray-400 font-medium tracking-wider uppercase">POS System</div></div>
  )}
  </div>
 
@@ -136,7 +138,7 @@ const NavItem = ({ item, onClick }) => {
  {visibleSections.map(section => (
  <div key={section.label} className="pt-1">
  {!collapsed && (
- <div className={SB_SECTION_LABEL}>{section.label}</div>
+ <div className={section.label === 'Warehouse' ? SB_SECTION_WAREHOUSE : SB_SECTION_LABEL}>{section.label}</div>
  )}
  {section.items.map(item => (
  <NavItem key={item.to} item={item} />
@@ -156,9 +158,9 @@ const NavItem = ({ item, onClick }) => {
  ) : (
  <div className="flex items-center justify-between px-1"><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-xs font-semibold text-white">
  {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
- </div><span className="text-xs text-slate-300 dark:text-gray-300 truncate max-w-[80px]">{user?.name || user?.email || 'User'}</span></div><button
+ </div> <span className="text-sm text-slate-300 dark:text-gray-300 truncate max-w-[100px]">{user?.name || user?.email || 'User'}</span></div><button
  onClick={() => { logout(); navigate('/login') }}
- className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors"
+ className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
 >
  <LogOut size={14} /> Log Out
  </button></div>
@@ -190,7 +192,7 @@ const NavItem = ({ item, onClick }) => {
 
  {/* Mobile grouped sections */}
  {visibleSections.map(section => (
- <div key={section.label} className="pt-1"><div className={SB_SECTION_LABEL}>{section.label}</div>
+ <div key={section.label} className="pt-1"><div className={section.label === 'Warehouse' ? SB_SECTION_WAREHOUSE : SB_SECTION_LABEL}>{section.label}</div>
  {section.items.map(item => {
  if (item.gated && !canSell) {
  return (

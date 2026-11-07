@@ -55,6 +55,17 @@ import Tables from './pages/tables/Tables.jsx'
 import MenuList from './pages/menu/MenuList.jsx'
 import Categories from './pages/menu/Categories.jsx'
 import Recipes from './pages/menu/Recipes.jsx'
+import BranchesAdmin from './pages/hq/BranchesAdmin.jsx'
+import CallCenterOrders from './pages/hq/CallCenterOrders.jsx'
+import HqCompare from './pages/hq/HqCompare.jsx'
+import CallCenterInbox from './pages/sales/CallCenterInbox.jsx'
+import TransferInbox from './pages/inventory/TransferInbox.jsx'
+import SyncBootstrap from './components/SyncBootstrap.jsx'
+import WarehouseStock from './pages/warehouse/WarehouseStock.jsx'
+import WarehouseSuppliers from './pages/warehouse/WarehouseSuppliers.jsx'
+import WarehouseSupplierHistory from './pages/warehouse/WarehouseSupplierHistory.jsx'
+import WarehouseTransfers from './pages/warehouse/WarehouseTransfers.jsx'
+import WarehouseTransferHistory from './pages/warehouse/WarehouseTransferHistory.jsx'
 
 function App() {
   const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent))
@@ -92,6 +103,7 @@ function App() {
     <>
     <SuperAdminPortal />
     <LicenseGate />
+    <SyncBootstrap />
     <Routes>
       <Route path="/server-config" element={<ServerConfig onSaved={() => setServerReady(true)} />} />
       <Route path="/login" element={<Login />} />
@@ -108,9 +120,22 @@ function App() {
 
         <Route path="inventory" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryList /></ProtectedRoute>} />
         <Route path="inventory/new" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryForm /></ProtectedRoute>} />
+        <Route path="inventory/transfers-in" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><TransferInbox /></ProtectedRoute>} />
         <Route path="inventory/:id" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryForm /></ProtectedRoute>} />
+        <Route path="warehouse" element={<Navigate to="/warehouse/stock" replace />} />
+        <Route path="warehouse/stock" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseStock /></ProtectedRoute>} />
+        <Route path="warehouse/suppliers" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseSuppliers /></ProtectedRoute>} />
+        <Route path="warehouse/suppliers/:id/history" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseSupplierHistory /></ProtectedRoute>} />
+        <Route path="warehouse/purchases" element={<Navigate to="/warehouse/suppliers" replace />} />
+        <Route path="warehouse/payments" element={<Navigate to="/warehouse/suppliers" replace />} />
+        <Route path="warehouse/transfers" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseTransfers /></ProtectedRoute>} />
+        <Route path="warehouse/transfer-history" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseTransferHistory /></ProtectedRoute>} />
+        <Route path="branches" element={<ProtectedRoute roles={["Admin"]}><BranchesAdmin /></ProtectedRoute>} />
+        <Route path="hq/compare" element={<ProtectedRoute roles={["Admin","Manager"]}><HqCompare /></ProtectedRoute>} />
 
         <Route path="sales/new" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><SalesNew /></ProtectedRoute>} />
+        <Route path="sales/cc-inbox" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><CallCenterInbox /></ProtectedRoute>} />
+        <Route path="call-center" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><CallCenterOrders /></ProtectedRoute>} />
         <Route path="sales/return" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><ReturnNew /></ProtectedRoute>} />
         <Route path="sales/history" element={<ProtectedRoute roles={["Admin","Manager"]}><SalesHistory /></ProtectedRoute>} />
         <Route path="sales/deleted" element={<ProtectedRoute roles={["Admin"]}><DeletedSales /></ProtectedRoute>} />
@@ -166,8 +191,8 @@ function App() {
 
         <Route path="profit-loss" element={<ProtectedRoute roles={["Admin","Manager"]}><ProfitLoss /></ProtectedRoute>} />
         <Route path="audit" element={<ProtectedRoute roles={["Admin"]}><AuditLog /></ProtectedRoute>} />
-        <Route path="users" element={<ProtectedRoute roles={["Admin"]}><UserList /></ProtectedRoute>} />
-        <Route path="sidebar-permissions" element={<ProtectedRoute roles={["Admin"]}><SidebarPermissions /></ProtectedRoute>} />
+        <Route path="users" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><UserList /></ProtectedRoute>} />
+        <Route path="sidebar-permissions" element={<ProtectedRoute roles={["Admin","Manager"]}><SidebarPermissions /></ProtectedRoute>} />
         <Route path="settings" element={<ProtectedRoute roles={["Admin","Manager"]}><Settings /></ProtectedRoute>} />
         <Route path="biometric-settings" element={<ProtectedRoute roles={["Admin"]}><BiometricSettings /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />

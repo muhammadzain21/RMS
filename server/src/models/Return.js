@@ -13,6 +13,7 @@ const ReturnSchema = new mongoose.Schema({
   refund: { type: Number, default: 0 },
   reason: { type: String },
   paymentMethod: { type: String, default: 'cash' },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('Return', ReturnSchema)

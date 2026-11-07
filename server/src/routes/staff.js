@@ -45,6 +45,8 @@ router.get('/', async (req, res, next) => {
         ]
       };
     }
+    const { mergeBranchFilter } = await import('../utils/branchScope.js')
+    query = mergeBranchFilter(req, query)
 
     const [total, rows] = await Promise.all([
       Staff.countDocuments(query),
@@ -83,7 +85,8 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       const exists = await User.findOne({ username: uname })
       if (exists) return res.status(409).json({ error: 'Username already exists — pick another or edit the user in Users' })
     }
-    const s = await Staff.create(staffBody)
+    const { stampBranchId } = await import('../utils/branchScope.js')
+    const s = await Staff.create(stampBranchId(req, staffBody))
     if (uname) {
       if (!password || String(password).length < 4) {
         await Staff.findByIdAndDelete(s._id)

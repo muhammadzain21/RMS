@@ -16,6 +16,7 @@ const DemandSchema = new mongoose.Schema({
   note: { type: String, default: '' },
   createdBy: { type: String, default: '' },
   createdByName: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('Demand', DemandSchema)

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { stampBranchId, branchFilter } from '../utils/branchScope.js'
 import Recall from '../models/Recall.js'
 import Kot from '../models/Kot.js'
 import { authRequired } from '../middleware/auth.js'
@@ -61,7 +62,7 @@ async function honorIdempotency(req, res) {
 router.get('/', async (req, res, next) => {
   try {
     const hasPagination = req.query.page !== undefined || req.query.limit !== undefined
-    const q = {}
+    const q = { ...branchFilter(req) }
     const waiterId = String(req.query.waiterId || '').trim()
     if (waiterId) q.waiterId = waiterId
     const orderType = String(req.query.orderType || '').trim()
@@ -138,10 +139,18 @@ router.post('/', async (req, res, next) => {
       )
       tokenNo = String(counter?.seq || '1')
     }
-    const doc = await Recall.create({ ...body, date: businessDate, tokenNo, idempotencyKey: req.headers['x-idempotency-key'] || null })
+    const doc = await Recall.create(stampBranchId(req, {
+      ...body,
+      date: businessDate,
+      tokenNo,
+      idempotencyKey: req.headers['x-idempotency-key'] || null,
+    }))
     try { await logAudit(req, 'recall', `Created recall ${doc.id || doc._id || ''}`, { id: doc.id || doc._id, orderNo: doc.orderNo, tokenNo: doc.tokenNo, orderType: doc.orderType, totalAmount: doc.totalAmount }) } catch {}
     res.status(201).json(sanitizeRecall(doc))
-  } catch (e) { next(e) }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
 })
 
 // PUT /api/recalls/:id (replace)

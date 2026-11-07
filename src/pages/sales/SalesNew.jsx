@@ -178,6 +178,42 @@ export default function SalesNew() {
   const [showSelectRider, setShowSelectRider] = useState(false)
   const [recallToPay, setRecallToPay] = useState(null)
 
+  // Call-center inbox → one-click cart load (then cashier KOTs normally)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('from') !== 'callcenter') return
+      const raw = sessionStorage.getItem('cc_cart_payload')
+      if (!raw) return
+      const cart = JSON.parse(raw)
+      sessionStorage.removeItem('cc_cart_payload')
+      const lines = Array.isArray(cart?.items) ? cart.items : []
+      if (!lines.length) return
+      setItems(lines.map(it => ({
+        itemId: it.itemId || undefined,
+        qty: Number(it.qty) || 1,
+        mods: it.mods || undefined,
+        custom: {
+          name: it.name || 'Item',
+          price: Number(it.price) || 0,
+          category: it.category || '',
+        },
+      })))
+      if (cart.orderType) setOrderType(cart.orderType === 'Drive-thru' ? 'Foodpanda' : cart.orderType)
+      if (cart.customer) {
+        setPayName(cart.customer.name || '')
+        setPayPhone(cart.customer.phone || '')
+        setPayAddress(cart.customer.address || '')
+      }
+      if (cart.remarks) setKotRemarks(cart.remarks)
+      try {
+        if (cart.callCenterOrderId) sessionStorage.setItem('cc_order_id', String(cart.callCenterOrderId))
+      } catch {}
+      toast.success('Call-center order loaded — review and press KOT')
+      window.history.replaceState({}, '', '/sales/new')
+    } catch {}
+  }, [])
+
   // Actions (stubs)
   const resetAll = () => {
     // Cart and filters
@@ -383,12 +419,13 @@ export default function SalesNew() {
       return String(max + 1)
     } catch { return '1' }
   }
-  // Compute currently occupied tables from recalls (dine-in only)
+  // Compute currently occupied tables from open dine-in recalls (name-normalized)
   const occupiedTables = useMemo(() => {
     try {
       const set = new Set()
       ;(Array.isArray(recalls) ? recalls : []).forEach(r => {
-        if ((r?.orderType||'') === 'Dine-in' && r?.tableNo) set.add(String(r.tableNo))
+        const tableNo = String(r?.tableNo || '').trim()
+        if ((r?.orderType || '') === 'Dine-in' && tableNo) set.add(tableNo)
       })
       return set
     } catch { return new Set() }
@@ -510,11 +547,13 @@ export default function SalesNew() {
         deliveryDate: businessDate,
         // Provide recallId so server can atomically delete the corresponding recall
         recallId: (ord?.id || ord?._id || null),
+        callCenterOrderId: ord?.callCenterOrderId || (() => { try { return sessionStorage.getItem('cc_order_id') || '' } catch { return '' } })(),
       }
       const saleIdemKey = (ord?.id || ord?._id) ? `sale-${ord.id || ord._id}` : `sale-${businessDate}-${Date.now()}`
       const saleRes = await fetch(`${API}/api/sales`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': saleIdemKey }, body: JSON.stringify(saleBody) })
       if (!saleRes.ok) { toast.error('Failed to create sale'); return }
       const savedSale = await saleRes.json()
+      try { if (saleBody.callCenterOrderId) sessionStorage.removeItem('cc_order_id') } catch {}
 
       // Print receipt — tip (not change) when customer overpays in cash
       // Look up floor information from tables array for Dine-in orders
@@ -1070,10 +1109,11 @@ export default function SalesNew() {
       if (!kotTable && activeRecall.tableNo) setKotTable(activeRecall.tableNo)
     }
     if (orderType === 'Dine-in') {
-      if (!kotTable) { toast.error('Please select a table'); kotSubmittingRef.current = false; setKotSubmitting(false); return }
+      const selectedTable = String(kotTable || '').trim()
+      if (!selectedTable) { toast.error('Please select a table'); kotSubmittingRef.current = false; setKotSubmitting(false); return }
       // Block creating a new recall on an occupied table (allow if updating same recalled order)
-      const isOccupied = occupiedTables.has(String(kotTable))
-      const isSameRecalledTable = !!(activeRecall && String(activeRecall.tableNo||'') === String(kotTable||''))
+      const isOccupied = occupiedTables.has(selectedTable)
+      const isSameRecalledTable = !!(activeRecall && String(activeRecall.tableNo || '').trim() === selectedTable)
       if (isOccupied && !isSameRecalledTable) {
         toast.error('This table is already occupied. Please choose another table or recall the existing order for this table.')
         // Reset guard since we aborted
@@ -1181,6 +1221,7 @@ export default function SalesNew() {
               const custom = it.custom || (m ? { name: m.name, price: Number(m.price||0), category: m.category } : null)
               return { itemId: it.itemId, qty: Number(it.qty||1), custom, mods: it.mods||{} }
             })
+            const ccOrderId = (() => { try { return sessionStorage.getItem('cc_order_id') || '' } catch { return '' } })()
             const kotBody = {
               createdAt: Date.now(),
               date: String(businessDate||'').slice(0,10),
@@ -1194,8 +1235,20 @@ export default function SalesNew() {
               customerAddress: payAddress || activeRecall?.customer?.address || '',
               remarks: kotRemarks || activeRecall.remarks || '',
               items: kotItems,
+              callCenterOrderId: ccOrderId || activeRecall?.callCenterOrderId || '',
             }
-            await fetch(`${API}/api/kots`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': idemKey }, body: JSON.stringify(kotBody) }).catch(()=>{})
+            const kotRes = await fetch(`${API}/api/kots`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': idemKey }, body: JSON.stringify(kotBody) }).catch(()=>null)
+            if (ccOrderId && kotRes?.ok) {
+              try {
+                const kj = await kotRes.json()
+                await fetch(`${API}/api/call-center-orders/${ccOrderId}/mark-kot`, {
+                  method: 'POST',
+                  headers: authHeaders,
+                  body: JSON.stringify({ kotId: kj.id || kj._id, recallId: activeRecall?.id || '' }),
+                })
+                sessionStorage.removeItem('cc_order_id')
+              } catch {}
+            }
           } catch {}
           // Look up floor for the table
           const tableObj = orderType === 'Dine-in' && kotTable
@@ -1279,6 +1332,7 @@ export default function SalesNew() {
       staffId: paymentMethod === 'staff' ? String(payStaffId) : '',
       staffName: paymentMethod === 'staff' ? payStaffName : '',
       staffSettlement: paymentMethod === 'staff' ? 'pay_later' : '',
+      callCenterOrderId: (() => { try { return sessionStorage.getItem('cc_order_id') || '' } catch { return '' } })(),
     }
     const res = await fetch(`${API}/api/recalls`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': idemKey }, body: JSON.stringify(body) })
         if (res.ok) {
@@ -1291,6 +1345,7 @@ export default function SalesNew() {
               const custom = it.custom || (m ? { name: m.name, price: Number(m.price||0), category: m.category } : null)
               return { itemId: it.itemId, qty: Number(it.qty||1), custom, mods: it.mods||{} }
             })
+            const ccOrderId = body.callCenterOrderId || ''
             const kotBody = {
               createdAt: Date.now(),
               date: String(businessDate||'').slice(0,10),
@@ -1304,8 +1359,20 @@ export default function SalesNew() {
               customerAddress: orderType==='Delivery' ? payAddress : '',
               remarks: kotRemarks || '',
               items: kotItems,
+              callCenterOrderId: ccOrderId,
             }
-            await fetch(`${API}/api/kots`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': idemKey }, body: JSON.stringify(kotBody) }).catch(()=>{})
+            const kotRes = await fetch(`${API}/api/kots`, { method: 'POST', headers: { ...authHeaders, 'X-Idempotency-Key': idemKey }, body: JSON.stringify(kotBody) }).catch(()=>null)
+            if (ccOrderId && kotRes?.ok) {
+              try {
+                const kj = await kotRes.json()
+                await fetch(`${API}/api/call-center-orders/${ccOrderId}/mark-kot`, {
+                  method: 'POST',
+                  headers: authHeaders,
+                  body: JSON.stringify({ kotId: kj.id || kj._id, recallId: createdRecall?.id || createdRecall?._id || '' }),
+                })
+                sessionStorage.removeItem('cc_order_id')
+              } catch {}
+            }
           } catch {}
           // Look up floor for the table
           const tableObj = orderType === 'Dine-in' && kotTable
@@ -1461,6 +1528,7 @@ export default function SalesNew() {
           cashReceived={cashReceived}
           onCashReceivedChange={setCashReceived}
           showPersonalPayment={Boolean(state.settings?.showPersonalPayment)}
+          sellPageFields={state.settings?.sellPageFields || {}}
         />
       </div>
     </form>

@@ -42,7 +42,7 @@ function StatCard({ title, value, icon: Icon, iconColor = 'bg-blue-500' }) {
     <div className="relative overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1.5 min-w-0">
-          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">{title}</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-body)]">{title}</span>
           <div className="text-xl font-extrabold tracking-tight text-[var(--color-text-primary)] truncate">{value}</div>
         </div>
         <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${iconColor} text-white shadow-md`}>
@@ -87,7 +87,6 @@ export default function ExpenseNew() {
   const [showHeads, setShowHeads] = useState(false)
   const [heads, setHeads] = useState(['Rent', 'Utilities', 'Wages', 'Salaries', 'Misc'])
   const [newHead, setNewHead] = useState('')
-  const [inlineHead, setInlineHead] = useState('')
   const [form, setForm] = useState(() => emptyForm(defaultDate, currentUserName))
  const [editingId, setEditingId] = useState('')
 
@@ -101,7 +100,7 @@ export default function ExpenseNew() {
  const [q, setQ] = useState('')
 
  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(50)
+  const [limit, setLimit] = useState(100)
  const [total, setTotal] = useState(0)
  const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState({ total: 0, count: 0, byCategory: [], byAccountHead: [], byPaymentMethod: [], byPaidBy: [] })
@@ -228,7 +227,7 @@ export default function ExpenseNew() {
     }
   }
 
-  const addHead = async (raw, { select = false, clearInline = false } = {}) => {
+  const addHead = async (raw, { select = false } = {}) => {
     const h = String(raw || '').trim()
     if (!h) return null
     const existing = heads.find(x => x.toLowerCase() === h.toLowerCase())
@@ -239,7 +238,6 @@ export default function ExpenseNew() {
     }
     const next = [...heads, h]
     setNewHead('')
-    if (clearInline) setInlineHead('')
     await saveHeads(next)
     if (select) setForm(f => ({ ...f, expenseHead: h }))
     return h
@@ -348,38 +346,6 @@ export default function ExpenseNew() {
         <StatCard title="Entries" value={String(summary.count || 0)} icon={Tags} iconColor="bg-blue-500" />
         <StatCard title="Cash in Hand" value={`PKR ${Number(summary.byAccountHead?.find(x => x.name === 'Cash in Hand')?.amount || 0).toLocaleString()}`} icon={Wallet} iconColor="bg-emerald-500" />
         <StatCard title="From Bank" value={`PKR ${Number(summary.byAccountHead?.find(x => x.name === 'Bank')?.amount || 0).toLocaleString()}`} icon={Building2} iconColor="bg-indigo-500" />
-      </div>
-
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div>
-            <div className="font-extrabold text-[var(--color-text-primary)]">Expense Heads</div>
-            <div className="text-xs font-semibold text-[var(--color-text-muted)]">Saved permanently — pick them every time you add an expense</div>
-          </div>
-          <button type="button" onClick={() => setShowHeads(true)} className="ui-btn ui-btn-secondary text-sm">
-            <Settings2 className="h-4 w-4" /> Manage Heads
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {heads.map(h => (
-            <span key={h} className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-extrabold text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-200">
-              {h}
-            </span>
-          ))}
-          {!heads.length && <span className="text-sm font-semibold text-[var(--color-text-muted)]">No heads yet — click Manage Heads to add some</span>}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <input
-            value={newHead}
-            onChange={e => setNewHead(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addHead(newHead) } }}
-            className="input max-w-xs"
-            placeholder="Add new head (e.g. Fuel, Cleaning…)"
-          />
-          <button type="button" onClick={() => addHead(newHead)} className="ui-btn ui-btn-primary">
-            <Plus className="h-4 w-4" /> Add Head
-          </button>
-        </div>
       </div>
 
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm space-y-4">
@@ -509,26 +475,9 @@ export default function ExpenseNew() {
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Expense Head</label>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    <select value={form.expenseHead} onChange={e => setForm({ ...form, expenseHead: e.target.value })} className="input flex-1 min-w-[160px]">
-                      {heads.map(h => <option key={h} value={h}>{h}</option>)}
-                    </select>
-                    <input
-                      value={inlineHead}
-                      onChange={e => setInlineHead(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addHead(inlineHead, { select: true, clearInline: true }) } }}
-                      className="input flex-1 min-w-[140px]"
-                      placeholder="Or type new head"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => addHead(inlineHead, { select: true, clearInline: true })}
-                      className="ui-btn ui-btn-secondary"
-                    >
-                      <Plus className="h-4 w-4" /> Save Head
-                    </button>
-                  </div>
-                  <p className="text-xs font-semibold text-[var(--color-text-muted)] mt-1">New heads are saved permanently and appear in the list next time</p>
+                  <select value={form.expenseHead} onChange={e => setForm({ ...form, expenseHead: e.target.value })} className="input mt-1 w-full">
+                    {heads.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Account Head</label>

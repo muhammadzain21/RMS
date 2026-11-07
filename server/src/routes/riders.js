@@ -7,16 +7,19 @@ const router = Router()
 
 router.use(authRequired)
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const rows = await Rider.find().sort({ name: 1 })
+    const { mergeBranchFilter } = await import('../utils/branchScope.js')
+    const filter = mergeBranchFilter(req, {})
+    const rows = await Rider.find(filter).sort({ name: 1 })
     res.json(rows)
   } catch (e) { next(e) }
 })
 
 router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
-    const r = await Rider.create(req.body)
+    const { stampBranchId } = await import('../utils/branchScope.js')
+    const r = await Rider.create(stampBranchId(req, req.body || {}))
     try { await Audit.create({ type: 'rider', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Added rider ${r?.name || r?._id}`, meta: { id: r._id } }) } catch {}
     res.status(201).json(r)
   } catch (e) { next(e) }

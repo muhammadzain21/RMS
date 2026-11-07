@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useData } from '../state/DataContext.jsx'
+import { useBranch } from '../state/BranchContext.jsx'
 import ThemeToggle from '../components/ThemeToggle.jsx'
 import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelLeftDashed, ChevronDown, LogOut, KeyRound } from 'lucide-react'
 import { dashboardItem } from './navConfig.js'
@@ -8,6 +9,7 @@ import { isDashboardVisible, getVisibleSections } from './Sidebar.jsx'
 
 export default function Header({ brand, onMenuClick, onCollapseClick, collapsed, user, canSell, onBlockedSellClick, logout, sidebarHidden, onToggleSidebarHidden }) {
  const { state, businessDate } = useData()
+ const { branches, activeBranchId, setActiveBranchId } = useBranch()
  const navigate = useNavigate()
  const [currentTime, setCurrentTime] = useState(new Date())
  const [licenseInfo, setLicenseInfo] = useState({ valid: true, daysRemaining: Infinity })
@@ -104,7 +106,20 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar (nav moves to header)'}
  >
  {sidebarHidden ? <PanelLeftOpen size={18} /> : <PanelLeftDashed size={18} />}
- </button><div className="md:hidden font-bold text-white drop-shadow">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-3"><div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs"><span className="text-white/80 font-medium">Business Date:</span><span className="font-bold text-white">{businessDate || new Date().toISOString().slice(0, 10)}</span><span className={`ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${state?.daybook?.open ? 'bg-emerald-400 text-emerald-900' : 'bg-slate-500 text-white'}`}>
+ </button><div className="md:hidden font-bold text-white drop-shadow">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-3">
+ {branches.length > 0 ? (
+  <select
+    value={activeBranchId || ''}
+    onChange={(e) => setActiveBranchId(e.target.value)}
+    title="Active branch"
+    className="hidden sm:block max-w-[14rem] truncate rounded-lg border-0 bg-white/25 px-3 py-2 text-sm sm:text-base font-bold text-white outline-none shadow-sm"
+  >
+    {branches.map(b => (
+      <option key={b._id} value={b._id} className="text-slate-900">{b.name || b.code}</option>
+    ))}
+  </select>
+ ) : null}
+ <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs"><span className="text-white/80 font-medium">Business Date:</span><span className="font-bold text-white">{businessDate || new Date().toISOString().slice(0, 10)}</span><span className={`ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${state?.daybook?.open ? 'bg-emerald-400 text-emerald-900' : 'bg-slate-500 text-white'}`}>
  {state?.daybook?.open ? ' Open' : ' Closed'}
  </span></div>
  {showLicenseWarn && (

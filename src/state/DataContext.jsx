@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
+import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useCallback } from 'react'
 import { useAuth } from './AuthContext.jsx'
+import { useBranch } from './BranchContext.jsx'
 import { addDays, format } from 'date-fns'
 
 const DataContext = createContext(null)
@@ -499,140 +500,130 @@ export function DataProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
   const auth = useAuth()
   const token = auth?.token || ''
+  const { activeBranchId } = useBranch()
   const getAPI = () => ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
+  const stateRef = useRef(state)
+  stateRef.current = state
 
-  // Hydrate from backend APIs
-  useEffect(() => {
-    async function load() {
-      try {
-        const API = getAPI()
-        const headers = token ? { Authorization: `Bearer ${token}` } : {}
-        // Helper: try with auth, optionally retry without auth for public endpoints; return defVal on failure
-        const getJson = async (path, _defVal, allowUnauthRetry = false) => {
-          try {
-            let res = await fetch(`${API}${path}`, { headers, cache: 'no-store' })
-            if (!res.ok && (res.status === 401 || res.status === 403) && allowUnauthRetry) {
-              res = await fetch(`${API}${path}`, { cache: 'no-store' })
-            }
-            if (res.ok) return await res.json()
-          } catch {}
-          // Return undefined so we can decide not to overwrite existing state
-          return undefined
-        }
-        // Settings (object) is public; load it first
-        const settings = await getJson('/api/settings', null, true)
-        if (settings) {
-          try { console.debug('Settings loaded:', { companyName: settings.companyName, tablesCount: Array.isArray(settings.tables) ? settings.tables.length : 0 }) } catch {}
-        } else {
-          try { console.debug('Settings not loaded; using defaults') } catch {}
-        }
-
-        // If not logged in, skip all protected endpoints to avoid 401 spam
-        if (!token) {
-          try { console.debug('Auth token missing; skipping protected datasets and hydrating settings only') } catch {}
-          // Normalize settings while preserving all fields
-          const normalizedTables = Array.isArray(settings?.tables)
-            ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
-            : []
-          const mergedSettings = {
-            ...state.settings,
-            ...(settings || {}),
-            tables: normalizedTables,
+  const rehydrate = useCallback(async () => {
+    try {
+      const API = getAPI()
+      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      const getJson = async (path, _defVal, allowUnauthRetry = false) => {
+        try {
+          let res = await fetch(`${API}${path}`, { headers, cache: 'no-store' })
+          if (!res.ok && (res.status === 401 || res.status === 403) && allowUnauthRetry) {
+            res = await fetch(`${API}${path}`, { cache: 'no-store' })
           }
-          dispatch({ type: 'HYDRATE', payload: { settings: mergedSettings } })
-          return
-        }
-        const [staffSettings, menu, categories, staff, riders, customers, suppliers, ingredients, supplies, sales, deletedSales, recalls, returns, expenses, audit, cashOpenings, bookings, payInOuts, dayCloses, tablesList, helds, demands] = await Promise.all([
-          getJson('/api/staff-settings', {}),
-          getJson('/api/menu', []),
-          getJson('/api/categories', []),
-          getJson('/api/staff', []),
-          getJson('/api/riders', []),
-          getJson('/api/customers', []),
-          getJson('/api/suppliers', []),
-          getJson('/api/ingredients', []),
-          getJson('/api/supplies', []),
-          getJson('/api/sales?from=0000-00-00&to=9999-12-31', []),
-          getJson('/api/sales/deleted?from=0000-00-00&to=9999-12-31', []),
-          getJson('/api/recalls', []),
-          getJson('/api/returns?from=0000-00-00&to=9999-12-31', []),
-          getJson('/api/expenses?from=0000-00-00&to=9999-12-31', []),
-          getJson('/api/audit?limit=200', []),
-          getJson('/api/cash-openings', []),
-          getJson('/api/advance-bookings', []),
-          getJson('/api/pay-in-outs', []),
-          getJson('/api/day-closes', []),
-          getJson('/api/tables', []), // protected; no unauth retry
-          getJson('/api/helds', []),
-          getJson('/api/demands', []),
-        ])
-        // map backend ids to frontend ids where expected
-        const mapId = (x) => ({ ...x, id: x.id || x._id })
-        // Prefer /api/tables when available (logged-in). Fallback to settings.tables
-        const tablesFromApi = Array.isArray(tablesList) && tablesList.length > 0
-          ? tablesList.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
-          : null
-        try { console.debug('Tables source:', tablesFromApi ? 'tables API' : 'settings', { apiCount: tablesFromApi?.length || 0, settingsCount: Array.isArray(settings?.tables) ? settings.tables.length : 0 }) } catch {}
-
-        const mapList = (v, prev=[]) => Array.isArray(v) ? v.map(mapId) : prev
-        const payInOutRows = Array.isArray(payInOuts)
-          ? payInOuts
-          : (Array.isArray(payInOuts?.rows) ? payInOuts.rows : [])
-        const normalizedTablesAuth = (tablesFromApi && tablesFromApi.length)
-          ? tablesFromApi
-          : (Array.isArray(settings?.tables)
-            ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
-            : [])
-        const mergedSettingsAuth = {
-          ...state.settings,
-          ...(settings || {}),
-          // Ensure numeric fields are numbers when present
-          taxRate: Number(settings?.taxRate ?? state.settings.taxRate ?? 0),
-          businessDayCutoffHour: Number(settings?.businessDayCutoffHour ?? state.settings.businessDayCutoffHour ?? 4),
-          autoBackupEnabled: Boolean(settings?.autoBackupEnabled ?? state.settings.autoBackupEnabled),
-          autoBackupIntervalMinutes: Number(settings?.autoBackupIntervalMinutes ?? state.settings.autoBackupIntervalMinutes ?? 60),
-          tables: normalizedTablesAuth,
-        }
-        dispatch({ type: 'HYDRATE', payload: {
-          settings: mergedSettingsAuth,
-          staffSettings: {
-            standardCheckIn: staffSettings?.standardCheckIn || state.staffSettings.standardCheckIn,
-            standardCheckOut: staffSettings?.standardCheckOut || state.staffSettings.standardCheckOut,
-            lateThresholdMinutes: Number(staffSettings?.lateThresholdMinutes ?? state.staffSettings.lateThresholdMinutes),
-            bonusPerDay: Number(staffSettings?.bonusPerDay ?? state.staffSettings.bonusPerDay),
-            deductionPerAbsent: Number(staffSettings?.deductionPerAbsent ?? state.staffSettings.deductionPerAbsent),
-            deductionPerLate: Number(staffSettings?.deductionPerLate ?? state.staffSettings.deductionPerLate),
-          },
-          menu: mapList(menu, state.menu),
-          categories: mapList(categories, state.categories),
-          staff: mapList(staff?.data || staff, state.staff),
-          riders: mapList(riders, state.riders),
-          customers: mapList(customers, state.customers),
-          suppliers: mapList(suppliers, state.suppliers),
-          ingredients: mapList(ingredients, state.ingredients),
-          supplies: mapList(supplies, state.supplies),
-          sales: mapList(sales, state.sales),
-          deletedSales: mapList(deletedSales, state.deletedSales),
-          recalls: mapList(recalls, state.recalls),
-          returns: mapList(returns, state.returns),
-          expenses: mapList(expenses, state.expenses),
-          audit: mapList(audit, state.audit),
-          cashOpenings: mapList(cashOpenings, state.cashOpenings),
-          advanceBookings: mapList(bookings, state.advanceBookings),
-          payInOuts: mapList(payInOutRows, state.payInOuts),
-          dayCloses: mapList(dayCloses, state.dayCloses),
-          helds: mapList(helds, state.helds),
-          demands: mapList(demands, state.demands),
-        } })
-      } catch (e) {
-        // silent fail; app remains usable offline
-        // console.error('Failed to hydrate', e)
+          if (res.ok) return await res.json()
+        } catch {}
+        return undefined
       }
+      const settings = await getJson('/api/settings', null, true)
+      const prev = stateRef.current
+
+      if (!token) {
+        const normalizedTables = Array.isArray(settings?.tables)
+          ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
+          : []
+        dispatch({ type: 'HYDRATE', payload: { settings: { ...prev.settings, ...(settings || {}), tables: normalizedTables } } })
+        return
+      }
+
+      const [staffSettings, menu, categories, staff, riders, customers, suppliers, ingredients, supplies, sales, deletedSales, recalls, returns, expenses, audit, cashOpenings, bookings, payInOuts, dayCloses, tablesList, helds, demands] = await Promise.all([
+        getJson('/api/staff-settings', {}),
+        getJson('/api/menu', []),
+        getJson('/api/categories', []),
+        getJson('/api/staff?limit=500', []),
+        getJson('/api/riders', []),
+        getJson('/api/customers', []),
+        getJson('/api/suppliers', []),
+        getJson('/api/ingredients', []),
+        getJson('/api/supplies', []),
+        getJson('/api/sales?from=0000-00-00&to=9999-12-31', []),
+        getJson('/api/sales/deleted?from=0000-00-00&to=9999-12-31', []),
+        getJson('/api/recalls', []),
+        getJson('/api/returns?from=0000-00-00&to=9999-12-31', []),
+        getJson('/api/expenses?from=0000-00-00&to=9999-12-31&limit=200', []),
+        getJson('/api/audit?limit=200', []),
+        getJson('/api/cash-openings', []),
+        getJson('/api/advance-bookings', []),
+        getJson('/api/pay-in-outs?limit=100', []),
+        getJson('/api/day-closes', []),
+        getJson('/api/tables', []),
+        getJson('/api/helds', []),
+        getJson('/api/demands?limit=200', []),
+      ])
+
+      const mapId = (x) => ({ ...x, id: x.id || x._id })
+      // Successful empty list clears previous branch data; failed request keeps prev
+      const mapList = (v, prevList = [], { shared = false } = {}) => {
+        if (v === undefined) return prevList
+        if (Array.isArray(v)) return v.map(mapId)
+        if (v && Array.isArray(v.rows)) return v.rows.map(mapId)
+        if (v && Array.isArray(v.data)) return v.data.map(mapId)
+        return shared ? prevList : []
+      }
+      const tablesFromApi = Array.isArray(tablesList) && tablesList.length > 0
+        ? tablesList.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
+        : null
+      const normalizedTablesAuth = (tablesFromApi && tablesFromApi.length)
+        ? tablesFromApi
+        : (Array.isArray(settings?.tables)
+          ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
+          : [])
+      const mergedSettingsAuth = {
+        ...prev.settings,
+        ...(settings || {}),
+        taxRate: Number(settings?.taxRate ?? prev.settings.taxRate ?? 0),
+        businessDayCutoffHour: Number(settings?.businessDayCutoffHour ?? prev.settings.businessDayCutoffHour ?? 4),
+        autoBackupEnabled: Boolean(settings?.autoBackupEnabled ?? prev.settings.autoBackupEnabled),
+        autoBackupIntervalMinutes: Number(settings?.autoBackupIntervalMinutes ?? prev.settings.autoBackupIntervalMinutes ?? 60),
+        tables: normalizedTablesAuth,
+      }
+      dispatch({ type: 'HYDRATE', payload: {
+        settings: mergedSettingsAuth,
+        staffSettings: {
+          standardCheckIn: staffSettings?.standardCheckIn || prev.staffSettings.standardCheckIn,
+          standardCheckOut: staffSettings?.standardCheckOut || prev.staffSettings.standardCheckOut,
+          lateThresholdMinutes: Number(staffSettings?.lateThresholdMinutes ?? prev.staffSettings.lateThresholdMinutes),
+          bonusPerDay: Number(staffSettings?.bonusPerDay ?? prev.staffSettings.bonusPerDay),
+          deductionPerAbsent: Number(staffSettings?.deductionPerAbsent ?? prev.staffSettings.deductionPerAbsent),
+          deductionPerLate: Number(staffSettings?.deductionPerLate ?? prev.staffSettings.deductionPerLate),
+        },
+        menu: mapList(menu, []),
+        categories: mapList(categories, prev.categories, { shared: true }),
+        staff: mapList(staff === undefined ? undefined : (staff?.data || staff), []),
+        riders: mapList(riders, []),
+        customers: mapList(customers, prev.customers, { shared: true }),
+        suppliers: mapList(suppliers, prev.suppliers, { shared: true }),
+        ingredients: mapList(ingredients, []),
+        supplies: mapList(supplies, []),
+        sales: mapList(sales, []),
+        deletedSales: mapList(deletedSales, []),
+        recalls: mapList(recalls, []),
+        returns: mapList(returns, []),
+        expenses: mapList(expenses, []),
+        audit: mapList(audit, []),
+        cashOpenings: mapList(cashOpenings, []),
+        advanceBookings: mapList(bookings, []),
+        payInOuts: mapList(payInOuts, []),
+        dayCloses: mapList(dayCloses, []),
+        helds: mapList(helds, []),
+        demands: mapList(demands, []),
+      } })
+      try {
+        window.dispatchEvent(new CustomEvent('data_rehydrated', { detail: { branchId: activeBranchId || '' } }))
+      } catch {}
+    } catch {
+      // silent fail; app remains usable offline
     }
-    load()
-    // rehydrate whenever auth token changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [token, activeBranchId])
+
+  // Hydrate on login and whenever the header branch changes
+  useEffect(() => {
+    rehydrate()
+  }, [rehydrate])
 
   // Global Auto-backup (Electron only): runs even when Settings page is not open
   const backupTimerRef = useRef(null)
@@ -726,14 +717,13 @@ export function DataProvider({ children }) {
   const lowStock = state.ingredients.filter(i => i.qty <= 5)
   const ordersCount = state.sales.length
 
-  const actions = useMemo(() => ({ dispatch }), [])
-
   const value = useMemo(() => ({
     state: { ...state, daybook: effectiveDaybook },
     dispatch,
+    rehydrate,
     businessDate,
     metrics: { todaysSales, monthlySales, lowStockCount: lowStock.length, ordersCount },
-  }), [state, effectiveDaybook, businessDate, todaysSales, monthlySales, lowStock.length, ordersCount])
+  }), [state, effectiveDaybook, businessDate, todaysSales, monthlySales, lowStock.length, ordersCount, rehydrate])
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

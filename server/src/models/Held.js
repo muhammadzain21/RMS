@@ -24,6 +24,7 @@ const HeldSchema = new mongoose.Schema({
   staffName: { type: String, default: '' },
   staffSettlement: { type: String, default: '' },
   customer: { type: Object, default: null },
+  branchId: { type: String, default: '', index: true },
   idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
 }, { timestamps: true })
 

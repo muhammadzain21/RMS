@@ -17,9 +17,12 @@ router.post('/', authRequired, async (req, res, next) => {
     if (notes !== undefined) update.notes = notes
     if (lateMinutes !== undefined) update.lateMinutes = Number(lateMinutes || 0)
     if (earlyOutMinutes !== undefined) update.earlyOutMinutes = Number(earlyOutMinutes || 0)
+    const { stampBranchId, resolveBranchId } = await import('../utils/branchScope.js')
+    const stamped = stampBranchId(req, { staffId, staffName, date, ...update })
+    const branchId = stamped.branchId || resolveBranchId(req) || ''
     const doc = await Attendance.findOneAndUpdate(
-      { staffId, date },
-      { $set: { staffId, staffName, date, ...update } },
+      { staffId, date, ...(branchId ? { branchId } : {}) },
+      { $set: stamped },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     )
     try { await Audit.create({ type: 'attendance', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Attendance ${staffName} ${status || ''} on ${date}`, meta: { staffId, date, update } }) } catch {}

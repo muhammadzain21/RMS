@@ -97,6 +97,20 @@ export default function Settings() {
  salesDeleteKey: String(s.salesDeleteKey || ''),
  })
 
+ const defaultSellFields = () => ({
+ totalTax: false,
+ amountIncTax: false,
+ totalItemsDiscount: false,
+ billDiscPct: false,
+ billDiscAmt: false,
+ serviceCharges: false,
+ taxAmt: false,
+ })
+ const [sellFields, setSellFields] = useState(() => ({
+ ...defaultSellFields(),
+ ...(s.sellPageFields || {}),
+ }))
+
  useEffect(() => {
  const ns = state.settings || {}
  setCompany({
@@ -119,6 +133,10 @@ export default function Settings() {
  autoBackupIntervalMinutes: Number(ns.autoBackupIntervalMinutes || 60),
  backupFolderPath: String(ns.backupFolderPath || ''),
  salesDeleteKey: String(ns.salesDeleteKey || ''),
+ })
+ setSellFields({
+ ...defaultSellFields(),
+ ...(ns.sellPageFields || {}),
  })
  }, [state.settings])
 
@@ -171,6 +189,23 @@ export default function Settings() {
  toast.success('System settings saved successfully')
  } catch (e) {
  toast.error('Failed to save system settings')
+ }
+ }
+
+ const saveRestrictions = async () => {
+ try {
+ const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+ const res = await fetch(`${API}/api/settings`, {
+ method: 'PATCH',
+ headers,
+ body: JSON.stringify({ sellPageFields: sellFields }),
+ })
+ if (!res.ok) throw new Error('Failed')
+ const saved = await res.json()
+ dispatch({ type: 'HYDRATE', payload: { settings: saved } })
+ toast.success('Sell page restrictions saved')
+ } catch {
+ toast.error('Failed to save restrictions')
  }
  }
 
@@ -274,7 +309,7 @@ export default function Settings() {
  <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><span className="text-2xl text-white font-bold">S</span></div><div><h1 className="text-2xl font-bold text-gray-900">Settings</h1><p className="text-sm text-gray-500">Manage your restaurant and system preferences</p></div></div>
 
  {/* Tabs */}
- <div className="border-b border-gray-200 dark:border-gray-700"><div className="flex gap-1"><TabButton id="company" label="Restaurant" icon="" activeTab={tab} onClick={setTab} /><TabButton id="system" label="System" icon="" activeTab={tab} onClick={setTab} /><TabButton id="backup" label="Backup & Security" icon="" activeTab={tab} onClick={setTab} /></div></div>
+ <div className="border-b border-gray-200 dark:border-gray-700"><div className="flex flex-wrap gap-1"><TabButton id="company" label="Restaurant" icon="" activeTab={tab} onClick={setTab} /><TabButton id="system" label="System" icon="" activeTab={tab} onClick={setTab} /><TabButton id="restriction" label="Restriction" icon="" activeTab={tab} onClick={setTab} /><TabButton id="backup" label="Backup & Security" icon="" activeTab={tab} onClick={setTab} /></div></div>
 
  {/* Company Settings */}
  {tab === 'company' && (
@@ -409,6 +444,51 @@ export default function Settings() {
  >
  Refresh Printers
  </SecondaryButton></div></CardBody></Card><div className="flex justify-end"><PrimaryButton onClick={saveSystem} icon="">Save System Settings</PrimaryButton></div></div>
+ )}
+
+ {/* Restriction — Sell page bill fields */}
+ {tab === 'restriction' && (
+ <div className="space-y-4">
+ <Card>
+ <CardHeader
+ title="Sell Page Fields"
+ subtitle="Checked fields appear on the Sell page for every branch. Unchecked fields stay hidden. All off by default."
+ icon=""
+ />
+ <CardBody>
+ <div className="space-y-3">
+ {[
+ { key: 'totalTax', label: 'Total Tax', hint: 'Shows the computed tax total' },
+ { key: 'amountIncTax', label: 'Amount inc Tax', hint: 'Subtotal plus tax / charges minus discounts' },
+ { key: 'totalItemsDiscount', label: 'Total Items Discount', hint: 'Sum of line-item discounts' },
+ { key: 'billDiscPct', label: 'Bill Disc (%)', hint: 'Percent bill discount input' },
+ { key: 'billDiscAmt', label: 'Bill Disc Amount (PKR)', hint: 'Fixed PKR bill discount input' },
+ { key: 'serviceCharges', label: 'Ser Charges (PKR)', hint: 'Service charges input' },
+ { key: 'taxAmt', label: 'Tax (PKR)', hint: 'Editable tax amount input' },
+ ].map((f) => (
+ <label
+ key={f.key}
+ className="flex items-start gap-3 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-slate-900/30 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900/50 transition-colors"
+ >
+ <input
+ type="checkbox"
+ className="mt-1 w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+ checked={Boolean(sellFields[f.key])}
+ onChange={(e) => setSellFields((v) => ({ ...v, [f.key]: e.target.checked }))}
+ />
+ <div>
+ <div className="font-medium text-gray-900 dark:text-white">{f.label}</div>
+ <p className="text-sm text-gray-600 dark:text-gray-400">{f.hint}</p>
+ </div>
+ </label>
+ ))}
+ </div>
+ </CardBody>
+ </Card>
+ <div className="flex justify-end">
+ <PrimaryButton onClick={saveRestrictions} icon="">Save Restrictions</PrimaryButton>
+ </div>
+ </div>
  )}
 
  {/* Backup & Security */}

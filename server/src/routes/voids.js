@@ -2,6 +2,7 @@ import { Router } from 'express'
 import Void from '../models/Void.js'
 import { authRequired } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { mergeBranchFilter, stampBranchId } from '../utils/branchScope.js'
 
 const router = Router()
 
@@ -11,7 +12,7 @@ router.use(authRequired)
 router.get('/', async (req, res, next) => {
   try {
     const { from, to, type, limit = 200, skip = 0 } = req.query
-    const q = {}
+    let q = {}
     if (type) q.orderType = type
     if (from || to) {
       q.date = {
@@ -19,6 +20,7 @@ router.get('/', async (req, res, next) => {
         ...(to ? { $lte: String(to) } : {})
       }
     }
+    q = mergeBranchFilter(req, q)
     const total = await Void.countDocuments(q)
     const rows = await Void.find(q).sort({ createdAt: -1 }).skip(Number(skip||0)).limit(Number(limit||200))
     res.json({
@@ -40,7 +42,7 @@ router.post('/', async (req, res, next) => {
       const hit = await Void.findOne({ idempotencyKey: idemKey })
       if (hit) return res.status(200).json({ ...hit.toObject(), id: hit.id })
     }
-    const doc = {
+    const doc = stampBranchId(req, {
       createdAt: body.createdAt ? new Date(body.createdAt) : new Date(),
       date: body.date || '',
       orderType: body.orderType,
@@ -52,7 +54,7 @@ router.post('/', async (req, res, next) => {
       items: Array.isArray(body.items) ? body.items : [],
       userId: body.userId || (req.user ? req.user.id : undefined),
       idempotencyKey: idemKey,
-    }
+    })
     let saved
     try {
       saved = await Void.create(doc)

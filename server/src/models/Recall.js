@@ -36,6 +36,8 @@ const RecallSchema = new mongoose.Schema({
   serviceAmt: { type: Number, default: 0 },
   totalAmount: { type: Number, default: 0 },
   remarks: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
+  callCenterOrderId: { type: String, default: '', index: true },
   paymentMethod: { type: String, default: 'cash' },
   bankChannel: { type: String, default: '' },
   bankLast4: { type: String, default: '' },

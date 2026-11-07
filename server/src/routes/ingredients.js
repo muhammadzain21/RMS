@@ -2,6 +2,7 @@ import { Router } from 'express'
 import Ingredient from '../models/Ingredient.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { mergeBranchFilter, stampBranchId } from '../utils/branchScope.js'
 
 const router = Router()
 router.use(authRequired)
@@ -15,6 +16,7 @@ router.get('/', async (req, res, next) => {
       const regex = { $regex: String(q), $options: 'i' }
       filter = { $or: [ { name: regex }, { category: regex } ] }
     }
+    filter = mergeBranchFilter(req, filter)
     const rows = await Ingredient.find(filter).sort({ name: 1 })
     res.json(rows)
   } catch (e) { next(e) }
@@ -32,7 +34,7 @@ router.get('/:id', async (req, res, next) => {
 // Create ingredient
 router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
-    const row = await Ingredient.create(req.body)
+    const row = await Ingredient.create(stampBranchId(req, req.body || {}))
     await logAudit(req, 'inventory', `Added ingredient ${row.name}`, { id: row._id })
     res.status(201).json(row)
   } catch (e) { next(e) }

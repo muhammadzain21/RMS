@@ -1,5 +1,6 @@
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
 import { useMemo, useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
 import { UserPlus, Shield, Trash2 } from 'lucide-react'
@@ -41,50 +42,71 @@ function PageAccessSection({ pages, mode, onModeChange, value, onChange }) {
     else next.add(path)
     onChange(Array.from(next))
   }
+  const toggleSection = (items) => {
+    const paths = items.map(p => p.path)
+    const allOn = paths.every(p => selected.has(p))
+    const next = new Set(selected)
+    if (allOn) paths.forEach(p => next.delete(p))
+    else paths.forEach(p => next.add(p))
+    onChange(Array.from(next))
+  }
   return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 p-3">
-      <label className="mb-2 block text-sm font-medium text-[var(--color-text-body)]">Page Access</label>
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 p-4">
+      <label className="mb-2 block text-sm font-bold text-[var(--color-text-body)]">Page Access</label>
       <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-[var(--color-surface-muted)] p-1">
         <button
           type="button"
           onClick={() => onModeChange('role')}
-          className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${mode === 'role' ? 'bg-[var(--color-surface)] text-sky-700 shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-body)]'}`}
+          className={`rounded-md px-3 py-2 text-xs font-bold transition ${mode === 'role' ? 'bg-[var(--color-surface)] text-sky-700 shadow-sm' : 'text-[var(--color-text-body)] hover:text-[var(--color-text-primary)]'}`}
         >
           Role-based
         </button>
         <button
           type="button"
           onClick={() => onModeChange('custom')}
-          className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${mode === 'custom' ? 'bg-[var(--color-surface)] text-sky-700 shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-body)]'}`}
+          className={`rounded-md px-3 py-2 text-xs font-bold transition ${mode === 'custom' ? 'bg-[var(--color-surface)] text-sky-700 shadow-sm' : 'text-[var(--color-text-body)] hover:text-[var(--color-text-primary)]'}`}
         >
           Custom pages
         </button>
       </div>
       {mode === 'role' ? (
-        <p className="text-xs text-[var(--color-text-muted)]">Uses the selected role&apos;s sidebar permissions. Set those on the Permissions page.</p>
+        <p className="text-xs font-medium text-[var(--color-text-body)]">Uses the selected role&apos;s sidebar permissions. Set those on the Permissions page.</p>
       ) : (
         <>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-[var(--color-text-muted)]">{value.length} of {pages.length} pages allowed</span>
+          <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-bold text-[var(--color-text-body)]">{value.length} of {pages.length} pages allowed</span>
             <div className="flex gap-3">
-              <button type="button" onClick={() => onChange(pages.map(p => p.path))} className="text-xs font-semibold text-sky-600 hover:text-sky-700">Select all</button>
-              <button type="button" onClick={() => onChange([])} className="text-xs font-semibold text-slate-500 hover:text-slate-700">Deselect all</button>
+              <button type="button" onClick={() => onChange(pages.map(p => p.path))} className="text-xs font-bold text-sky-600 hover:text-sky-700">Select all</button>
+              <button type="button" onClick={() => onChange([])} className="text-xs font-bold text-slate-600 hover:text-slate-800">Deselect all</button>
             </div>
           </div>
-          <div className="max-h-64 overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
-            {groups.map(([section, items]) => (
-              <div key={section}>
-                <div className="bg-[var(--color-surface-muted)] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">{section}</div>
-                <div className="grid sm:grid-cols-2">
-                  {items.map(p => (
-                    <div key={p.path} className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-[var(--color-text-body)]">
-                      <span className="truncate">{p.label}</span>
-                      <Toggle on={selected.has(p.path)} onClick={() => toggle(p.path)} />
+          <div className="max-h-[28rem] overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
+            {groups.map(([section, items]) => {
+              const enabledCount = items.filter(p => selected.has(p.path)).length
+              const sectionOn = enabledCount === items.length && items.length > 0
+              return (
+                <div key={section}>
+                  <div className="sticky top-0 z-[1] flex items-center justify-between gap-3 bg-[var(--color-surface-muted)] px-3 py-2 border-b border-[var(--color-border)]">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-primary)]">{section}</div>
+                      <div className="text-[11px] font-medium text-[var(--color-text-body)]">{enabledCount} of {items.length} enabled</div>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-[var(--color-text-body)]">{sectionOn ? 'Full section' : 'Section off'}</span>
+                      <Toggle on={sectionOn} onClick={() => toggleSection(items)} />
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3">
+                    {items.map(p => (
+                      <div key={p.path} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm text-[var(--color-text-body)] border-b border-[var(--color-border-subtle)]">
+                        <span className="truncate font-medium">{p.label}</span>
+                        <Toggle on={selected.has(p.path)} onClick={() => toggle(p.path)} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </>
       )}
@@ -93,19 +115,41 @@ function PageAccessSection({ pages, mode, onModeChange, value, onChange }) {
 }
 
 export default function UserList() {
-  const { users, addUser, removeUser, updateUser, token } = useAuth()
+  const { users, addUser, removeUser, updateUser, token, user: currentUser, refreshUsers } = useAuth()
   const { state } = useData()
+  const { branches, activeBranchId } = useBranch()
   const getAPI = () => ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
+  const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
+  const managerBranchId = String(
+    currentUser?.homeBranchId
+    || activeBranchId
+    || (Array.isArray(currentUser?.branchIds) ? currentUser.branchIds[0] : '')
+    || ''
+  )
 
   const enabledPaths = state?.settings?.enabledPaths
   const isFeatureEnabled = (path) =>
     !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
-  const pages = sidebarItems.filter(i => !i.hidden && i.path !== '/my' && isFeatureEnabled(i.path))
+  // Managers: only pages Admin gave them (including Permissions if granted)
+  const allPages = sidebarItems.filter(i => !i.hidden && i.path !== '/my' && isFeatureEnabled(i.path))
+  const managerGrantablePaths = useMemo(() => {
+    if (isAdminUser) return null
+    const perms = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+    return new Set(
+      perms
+        .filter(p => p?.visible && p.path && p.path !== '/my')
+        .map(p => p.path)
+    )
+  }, [isAdminUser, currentUser?.permissions])
+  const pages = isAdminUser
+    ? allPages
+    : allPages.filter(p => managerGrantablePaths?.has(p.path))
 
   const [roles, setRoles] = useState([])
   const [newRoleName, setNewRoleName] = useState('')
   const [newUsername, setNewUsername] = useState('')
-  const [newRole, setNewRole] = useState('Admin')
+  const [newRole, setNewRole] = useState('')
+  const [newBranchId, setNewBranchId] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPageAccess, setNewPageAccess] = useState([])
   const [newAccessMode, setNewAccessMode] = useState('role')
@@ -117,6 +161,30 @@ export default function UserList() {
   const [deleteRoleOpen, setDeleteRoleOpen] = useState(false)
   const [deleteRole, setDeleteRole] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [branchFilter, setBranchFilter] = useState('active') // active | all
+
+  const branchName = (id) => {
+    if (!id) return '—'
+    const b = branches.find(x => String(x._id) === String(id))
+    return b?.name || id
+  }
+
+  // Always reload users for the selected/active branch (managers are branch-scoped)
+  useEffect(() => {
+    if (!token) return
+    const branchId = isAdminUser
+      ? (branchFilter === 'active' ? (activeBranchId || '') : '')
+      : (managerBranchId || '')
+    refreshUsers?.(branchId || undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activeBranchId, managerBranchId, branchFilter, isAdminUser])
+
+  useEffect(() => {
+    if (!isAdminUser && managerBranchId) {
+      setNewBranchId(managerBranchId)
+      setBranchFilter('active')
+    }
+  }, [isAdminUser, managerBranchId])
 
   useEffect(() => {
     const fetchRoles = async () => {
@@ -133,10 +201,28 @@ export default function UserList() {
 
   const roleOptions = () => {
     const customRoles = roles.map(r => r.name).filter(n => n && n !== 'Admin' && n !== 'SuperAdmin')
-    return [...new Set(['Admin', ...customRoles])]
+    // Built-in assignable roles so managers can add users even before custom roles exist
+    const builtins = ['Manager', 'Cashier', 'Staff']
+    const fromUsers = (users || []).map(u => u.role).filter(n => n && n !== 'Admin' && n !== 'SuperAdmin')
+    const pool = [...new Set([...customRoles, ...builtins, ...fromUsers])]
+    // Only Admin users may assign the Admin role
+    return isAdminUser ? [...new Set(['Admin', ...pool])] : pool
   }
 
+  useEffect(() => {
+    const opts = roleOptions()
+    if (!newRole || !opts.includes(newRole)) setNewRole(opts[0] || '')
+  }, [roles, isAdminUser])
+
+  useEffect(() => {
+    if (!newBranchId && activeBranchId) setNewBranchId(activeBranchId)
+  }, [activeBranchId])
+
   const createNewRole = async () => {
+    if (!isAdminUser) {
+      toast.error('Only admin can create roles')
+      return
+    }
     if (!newRoleName.trim()) {
       toast.error('Role name is required')
       return
@@ -167,6 +253,10 @@ export default function UserList() {
   }
 
   const confirmDeleteRole = async () => {
+    if (!isAdminUser) {
+      toast.error('Only admin can delete roles')
+      return
+    }
     if (!deleteRole) return
     try {
       setLoading(true)
@@ -195,23 +285,41 @@ export default function UserList() {
     if (!newUsername.trim()) { setAddUserError('Username is required'); return }
     if (!newPassword || newPassword.length < 4) { setAddUserError('Password must be at least 4 characters'); return }
     if (!newRole) { setAddUserError('Please select a role'); return }
+    if (newRole === 'Admin' && !isAdminUser) {
+      setAddUserError('Only admin can create admin users')
+      return
+    }
+    const branchForUser = isAdminUser
+      ? (newRole === 'Admin' ? (newBranchId || activeBranchId || '') : newBranchId)
+      : (managerBranchId || newBranchId)
+    if (newRole !== 'Admin' && !branchForUser) {
+      setAddUserError('Please select a branch for this user')
+      return
+    }
     try {
       setLoading(true)
       const payload = {
         username: newUsername.trim(),
         password: newPassword,
         role: newRole,
-        pageAccess: newAccessMode === 'custom' ? newPageAccess : null,
+        homeBranchId: branchForUser,
+        pageAccess: newAccessMode === 'custom'
+          ? (isAdminUser
+            ? newPageAccess
+            : newPageAccess.filter(p => managerGrantablePaths?.has(p)))
+          : null,
       }
       const res = await addUser(payload)
       if (res?.ok) {
         toast.success('User added')
         setNewUsername('')
         setNewPassword('')
-        setNewRole(roleOptions()[0] || 'Admin')
+        setNewRole(roleOptions()[0] || '')
+        setNewBranchId(isAdminUser ? (activeBranchId || '') : (managerBranchId || ''))
         setNewPageAccess([])
         setNewAccessMode('role')
         setAddOpen(false)
+        await refreshUsers?.(isAdminUser ? (branchFilter === 'active' ? activeBranchId : '') : managerBranchId)
       } else {
         setAddUserError(res?.error || 'Failed to add user')
       }
@@ -237,12 +345,33 @@ export default function UserList() {
 
   const saveEdit = async () => {
     if (!editing) return
+    if (editing.role === 'Admin' && !isAdminUser) {
+      toast.error('Only admin can assign the Admin role')
+      return
+    }
+    const editBranch = isAdminUser ? (editing.homeBranchId || '') : (managerBranchId || editing.homeBranchId || '')
+    if (editing.role !== 'Admin' && !editBranch) {
+      toast.error('Please select a branch for this user')
+      return
+    }
     try {
       setLoading(true)
+      let pageAccess = null
+      if (editing.accessMode === 'custom') {
+        if (isAdminUser) {
+          pageAccess = editing.pageAccess || []
+        } else {
+          // Manager can only toggle pages they have; keep any higher pages Admin already set
+          const selected = (editing.pageAccess || []).filter(p => managerGrantablePaths?.has(p))
+          const preserved = (editing.originalPageAccess || []).filter(p => !managerGrantablePaths?.has(p))
+          pageAccess = [...new Set([...preserved, ...selected])]
+        }
+      }
       const payload = {
         role: editing.role,
         username: editing.username,
-        pageAccess: editing.accessMode === 'custom' ? (editing.pageAccess || []) : null,
+        homeBranchId: editBranch,
+        pageAccess,
       }
       if (editing.password) payload.password = editing.password
       const res = await updateUser(editing.id, payload)
@@ -261,17 +390,35 @@ export default function UserList() {
 
   const openEdit = (u) => {
     const custom = Array.isArray(u.pageAccess)
+    const fullAccess = custom ? [...u.pageAccess] : []
     setEditing({
       id: u.id,
       username: u.username || '',
-      role: u.role || 'Admin',
+      role: u.role || roleOptions()[0] || '',
+      homeBranchId: isAdminUser
+        ? (u.homeBranchId || activeBranchId || '')
+        : (managerBranchId || u.homeBranchId || ''),
       password: '',
       accessMode: custom ? 'custom' : 'role',
-      pageAccess: custom ? [...u.pageAccess] : [],
+      // Dialog only toggles pages this manager can grant
+      pageAccess: custom
+        ? (isAdminUser ? fullAccess : fullAccess.filter(p => managerGrantablePaths?.has(p)))
+        : [],
+      originalPageAccess: fullAccess,
     })
   }
 
-  const userList = users || []
+  const userList = useMemo(() => {
+    const list = users || []
+    // Non-admins: API already returns only their branch users
+    if (!isAdminUser) return list
+    if (branchFilter === 'all' || !activeBranchId) return list
+    return list.filter(u => {
+      if (u.role === 'Admin' || u.role === 'SuperAdmin' || u.isHq) return true
+      if (String(u.homeBranchId || '') === String(activeBranchId)) return true
+      return Array.isArray(u.branchIds) && u.branchIds.map(String).includes(String(activeBranchId))
+    })
+  }, [users, branchFilter, activeBranchId, isAdminUser])
 
   const pageAccessLabel = (u) => {
     if (Array.isArray(u.pageAccess) && u.pageAccess.length) return `${u.pageAccess.length} custom pages`
@@ -281,6 +428,7 @@ export default function UserList() {
   const userReportRows = () => userList.map(u => [
     u.username || '',
     u.role || '',
+    u.role === 'Admin' || u.isHq ? 'All branches' : branchName(u.homeBranchId),
     pageAccessLabel(u),
   ])
 
@@ -290,9 +438,14 @@ export default function UserList() {
         reportSummary([{ label: 'Users', amount: String(userList.length) }]) +
         reportSec(`Users (${userList.length})`) +
         reportTable({
-          headers: ['Username', 'Role', 'Page Access'],
+          headers: ['Username', 'Role', 'Branch', 'Page Access'],
           numbered: true,
-          rows: userList.map(u => [u.username || '-', u.role || '-', pageAccessLabel(u)]),
+          rows: userList.map(u => [
+            u.username || '-',
+            u.role || '-',
+            u.role === 'Admin' || u.isHq ? 'All branches' : branchName(u.homeBranchId),
+            pageAccessLabel(u),
+          ]),
           emptyText: 'No users',
         })
       const html = wrapReportDoc({
@@ -320,7 +473,7 @@ export default function UserList() {
       doc.setFontSize(10)
       doc.text(`${userList.length} users`, 40, 46)
       doc.autoTable({
-        head: [['Username', 'Role', 'Page Access']],
+        head: [['Username', 'Role', 'Branch', 'Page Access']],
         body: userReportRows(),
         startY: 54,
         styles: { fontSize: 9, cellPadding: 4 },
@@ -339,7 +492,7 @@ export default function UserList() {
     try {
       downloadCsvFile(
         `users_${format(new Date(), 'yyyy-MM-dd')}.csv`,
-        ['Username', 'Role', 'Page Access'],
+        ['Username', 'Role', 'Branch', 'Page Access'],
         userReportRows()
       )
       toast.success('CSV exported successfully')
@@ -355,41 +508,68 @@ export default function UserList() {
         title="User Management"
         subtitle="Create users, assign roles, and control page access"
         actions={
-          <button onClick={() => setAddOpen(true)} className="ui-btn ui-btn-primary inline-flex items-center gap-2">
+          <button
+            onClick={() => {
+              setNewBranchId(isAdminUser ? (activeBranchId || '') : (managerBranchId || ''))
+              setNewRole(roleOptions()[0] || '')
+              setAddUserError('')
+              setAddOpen(true)
+            }}
+            className="ui-btn ui-btn-primary inline-flex items-center gap-2"
+          >
             <UserPlus className="h-4 w-4" /> Add User
           </button>
         }
       />
 
       <div className="rounded-xl bg-[var(--color-surface)] p-6 shadow border border-[var(--color-border)]">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">All Users</div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">Users</div>
           <div className="flex flex-wrap items-center gap-3">
+            {isAdminUser ? (
+              <select
+                value={branchFilter}
+                onChange={e => setBranchFilter(e.target.value)}
+                className="input py-1.5 text-sm"
+                title="Filter users by branch"
+              >
+                <option value="active">Current branch</option>
+                <option value="all">All branches</option>
+              </select>
+            ) : (
+              <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs font-semibold text-[var(--color-text-body)]">
+                {branchName(managerBranchId) || 'Your branch'}
+              </span>
+            )}
             <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
             <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
             <button type="button" onClick={exportCSV} className={btnCsv}>CSV</button>
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {users?.length || 0} user{(users?.length || 0) === 1 ? '' : 's'}
+              {userList.length} user{userList.length === 1 ? '' : 's'}
             </div>
-            <div className="relative group">
-              <button className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)]">
-                <Trash2 className="h-4 w-4" /> Delete Role
-              </button>
-              <div className="absolute right-0 top-full z-20 mt-1 hidden max-h-64 w-48 overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg group-hover:block">
-                {roles.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-[var(--color-text-muted)]">No custom roles</div>
-                ) : roles.map(r => (
-                  <button key={r.id} onClick={() => { setDeleteRole(r); setDeleteRoleOpen(true) }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-[var(--color-text-body)] hover:bg-rose-50 hover:text-rose-700">
-                    <span>{r.name}</span>
-                    <Trash2 className="h-3.5 w-3.5" />
+            {isAdminUser && (
+              <>
+                <div className="relative group">
+                  <button className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)]">
+                    <Trash2 className="h-4 w-4" /> Delete Role
                   </button>
-                ))}
-              </div>
-            </div>
-            <button onClick={() => setRoleOpen(true)} className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)]">
-              <Shield className="h-4 w-4" /> Create Role
-            </button>
+                  <div className="absolute right-0 top-full z-20 mt-1 hidden max-h-64 w-48 overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg group-hover:block">
+                    {roles.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-[var(--color-text-muted)]">No custom roles</div>
+                    ) : roles.map(r => (
+                      <button key={r.id} onClick={() => { setDeleteRole(r); setDeleteRoleOpen(true) }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-[var(--color-text-body)] hover:bg-rose-50 hover:text-rose-700">
+                        <span>{r.name}</span>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={() => setRoleOpen(true)} className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)]">
+                  <Shield className="h-4 w-4" /> Create Role
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -399,12 +579,13 @@ export default function UserList() {
               <tr>
                 <th>User</th>
                 <th>Role</th>
+                <th>Branch</th>
                 <th>Page Access</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users?.map((u) => (
+              {userList.map((u) => (
                 <tr key={u.id}>
                   <td>
                     <div className="flex items-center gap-3">
@@ -418,12 +599,17 @@ export default function UserList() {
                     <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-body)]">{u.role}</span>
                   </td>
                   <td>
+                    <span className="text-sm font-medium text-[var(--color-text-body)]">
+                      {u.role === 'Admin' || u.isHq ? 'All branches' : branchName(u.homeBranchId)}
+                    </span>
+                  </td>
+                  <td>
                     {Array.isArray(u.pageAccess) ? (
                       <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold border ${u.pageAccess.length ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                         {u.pageAccess.length} / {pages.length} pages
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-muted)]">Role-based</span>
+                      <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-body)]">Role-based</span>
                     )}
                   </td>
                   <td>
@@ -434,9 +620,9 @@ export default function UserList() {
                   </td>
                 </tr>
               ))}
-              {(!users || users.length === 0) && (
+              {userList.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-8 text-center text-[var(--color-text-muted)]">No users yet.</td>
+                  <td colSpan={5} className="py-8 text-center text-[var(--color-text-muted)]">No users for this branch yet.</td>
                 </tr>
               )}
             </tbody>
@@ -445,10 +631,10 @@ export default function UserList() {
       </div>
 
       {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
-            <div className="px-5 py-3 text-base font-semibold text-white" style={{ background: 'linear-gradient(90deg, #0284c7, #2563eb)' }}>Add New User</div>
-            <div className="space-y-3 p-5 max-h-[78vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 sm:px-6 py-4" role="dialog" aria-modal="true">
+          <div className="flex w-full max-w-5xl max-h-[92vh] flex-col overflow-hidden rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
+            <div className="px-6 py-4 text-base font-semibold text-white shrink-0" style={{ background: 'linear-gradient(90deg, #0284c7, #2563eb)' }}>Add New User</div>
+            <div className="space-y-4 p-6 overflow-y-auto flex-1 min-h-0">
               <div>
                 <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">Username</label>
                 <input value={newUsername} onChange={e => setNewUsername(e.target.value)} className="input" placeholder="Enter username" />
@@ -456,8 +642,41 @@ export default function UserList() {
               <div>
                 <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">Role</label>
                 <select value={newRole} onChange={e => setNewRole(e.target.value)} className="input">
+                  {roleOptions().length === 0 && <option value="">Create a role first</option>}
                   {roleOptions().map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
+                {!isAdminUser && (
+                  <p className="mt-1 text-xs text-[var(--color-text-body)]">Only admin can create Admin users.</p>
+                )}
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">Branch</label>
+                {isAdminUser ? (
+                  <select
+                    value={newBranchId}
+                    onChange={e => setNewBranchId(e.target.value)}
+                    className="input"
+                    required={newRole !== 'Admin'}
+                  >
+                    <option value="">Select branch…</option>
+                    {branches.map(b => (
+                      <option key={b._id} value={b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input"
+                    value={branchName(managerBranchId) || managerBranchId || 'No branch assigned'}
+                    disabled
+                    readOnly
+                  />
+                )}
+                {!isAdminUser && !managerBranchId && (
+                  <p className="mt-1 text-xs text-rose-700">Your account has no branch. Ask admin to assign one.</p>
+                )}
+                {newRole === 'Admin' && isAdminUser && (
+                  <p className="mt-1 text-xs text-[var(--color-text-body)]">Admin users can access all branches.</p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">Password</label>
@@ -470,6 +689,11 @@ export default function UserList() {
                 value={newPageAccess}
                 onChange={setNewPageAccess}
               />
+              {!isAdminUser && (
+                <p className="text-xs font-medium text-[var(--color-text-body)]">
+                  You can only assign pages Admin gave you.
+                </p>
+              )}
               {addUserError && <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{addUserError}</div>}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
@@ -480,7 +704,7 @@ export default function UserList() {
         </div>
       )}
 
-      {roleOpen && (
+      {roleOpen && isAdminUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-md overflow-hidden rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
             <div className="px-5 py-3 text-base font-semibold text-white" style={{ background: 'linear-gradient(90deg, #7c3aed, #6366f1)' }}>Create New Role</div>
@@ -500,10 +724,10 @@ export default function UserList() {
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
-            <div className="px-5 py-3 text-base font-semibold text-white" style={{ background: 'linear-gradient(90deg, #0284c7, #2563eb)' }}>Edit User</div>
-            <div className="space-y-3 p-5 max-h-[78vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 sm:px-6 py-4" role="dialog" aria-modal="true">
+          <div className="flex w-full max-w-5xl max-h-[92vh] flex-col overflow-hidden rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
+            <div className="px-6 py-4 text-base font-semibold text-white shrink-0" style={{ background: 'linear-gradient(90deg, #0284c7, #2563eb)' }}>Edit User</div>
+            <div className="space-y-4 p-6 overflow-y-auto flex-1 min-h-0">
               <div>
                 <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">Username</label>
                 <input value={editing.username} onChange={e => setEditing(prev => prev ? { ...prev, username: e.target.value } : prev)} className="input" />
@@ -512,7 +736,32 @@ export default function UserList() {
                 <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">Role</label>
                 <select value={editing.role} onChange={e => setEditing(prev => prev ? { ...prev, role: e.target.value } : prev)} className="input">
                   {roleOptions().map(r => <option key={r} value={r}>{r}</option>)}
+                  {editing.role && !roleOptions().includes(editing.role) && (
+                    <option value={editing.role}>{editing.role}</option>
+                  )}
                 </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">Branch</label>
+                {isAdminUser ? (
+                  <select
+                    value={editing.homeBranchId || ''}
+                    onChange={e => setEditing(prev => prev ? { ...prev, homeBranchId: e.target.value } : prev)}
+                    className="input"
+                  >
+                    <option value="">Select branch…</option>
+                    {branches.map(b => (
+                      <option key={b._id} value={b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input"
+                    value={branchName(editing.homeBranchId || managerBranchId) || editing.homeBranchId || ''}
+                    disabled
+                    readOnly
+                  />
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-[var(--color-text-body)]">New Password</label>
@@ -525,6 +774,11 @@ export default function UserList() {
                 value={editing.pageAccess || []}
                 onChange={(v) => setEditing(prev => prev ? { ...prev, pageAccess: v } : prev)}
               />
+              {!isAdminUser && (
+                <p className="text-xs font-medium text-[var(--color-text-body)]">
+                  Only pages you have access to are listed.
+                </p>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
               <button type="button" onClick={() => setEditing(null)} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)]">Cancel</button>

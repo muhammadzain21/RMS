@@ -7,6 +7,8 @@ const SupplierSchema = new mongoose.Schema({
   address: { type: String, default: '' },
   taxId: { type: String, default: '' },
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+  // 'warehouse' = HQ warehouse suppliers; empty/branch = branch-level suppliers
+  scope: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('Supplier', SupplierSchema)

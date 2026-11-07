@@ -17,6 +17,7 @@ const StaffSchema = new mongoose.Schema({
   joinDate: { type: Date },
   shiftId: { type: String, default: '' }, // Reference to shift id in StaffSettings.shifts
   myWorkAccess: { type: Boolean, default: true }, // false => hide the 'My Work' page for this staff's login
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('Staff', StaffSchema)

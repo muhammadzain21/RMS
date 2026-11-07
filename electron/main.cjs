@@ -30,6 +30,11 @@ function waitForLocalServer(port = 5000, attempts = 80) {
   })
 }
 
+// Default “actual size” for POS readability on typical displays (Ctrl+0 resets here).
+const DEFAULT_ZOOM_FACTOR = 0.67
+// Bump when the default changes so old saved 100% prefs are migrated once.
+const ZOOM_STORE_VERSION = 2
+
 function zoomStorePath() {
   try { return path.join(app.getPath('userData'), 'window-zoom.json') } catch { return '' }
 }
@@ -37,12 +42,22 @@ function zoomStorePath() {
 function loadSavedZoomFactor() {
   try {
     const p = zoomStorePath()
-    if (!p || !fs.existsSync(p)) return 1
+    if (!p || !fs.existsSync(p)) {
+      saveZoomFactor(DEFAULT_ZOOM_FACTOR)
+      return DEFAULT_ZOOM_FACTOR
+    }
     const j = JSON.parse(fs.readFileSync(p, 'utf8'))
+    const ver = Number(j?.v) || 0
+    // Migrate pre-v2 stores (usually stuck at 1.0 / 100%) to the new default once
+    if (ver < ZOOM_STORE_VERSION) {
+      saveZoomFactor(DEFAULT_ZOOM_FACTOR)
+      return DEFAULT_ZOOM_FACTOR
+    }
     const z = Number(j?.zoomFactor)
     if (Number.isFinite(z) && z >= 0.5 && z <= 3) return z
   } catch {}
-  return 1
+  saveZoomFactor(DEFAULT_ZOOM_FACTOR)
+  return DEFAULT_ZOOM_FACTOR
 }
 
 function saveZoomFactor(factor) {
@@ -51,7 +66,7 @@ function saveZoomFactor(factor) {
     if (!Number.isFinite(z) || z < 0.5 || z > 3) return
     const p = zoomStorePath()
     if (!p) return
-    fs.writeFileSync(p, JSON.stringify({ zoomFactor: z }), 'utf8')
+    fs.writeFileSync(p, JSON.stringify({ v: ZOOM_STORE_VERSION, zoomFactor: z }), 'utf8')
   } catch {}
 }
 
@@ -60,6 +75,11 @@ function applySavedZoom(win) {
   try {
     const z = loadSavedZoomFactor()
     win.webContents.setZoomFactor(z)
+    // Also set zoom level for Chromium paths that ignore zoomFactor briefly on load
+    try {
+      const level = Math.log(z) / Math.log(1.2)
+      if (Number.isFinite(level)) win.webContents.setZoomLevel(level)
+    } catch {}
   } catch {}
 }
 
@@ -76,8 +96,17 @@ function wireZoomPersistence(win) {
   const persist = () => persistCurrentZoom(win)
 
   // Restore after every load/reload so zoom matches last session
-  win.webContents.on('did-finish-load', restore)
-  win.webContents.on('dom-ready', restore)
+  // (retry briefly — Chromium can reset zoom during first paint)
+  const restoreSoon = () => {
+    restore()
+    setTimeout(restore, 50)
+    setTimeout(restore, 250)
+    setTimeout(restore, 800)
+  }
+  win.webContents.on('did-finish-load', restoreSoon)
+  win.webContents.on('dom-ready', restoreSoon)
+  win.webContents.on('did-navigate', restoreSoon)
+  win.webContents.on('did-navigate-in-page', restoreSoon)
 
   // Persist when user zooms (Ctrl +/- / Ctrl+scroll / menu)
   try {
@@ -85,11 +114,21 @@ function wireZoomPersistence(win) {
   } catch {}
 
   // Fallback: catch keyboard zoom shortcuts
-  win.webContents.on('before-input-event', (_event, input) => {
+  win.webContents.on('before-input-event', (event, input) => {
     if (!input || input.type !== 'keyDown') return
     const key = String(input.key || '')
     const zoomKey = input.control || input.meta
-    if (zoomKey && (key === '=' || key === '+' || key === '-' || key === '_' || key === '0' || key === 'NumpadAdd' || key === 'NumpadSubtract' || key === 'Numpad0')) {
+    if (!zoomKey) return
+    // Ctrl/Cmd+0 → reset to our default actual size (67%), not browser 100%
+    if (key === '0' || key === 'Numpad0') {
+      try {
+        event.preventDefault()
+        win.webContents.setZoomFactor(DEFAULT_ZOOM_FACTOR)
+        saveZoomFactor(DEFAULT_ZOOM_FACTOR)
+      } catch {}
+      return
+    }
+    if (key === '=' || key === '+' || key === '-' || key === '_' || key === 'NumpadAdd' || key === 'NumpadSubtract') {
       setTimeout(persist, 50)
     }
   })
@@ -309,6 +348,7 @@ function createWindow() {
   const isDev = !!process.env.VITE_DEV_SERVER_URL
   const iconPath = path.join(__dirname, '..', 'icon.ico')
   const appIcon = nativeImage.createFromPath(iconPath)
+  const initialZoom = loadSavedZoomFactor()
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -318,6 +358,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
+      // Apply before first paint so Login (and every later page) starts at default zoom
+      zoomFactor: initialZoom,
     },
     show: false,
   })

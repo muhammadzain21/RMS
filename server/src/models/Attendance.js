@@ -10,8 +10,9 @@ const AttendanceSchema = new mongoose.Schema({
   lateMinutes: { type: Number, default: 0 },
   earlyOutMinutes: { type: Number, default: 0 },
   notes: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
-AttendanceSchema.index({ staffId: 1, date: 1 }, { unique: true })
+AttendanceSchema.index({ staffId: 1, date: 1, branchId: 1 }, { unique: true })
 
 export default mongoose.model('Attendance', AttendanceSchema)

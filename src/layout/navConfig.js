@@ -11,6 +11,7 @@ import {
   CalendarCheck, UserPlus, CalendarDays, CalendarRange, Settings,
   Receipt, TrendingUp, ShieldCheck, Lock, ScrollText,
   Fingerprint, ChefHat, Database, UserCheck, Home, ShoppingBag,
+  Headphones, Inbox, Building2, PackagePlus, Package,
 } from 'lucide-react'
 
 export const dashboardItem = { path: '/', label: 'Dashboard', icon: LayoutDashboard, order: 1 }
@@ -31,6 +32,8 @@ const salesSection = {
  label: 'Sales',
  items: [
  { path: '/sales/new', label: 'Sell', icon: ShoppingCart, order: 2, gated: true },
+ { path: '/sales/cc-inbox', label: 'CC Inbox', icon: Inbox, order: 2.2 },
+ { path: '/call-center', label: 'Call Center', icon: Headphones, order: 2.3 },
  { path: '/sales/return', label: 'Return', icon: Undo2, order: 3 },
  { path: '/sales/history', label: 'Sale history', icon: History, order: 4 },
  { path: '/sales/deleted', label: 'Deleted Sales', icon: Trash2, order: 5 },
@@ -51,16 +54,29 @@ const salesSection = {
 const operationsSection = {
  label: 'Operations',
  items: [
- { path: '/inventory', label: 'Inventory', icon: PackageOpen, order: 15 },
+ { path: '/inventory', label: 'Branch Inventory', icon: PackageOpen, order: 15 },
+ { path: '/inventory/transfers-in', label: 'Transfers In', icon: PackagePlus, order: 15.5 },
  { path: '/supply/history', label: 'Purchase History', icon: Truck, order: 16 },
  { path: '/demands', label: 'Demands', icon: ClipboardList, order: 17 },
- { path: '/suppliers', label: 'Suppliers', icon: Factory, order: 18 },
+ { path: '/suppliers', label: 'Branch Suppliers', icon: Factory, order: 18 },
  { path: '/tables', label: 'Tables', icon: Armchair, order: 20 },
  { path: '/menu', label: 'Menu', icon: UtensilsCrossed, order: 21, end: true },
  { path: '/menu/categories', label: 'Categories', icon: FolderTree, order: 22 },
  { path: '/menu/recipes', label: 'Recipes', icon: FlaskConical, order: 23 },
  { path: '/sales/consumption', label: 'Consumption', icon: BarChart3, order: 24 },
  { path: '/riders', label: 'Riders', icon: Bike, order: 25 },
+ ]
+}
+
+const warehouseSection = {
+ label: 'Warehouse',
+ items: [
+ { path: '/branches', label: 'Branches', icon: Building2, order: 14.8 },
+ { path: '/hq/compare', label: 'Branch Compare', icon: BarChart3, order: 14.9 },
+ { path: '/warehouse/stock', label: 'Inventory', icon: Package, order: 15.1 },
+ { path: '/warehouse/suppliers', label: 'Suppliers', icon: Factory, order: 15.2 },
+ { path: '/warehouse/transfers', label: 'Transfer Stock', icon: ArrowLeftRight, order: 15.5 },
+ { path: '/warehouse/transfer-history', label: 'Transfer History', icon: History, order: 15.6 },
  ]
 }
 
@@ -102,6 +118,7 @@ const adminSection = {
 export const allSections = [
  salesSection,
  operationsSection,
+ warehouseSection,
  staffSection,
  financeSection,
  adminSection,
@@ -126,6 +143,34 @@ export const navSections = () =>
  .filter(i => !i.hidden)
  .map(i => ({ to: i.path, label: i.label, icon: i.icon || '', end: i.end, gated: i.gated }))
  }))
+
+/** Paths added after SuperAdmin may have last saved enabledPaths — show until explicitly disabled. */
+const UPGRADE_ENABLED_PATHS = [
+  '/warehouse/stock',
+  '/warehouse/suppliers',
+  '/warehouse/transfers',
+  '/warehouse/transfer-history',
+  '/branches',
+  '/hq/compare',
+]
+
+/**
+ * When SuperAdmin saved enabledPaths before new pages existed, those pages
+ * would stay hidden. Merge known upgrade paths as enabled by default.
+ */
+export function expandEnabledPaths(enabledPaths) {
+  if (!Array.isArray(enabledPaths) || enabledPaths.length === 0) return enabledPaths
+  const known = new Set(visibleItems().map(i => i.path))
+  const set = new Set(enabledPaths)
+  let changed = false
+  for (const p of UPGRADE_ENABLED_PATHS) {
+    if (known.has(p) && !set.has(p)) {
+      set.add(p)
+      changed = true
+    }
+  }
+  return changed ? [...set] : enabledPaths
+}
 
 /** Default permission entries for new roles */
 export const defaultPermissionItems = () =>

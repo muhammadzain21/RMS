@@ -16,6 +16,9 @@ async function getUserWithPermissions(user) {
     username: user.username,
     role: user.role,
     staffId: user.staffId || '',
+    homeBranchId: user.homeBranchId || '',
+    branchIds: Array.isArray(user.branchIds) ? user.branchIds : [],
+    isHq: !!(user.isHq || user.role === 'Admin' || user.role === 'SuperAdmin'),
     useCustomPermissions: !!user.useCustomPermissions,
     myWorkAccess: false,
   }

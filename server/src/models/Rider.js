@@ -6,6 +6,7 @@ const RiderSchema = new mongoose.Schema({
   vehicle: { type: String, default: '' },
   isActive: { type: Boolean, default: true },
   note: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('Rider', RiderSchema)

@@ -205,55 +205,7 @@ export default function ProfitLoss() {
  return (
  <div className="space-y-4">
  <h1 className="page-title">Profit &amp; Loss</h1>
- {/* Charts Row */}
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
- {/* Yearly Profit Trend */}
- <ChartCard title="Yearly Profit Trend" variant="green">
- <BarChart data={yearlyTrendData}>
- <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
- <XAxis dataKey="name" stroke="#6b7280" />
- <YAxis stroke="#6b7280" />
- <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
- <Legend />
- <Bar dataKey="profit" name="Net Profit" radius={[4,4,0,0]}>
- {yearlyTrendData.map((entry, idx) => (
- <Cell key={idx} fill={entry.profit >= 0 ? '#10b981' : '#ef4444'} />
- ))}
- </Bar>
- </BarChart>
- </ChartCard>
- {/* Sales vs Purchases */}
- <ChartCard title="Sales vs Purchases (Monthly)" variant="blue">
- <BarChart data={yearlyTrendData}>
- <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
- <XAxis dataKey="name" stroke="#6b7280" />
- <YAxis stroke="#6b7280" />
- <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
- <Legend />
- <Bar dataKey="sales" name="Sales" fill="#3b82f6" radius={[4,4,0,0]} />
- <Bar dataKey="purchases" name="Purchases" fill="#f59e0b" radius={[4,4,0,0]} />
- <Bar dataKey="expenses" name="Expenses" fill="#a855f7" radius={[4,4,0,0]} />
- </BarChart>
- </ChartCard>
- </div>
- {/* Monthly P&L Chart */}
- <ChartCard title="Monthly P&L Breakdown" variant="indigo">
- <AreaChart data={chartData}>
- <defs>
- <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
- <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
- <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
- </linearGradient>
- </defs>
- <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
- <XAxis dataKey="name" stroke="#6b7280" />
- <YAxis stroke="#6b7280" />
- <Legend />
- <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
- <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={3} fill="url(#colorValue)" />
- </AreaChart>
- </ChartCard>
- {/* Yearly View */}
+ {/* Yearly View table first */}
  <div className="p-5 rounded-xl border-2 border-indigo-300 dark:border-indigo-800 bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-950/40 dark:to-gray-900 shadow-sm space-y-4">
  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
  <div className="font-bold text-lg text-indigo-900 dark:text-indigo-100">Yearly View</div>
@@ -305,6 +257,51 @@ export default function ProfitLoss() {
  </table>
  </div>
  </div>
+ {/* Charts below table */}
+ <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+ <ChartCard title="Yearly Profit Trend" variant="green">
+ <BarChart data={yearlyTrendData}>
+ <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+ <XAxis dataKey="name" stroke="#6b7280" />
+ <YAxis stroke="#6b7280" />
+ <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+ <Legend />
+ <Bar dataKey="profit" name="Net Profit" radius={[4,4,0,0]}>
+ {yearlyTrendData.map((entry, idx) => (
+ <Cell key={idx} fill={entry.profit >= 0 ? '#10b981' : '#ef4444'} />
+ ))}
+ </Bar>
+ </BarChart>
+ </ChartCard>
+ <ChartCard title="Sales vs Purchases (Monthly)" variant="blue">
+ <BarChart data={yearlyTrendData}>
+ <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+ <XAxis dataKey="name" stroke="#6b7280" />
+ <YAxis stroke="#6b7280" />
+ <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+ <Legend />
+ <Bar dataKey="sales" name="Sales" fill="#3b82f6" radius={[4,4,0,0]} />
+ <Bar dataKey="purchases" name="Purchases" fill="#f59e0b" radius={[4,4,0,0]} />
+ <Bar dataKey="expenses" name="Expenses" fill="#a855f7" radius={[4,4,0,0]} />
+ </BarChart>
+ </ChartCard>
+ </div>
+ <ChartCard title="Monthly P&L Breakdown" variant="indigo">
+ <AreaChart data={chartData}>
+ <defs>
+ <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+ <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+ <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+ </linearGradient>
+ </defs>
+ <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+ <XAxis dataKey="name" stroke="#6b7280" />
+ <YAxis stroke="#6b7280" />
+ <Legend />
+ <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+ <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={3} fill="url(#colorValue)" />
+ </AreaChart>
+ </ChartCard>
  </div>
  )
 }

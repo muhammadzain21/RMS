@@ -26,6 +26,13 @@ export function requireRole(...roles) {
 }
 
 export function signToken(user) {
-  const payload = { id: user._id?.toString?.() || user.id, username: user.username, role: user.role }
+  const payload = {
+    id: user._id?.toString?.() || user.id,
+    username: user.username,
+    role: user.role,
+    homeBranchId: user.homeBranchId || '',
+    branchIds: Array.isArray(user.branchIds) ? user.branchIds : [],
+    isHq: !!(user.isHq || user.role === 'Admin' || user.role === 'SuperAdmin'),
+  }
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' })
 }

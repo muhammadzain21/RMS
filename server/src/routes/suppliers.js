@@ -13,10 +13,16 @@ router.get('/', async (req, res, next) => {
     const { q = '', page = 1, limit = 10 } = req.query
     const pageNum = Math.max(1, parseInt(page, 10) || 1)
     const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 10))
-    let filter = {}
+    // Branch suppliers only — never include warehouse (HQ) suppliers
+    let filter = { scope: { $ne: 'warehouse' } }
     if (q) {
       const regex = { $regex: String(q), $options: 'i' }
-      filter = { $or: [ { name: regex }, { company: regex }, { phone: regex } ] }
+      filter = {
+        $and: [
+          { scope: { $ne: 'warehouse' } },
+          { $or: [ { name: regex }, { company: regex }, { phone: regex } ] },
+        ],
+      }
     }
     const total = await Supplier.countDocuments(filter)
     const rows = await Supplier.find(filter)
@@ -30,7 +36,8 @@ router.get('/', async (req, res, next) => {
 // Create
 router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
-    const s = await Supplier.create(req.body)
+    const body = { ...(req.body || {}), scope: 'branch' }
+    const s = await Supplier.create(body)
     try { await Audit.create({ type: 'supplier', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Added supplier ${s?.name || s?.company || s?._id}`, meta: { id: s._id } }) } catch {}
     res.status(201).json(s)
   } catch (e) { next(e) }

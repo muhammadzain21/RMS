@@ -1,5 +1,6 @@
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useRefetchOnBranchChange } from '../../hooks/useRefetchOnBranchChange.js'
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
@@ -96,6 +97,26 @@ export default function SalesHistory() {
  })()
  return () => { cancelled = true }
  }, [token, fromDate, toDate, dispatch])
+
+ // Refetch when header branch changes (warehouse pages are excluded by the hook)
+ useRefetchOnBranchChange(() => {
+  // trigger the same load by bumping via re-running effect deps — call fetch inline
+  const API = ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  ;(async () => {
+   try {
+    const params = []
+    if (fromDate) params.push(`from=${encodeURIComponent(fromDate)}`)
+    if (toDate) params.push(`to=${encodeURIComponent(toDate)}`)
+    const qs = params.length ? `?${params.join('&')}` : `?from=0000-00-00&to=9999-12-31`
+    const res = await fetch(`${API}/api/sales${qs}`, { headers, cache: 'no-store' })
+    if (!res.ok) return
+    const rows = await res.json()
+    const mapId = (x) => ({ ...x, id: x.id || x._id })
+    dispatch({ type: 'HYDRATE', payload: { sales: (rows||[]).map(mapId) } })
+   } catch {}
+  })()
+ })
 
  // lock edits for closed dates
  const closedDates = useMemo(() => new Set((state.dayCloses||[]).map(d => d.date)), [state.dayCloses])

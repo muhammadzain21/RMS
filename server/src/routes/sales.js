@@ -15,7 +15,9 @@ import StaffPurchase from '../models/StaffPurchase.js'
 import PayInOut from '../models/PayInOut.js'
 import { authRequired } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { mergeBranchFilter } from '../utils/branchScope.js'
 import { takeSnapshot } from './inventorySnapshots.js'
+import CallCenterOrder from '../models/CallCenterOrder.js'
 
 // Sales routes backed by MongoDB via Mongoose
 const router = express.Router()
@@ -53,9 +55,11 @@ router.get('/', async (req, res) => {
       const toStr = to ? String(to) : '9999-12-31'
       filter.date = { $gte: fromStr, $lte: toStr }
     }
+    filter = mergeBranchFilter(req, filter)
     const rows = await Sale.find(filter).sort({ createdAt: -1 }).lean()
     res.json(rows || [])
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
     res.status(500).json({ error: 'Failed to load sales' })
   }
 })
@@ -128,7 +132,8 @@ router.post('/', async (req, res) => {
     const tipAmount = paymentMethod === 'cash'
       ? Math.max(0, Number(payload.tipAmount || 0) || Math.max(0, Number(payload.cashReceived || 0) - Number(totalComputed || 0)))
       : 0
-    const doc = {
+    const { stampBranchId } = await import('../utils/branchScope.js')
+    const doc = stampBranchId(req, {
       ...payload,
       date: dateStr,
       tokenNo,
@@ -138,8 +143,18 @@ router.post('/', async (req, res) => {
       tipAmount,
       bankRef: paymentMethod === 'bank' ? '' : (payload.bankRef || ''),
       idempotencyKey: key || null,
-    }
+    })
     const saved = await Sale.create(doc)
+
+    // Linked call-center order → mark Completed when bill is paid
+    try {
+      const ccId = String(payload.callCenterOrderId || '').trim()
+      if (ccId) {
+        await CallCenterOrder.findByIdAndUpdate(ccId, { $set: { status: 'completed' } })
+      }
+    } catch (ccErr) {
+      console.error('[sales] call-center complete failed for sale', String(saved._id), ccErr?.message)
+    }
 
     // Cash overpayment = waiter tip → Pay Out so drawer expected cash stays balanced
     let tipPayOut = null
@@ -522,9 +537,11 @@ router.get('/deleted', async (req, res) => {
       const toStr = to ? String(to) : '9999-12-31'
       filter.date = { $gte: fromStr, $lte: toStr }
     }
+    filter = mergeBranchFilter(req, filter)
     const rows = await DeletedSale.find(filter).sort({ deletedAt: -1 }).lean()
     res.json(rows || [])
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
     res.status(500).json({ error: 'Failed to load deleted sales' })
   }
 })

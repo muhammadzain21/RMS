@@ -1,7 +1,9 @@
 import { Router } from 'express'
 import Kot from '../models/Kot.js'
+import CallCenterOrder from '../models/CallCenterOrder.js'
 import { authRequired } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { stampBranchId, branchFilter } from '../utils/branchScope.js'
 
 const router = Router()
 
@@ -21,7 +23,7 @@ async function honorIdempotency(req, res) {
 router.get('/', async (req, res, next) => {
   try {
     const { from, to, type, status, limit = 200, skip = 0 } = req.query
-    const q = {}
+    const q = { ...branchFilter(req) }
     if (type) q.orderType = type
     if (status) q.status = String(status)
     if (from || to) {
@@ -48,7 +50,7 @@ router.post('/', async (req, res, next) => {
     const hit = await honorIdempotency(req, res)
     if (hit) return
     const body = req.body || {}
-    const doc = {
+    const doc = stampBranchId(req, {
       createdAt: body.createdAt ? new Date(body.createdAt) : new Date(),
       date: body.date || '',
       orderType: body.orderType,
@@ -59,11 +61,24 @@ router.post('/', async (req, res, next) => {
       items: Array.isArray(body.items) ? body.items : [],
       userId: body.userId || (req.user ? req.user.id : undefined),
       idempotencyKey: req.headers['x-idempotency-key'] || null,
-    }
+      callCenterOrderId: body.callCenterOrderId || '',
+    })
     const saved = await Kot.create(doc)
+    // Mirror kitchen status onto call-center order when linked
+    const ccId = body.callCenterOrderId || ''
+    if (ccId) {
+      try {
+        await CallCenterOrder.findByIdAndUpdate(ccId, {
+          $set: { status: 'kot_created', kotId: String(saved._id), acceptedAt: new Date() },
+        })
+      } catch {}
+    }
     try { await logAudit(req, 'kot', `Created KOT ${saved.id || saved._id || ''}`, { id: saved.id || saved._id, tokenNo: saved.tokenNo, orderType: saved.orderType, tableNo: saved.tableNo, itemsCount: (saved.items||[]).length }) } catch {}
     res.status(201).json({ ...saved.toObject(), id: saved.id })
-  } catch (e) { next(e) }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
 })
 
 // PATCH /api/kots/:id — update KOT status
@@ -84,6 +99,20 @@ router.patch('/:id', async (req, res, next) => {
       { new: true }
     )
     if (!updated) return res.status(404).json({ error: 'KOT not found' })
+    // Push kitchen progress to call-center order so HQ sees live status after sync
+    try {
+      const ccId = updated.callCenterOrderId || ''
+      const map = { preparing: 'preparing', ready: 'ready', completed: 'completed', new: 'kot_created' }
+      const nextStatus = map[String(status)]
+      if (ccId && nextStatus) {
+        await CallCenterOrder.findByIdAndUpdate(ccId, { $set: { status: nextStatus } })
+      } else if (nextStatus && updated.tokenNo && updated.date) {
+        await CallCenterOrder.findOneAndUpdate(
+          { kotId: String(updated._id) },
+          { $set: { status: nextStatus } }
+        )
+      }
+    } catch {}
     try { await logAudit(req, 'kot', `KOT ${updated.id} status → ${status}`, { id: updated.id, status }) } catch {}
     res.json({ ...updated.toObject({ flattenMaps: true }), id: updated.id })
   } catch (e) { next(e) }

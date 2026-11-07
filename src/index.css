@@ -21,10 +21,11 @@
   --color-border: #e2e8f0;
   --color-border-subtle: #f1f5f9;
   --color-border-strong: #cbd5e1;
-  --color-text-primary: #0f172a;
-  --color-text-body: #1e293b;
-  --color-text-muted: #475569;
-  --color-text-disabled: #64748b;
+  --color-text-primary: #020617;
+  --color-text-body: #0f172a;
+  --color-text-muted: #1e293b;
+  --color-text-disabled: #475569;
+  --app-font-size: 17px;
   --color-primary: #3b82f6;
   --color-primary-dark: #1d4ed8;
   --color-primary-subtle: #dbeafe;
@@ -49,10 +50,11 @@ html.dark {
   --color-border: #334155;
   --color-border-subtle: #1f2937;
   --color-border-strong: #475569;
-  --color-text-primary: #f1f5f9;
-  --color-text-body: #e2e8f0;
-  --color-text-muted: #94a3b8;
-  --color-text-disabled: #64748b;
+  --color-text-primary: #ffffff;
+  --color-text-body: #f1f5f9;
+  --color-text-muted: #e2e8f0;
+  --color-text-disabled: #94a3b8;
+  --app-font-size: 17px;
   --color-primary: #60a5fa;
   --color-primary-dark: #3b82f6;
   --color-primary-subtle: rgba(59, 130, 246, 0.2);
@@ -63,6 +65,10 @@ html.dark {
 }
 
 html, body, #root { height: 100%; }
+
+html {
+  font-size: var(--app-font-size, 17px);
+}
 
 html, body, #root {
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -82,10 +88,20 @@ body {
   background: linear-gradient(180deg, var(--color-canvas-from) 0%, var(--color-canvas-to) 100%);
   background-attachment: fixed;
   color: var(--color-text-primary);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.01em;
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Prefer clear medium/bold labels over thin/light UI text */
+main label,
+main .section-label,
+main th,
+label {
+  font-weight: 700 !important;
+  color: var(--color-text-body);
 }
 
 /* Standalone installed app: push chrome below status bar */
@@ -140,8 +156,8 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
   .card-pad { padding: 1.25rem; }
   .card-title {
     text-align: left;
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: 1.05rem;
+    font-weight: 800;
     letter-spacing: 0;
     text-transform: none;
     color: var(--color-text-primary);
@@ -161,9 +177,9 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
     justify-content: center;
     gap: 0.5rem;
     border-radius: 0.5rem;
-    padding: 0.5rem 1rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
+    padding: 0.55rem 1.05rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
     line-height: 1.25;
     border: 1px solid transparent;
     cursor: pointer;
@@ -222,8 +238,9 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
     border-radius: 0.5rem;
     border: 1px solid var(--color-border-strong);
     background: var(--color-surface);
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.975rem;
+    font-weight: 600;
     color: var(--color-text-primary);
   }
   .input:focus {
@@ -247,41 +264,41 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
     box-shadow: 0 1px 2px var(--color-shadow);
   }
   .page-title {
-    font-size: 1.25rem;
-    font-weight: 800;
+    font-size: 1.55rem;
+    font-weight: 900;
     color: var(--color-text-primary);
     letter-spacing: -0.025em;
   }
   .page-sub {
-    font-size: 0.8125rem;
-    font-weight: 500;
+    font-size: 1rem;
+    font-weight: 600;
     color: var(--color-text-muted);
     margin-top: 0.2rem;
   }
   .section-label {
-    font-size: 0.6875rem;
-    font-weight: 700;
+    font-size: 0.875rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-muted);
+    letter-spacing: 0.04em;
+    color: var(--color-text-body);
   }
 
-  .tbl { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 1rem; }
   .tbl thead th {
     text-align: left;
-    font-size: 0.6875rem;
-    font-weight: 700;
+    font-size: 0.8125rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
+    letter-spacing: 0.04em;
+    color: var(--color-text-primary);
     background: var(--color-surface-muted);
     border-bottom: 1px solid var(--color-border);
-    padding: 0.625rem 0.75rem;
+    padding: 0.7rem 0.8rem;
   }
   .tbl tbody td {
-    font-weight: 500;
+    font-weight: 600;
     border-bottom: 1px solid var(--color-border-subtle);
-    padding: 0.55rem 0.75rem;
+    padding: 0.65rem 0.8rem;
     color: var(--color-text-body);
   }
   .tbl tbody tr:hover td { background: var(--color-surface-muted); }
@@ -342,15 +359,189 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
   .stat-card--rose { background: linear-gradient(135deg, #be123c, #9f1239); }
 }
 
-/* Global table header normalization */
+/* Global table header normalization — clear, not washed-out */
 main table thead th {
-  font-size: 0.6875rem !important;
-  font-weight: 700 !important;
+  font-size: 0.8125rem !important;
+  font-weight: 800 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.05em !important;
-  color: var(--color-text-muted) !important;
+  letter-spacing: 0.04em !important;
+  color: var(--color-text-primary) !important;
   background: var(--color-surface-muted) !important;
   border-bottom: 1px solid var(--color-border);
+}
+
+main table tbody td {
+  font-size: 0.975rem !important;
+  font-weight: 600 !important;
+  color: var(--color-text-body) !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   App-wide readability — larger / darker text on every page & dialog
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Tiny utility classes → readable POS sizes */
+.text-\[9px\],
+.text-\[10px\] {
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  color: var(--color-text-muted) !important;
+}
+.text-\[11px\] {
+  font-size: 0.8125rem !important;
+  font-weight: 700 !important;
+}
+.text-xs {
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+}
+.text-sm {
+  font-size: 0.975rem !important;
+  font-weight: 600 !important;
+}
+.text-base {
+  font-size: 1.05rem !important;
+  font-weight: 600 !important;
+}
+.text-lg {
+  font-size: 1.2rem !important;
+  font-weight: 700 !important;
+}
+.text-xl {
+  font-size: 1.35rem !important;
+  font-weight: 800 !important;
+}
+.text-2xl {
+  font-size: 1.6rem !important;
+  font-weight: 800 !important;
+}
+.text-3xl {
+  font-size: 1.9rem !important;
+  font-weight: 900 !important;
+}
+
+/* Washed-out muted colors → darker, clearer */
+.text-slate-400,
+.text-gray-400,
+.text-zinc-400,
+.text-neutral-400 {
+  color: #475569 !important;
+  font-weight: 600 !important;
+}
+.text-slate-500,
+.text-gray-500,
+.text-zinc-500,
+.text-neutral-500 {
+  color: #334155 !important;
+  font-weight: 600 !important;
+}
+.text-slate-600,
+.text-gray-600,
+.text-zinc-600,
+.text-neutral-600 {
+  color: #1e293b !important;
+  font-weight: 600 !important;
+}
+.text-slate-700,
+.text-gray-700 {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+.text-slate-800,
+.text-gray-800,
+.text-slate-900,
+.text-gray-900 {
+  color: #020617 !important;
+  font-weight: 700 !important;
+}
+
+html.dark .text-slate-400,
+html.dark .text-gray-400,
+html.dark .text-zinc-400,
+html.dark .text-neutral-400 {
+  color: #cbd5e1 !important;
+}
+html.dark .text-slate-500,
+html.dark .text-gray-500,
+html.dark .text-zinc-500,
+html.dark .text-neutral-500 {
+  color: #e2e8f0 !important;
+}
+html.dark .text-slate-600,
+html.dark .text-gray-600,
+html.dark .text-zinc-600,
+html.dark .text-neutral-600,
+html.dark .text-slate-700,
+html.dark .text-gray-700 {
+  color: #f1f5f9 !important;
+}
+html.dark .text-slate-800,
+html.dark .text-gray-800,
+html.dark .text-slate-900,
+html.dark .text-gray-900 {
+  color: #ffffff !important;
+}
+
+/* Font-medium felt light at Electron zoom — bump weight floor */
+.font-medium { font-weight: 700 !important; }
+.font-semibold { font-weight: 700 !important; }
+.font-bold { font-weight: 800 !important; }
+.font-extrabold,
+.font-black { font-weight: 900 !important; }
+
+/* Page / section headings across the app */
+main h1,
+.ui-page h1 {
+  font-size: 1.65rem !important;
+  font-weight: 900 !important;
+  color: var(--color-text-primary) !important;
+  letter-spacing: -0.02em;
+}
+main h2,
+.ui-page h2 {
+  font-size: 1.35rem !important;
+  font-weight: 800 !important;
+  color: var(--color-text-primary) !important;
+}
+main h3,
+.ui-page h3 {
+  font-size: 1.15rem !important;
+  font-weight: 800 !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Dialogs / modals — titles and body text readable */
+.fixed.inset-0 h1,
+.fixed.inset-0 h2,
+.fixed.inset-0 h3,
+.fixed.inset-0 [class*='font-semibold'].text-lg,
+.fixed.inset-0 [class*='font-bold'].text-lg,
+.fixed.inset-0 [class*='font-semibold'].text-xl,
+.fixed.inset-0 [class*='font-bold'].text-xl,
+.fixed.inset-0 [class*='font-black'] {
+  color: var(--color-text-primary) !important;
+  font-weight: 800 !important;
+}
+.fixed.inset-0 label,
+.fixed.inset-0 .text-sm,
+.fixed.inset-0 p,
+.fixed.inset-0 span {
+  font-weight: 600;
+}
+.fixed.inset-0 input,
+.fixed.inset-0 select,
+.fixed.inset-0 textarea,
+.fixed.inset-0 button {
+  font-size: 0.975rem;
+  font-weight: 600;
+}
+
+/* Forms / selects in pages */
+main input,
+main select,
+main textarea,
+main button {
+  font-weight: 600;
 }
 
 /* Soften legacy rainbow gradient toolbars */
@@ -596,8 +787,10 @@ html.dark .bg-black\/55 { background-color: rgba(0, 0, 0, 0.7) !important; }
   .no-print { display: none !important; }
 }
 
+/* Slightly larger base type for readability across pages */
+html { font-size: 16px; }
 @media (max-width: 1366px) {
-  html { font-size: 14px; }
+  html { font-size: 15px; }
 }
 
 table th, table td { padding: 0.5rem 0.75rem; }

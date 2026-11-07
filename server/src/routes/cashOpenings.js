@@ -11,13 +11,15 @@ router.use(authRequired)
 router.get('/', async (req, res, next) => {
   try {
     const { from, to, page, limit, search, q } = req.query
-    const query = {}
+    let query = {}
     if (from || to) query.date = { ...(from ? { $gte: String(from) } : {}), ...(to ? { $lte: String(to) } : {}) }
     const s = String(search || q || '').trim()
     if (s) {
       const rx = new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
       query.$or = [{ date: rx }, { note: rx }, { userName: rx }]
     }
+    const { mergeBranchFilter } = await import('../utils/branchScope.js')
+    query = mergeBranchFilter(req, query)
     if (page) {
       const p = Math.max(1, parseInt(page, 10) || 1)
       const lim = Math.max(1, Math.min(500, parseInt(limit, 10) || 50))
@@ -39,11 +41,14 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const date = String(body.date || '')
     if (!date) return res.status(400).json({ error: 'date is required' })
     const openingCash = Number(body.openingCash || 0)
+    const { resolveBranchId } = await import('../utils/branchScope.js')
+    const branchId = String(resolveBranchId(req) || '')
     const rec = await CashOpening.findOneAndUpdate(
-      { date },
+      { date, branchId },
       {
         $set: {
           date,
+          branchId,
           openingCash,
           note: body.note || '',
           userId: req.user?.id || '',

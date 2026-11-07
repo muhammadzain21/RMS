@@ -21,6 +21,9 @@ const DayCloseSchema = new mongoose.Schema({
   note: { type: String, default: '' },
   userId: { type: String, default: '' },
   userName: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
+
+DayCloseSchema.index({ date: 1, branchId: 1 }, { unique: true })
 
 export default mongoose.model('DayClose', DayCloseSchema)

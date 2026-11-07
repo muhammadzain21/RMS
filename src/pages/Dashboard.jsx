@@ -124,7 +124,7 @@ function StatCard({ title, value, icon: Icon, iconColor = 'bg-blue-500' }) {
     <div className="relative overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between">
         <div className="space-y-1.5 min-w-0">
-          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">{title}</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-body)]">{title}</span>
           <div className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)] truncate">{value}</div>
         </div>
         <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${iconColor} text-white shadow-md`}>
@@ -141,7 +141,7 @@ function MiniStat({ title, value, icon: Icon, iconColor = 'bg-blue-500' }) {
     <div className="relative overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md flex-1 min-w-[8.5rem]">
       <div className="flex items-center justify-between gap-2">
         <div className="space-y-1 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">{title}</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-text-body)]">{title}</span>
           <div className="text-lg font-bold tracking-tight text-[var(--color-text-primary)]">{fmt(value)}</div>
         </div>
         <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${iconColor} text-white shadow-sm`}>

@@ -42,9 +42,9 @@ export default function StatsCard({ title, value, sub, icon = null, variant = 's
     <div className={`p-4 rounded-xl border border-transparent ring-1 ${v.ring} ${v.bg} shadow-sm`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className={`text-xs font-medium uppercase tracking-wide ${v.title}`}>{title}</div>
+          <div className={`text-xs font-bold uppercase tracking-wider ${v.title}`}>{title}</div>
           <div className={`text-2xl font-extrabold mt-1 ${v.value}`}>{value}</div>
-          {sub && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{sub}</div>}
+          {sub && <div className="text-xs font-medium text-[var(--color-text-body)] mt-1">{sub}</div>}
         </div>
         {icon && (
           <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${v.iconBg}`}>

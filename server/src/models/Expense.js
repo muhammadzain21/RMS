@@ -17,6 +17,7 @@ const ExpenseSchema = new mongoose.Schema({
   paidByUserId: { type: String, default: '' },
   userId: { type: String },
   userName: { type: String },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 ExpenseSchema.pre('validate', function (next) {

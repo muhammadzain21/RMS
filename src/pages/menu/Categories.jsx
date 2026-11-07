@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
@@ -9,7 +9,8 @@ import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv } from '../../utils/listReportExport.js'
+import { parseSpreadsheetFile, exportCategoriesSpreadsheet, rowsToCategoryImportPayload } from '../../utils/spreadsheetIo.js'
 
 export default function Categories() {
  const { state, dispatch } = useData()
@@ -26,10 +27,10 @@ export default function Categories() {
  const [jump, setJump] = useState(1)
  const [search, setSearch] = useState('')
  const [categoryTilesPerRow, setCategoryTilesPerRow] = useState(4)
+ const [importing, setImporting] = useState(false)
+ const fileInputRef = useRef(null)
 
- // Ensure fresh categories list on mount
- useEffect(() => {
- const refresh = async () => {
+ const refreshCategories = async () => {
  try {
  const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const res = await fetch(`${API}/api/categories`, { headers })
@@ -38,6 +39,15 @@ export default function Categories() {
  const mapId = (x) => ({ ...x, id: x.id || x._id })
  dispatch({ type: 'HYDRATE', payload: { categories: (rows||[]).map(mapId) } })
  }
+ } catch {}
+ }
+
+ // Ensure fresh categories list on mount
+ useEffect(() => {
+ const refresh = async () => {
+ try {
+ await refreshCategories()
+ const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  // Load tiles per row setting
  const sres = await fetch(`${API}/api/settings`, { headers })
  if (sres.ok) {
@@ -217,16 +227,36 @@ export default function Categories() {
  }
  }
 
- const exportCSV = () => {
+ const exportSheet = (fmt) => {
  try {
- downloadCsvFile(
- `categories_${format(new Date(), 'yyyy-MM-dd')}.csv`,
- ['Order', 'Name', 'Show on POS', 'Active', 'Discount %'],
- categoryReportRows()
- )
- toast.success('CSV exported successfully')
+ exportCategoriesSpreadsheet(fmt, filteredItems)
+ toast.success(fmt === 'xlsx' ? 'Excel exported' : 'CSV exported')
  } catch {
- toast.error('Failed to export CSV')
+ toast.error('Export failed')
+ }
+ }
+
+ const importCategoriesFile = async (file) => {
+ if (!file) return
+ try {
+ setImporting(true)
+ const rows = await parseSpreadsheetFile(file)
+ const categories = rowsToCategoryImportPayload(rows)
+ if (!categories.length) throw new Error('No category rows found (need a Name column)')
+ const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+ const res = await fetch(`${API}/api/categories/import`, {
+ method: 'POST',
+ headers,
+ body: JSON.stringify({ categories }),
+ })
+ const j = await res.json().catch(() => ({}))
+ if (!res.ok) throw new Error(j.error || 'Import failed')
+ await refreshCategories()
+ toast.success(`Imported ${j.categories || 0} categories`)
+ } catch (e) {
+ toast.error(e.message || 'Invalid CSV / Excel file')
+ } finally {
+ setImporting(false)
  }
  }
 
@@ -249,7 +279,7 @@ export default function Categories() {
 
  return (
  <div className="space-y-4 w-full"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Categories
- </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button onClick={onAdd} className="ui-btn ui-btn-primary flex items-center gap-2"><Plus size={18} /> Add Category</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
+ </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={() => exportSheet('csv')} className={btnCsv}>Export CSV</button><button type="button" disabled={importing} onClick={() => exportSheet('xlsx')} className="ui-btn ui-btn-secondary disabled:opacity-50">Export Excel</button><button type="button" disabled={importing} onClick={() => fileInputRef.current?.click()} className="ui-btn ui-btn-secondary disabled:opacity-50">{importing ? 'Importing…' : 'Import CSV / Excel'}</button><input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; importCategoriesFile(f) }} /><button onClick={onAdd} className="ui-btn ui-btn-primary flex items-center gap-2"><Plus size={18} /> Add Category</button><label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">POS Tiles/row:</label><input
  type="number"
  min={1}
  max={12}
@@ -257,6 +287,9 @@ export default function Categories() {
  onChange={e => saveTilesPerRow(e.target.value)}
  className="w-16 px-2 py-1.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white text-sm text-center focus:ring-2 focus:ring-purple-500"
  /></div></div>
+ <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
+ Shared across all branches — the same categories appear on every branch POS.
+ </p>
 
  <div className="flex items-center gap-3">
  <input value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} placeholder="Search by category name..." className="w-full px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-purple-500 transition-all" />
