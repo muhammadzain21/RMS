@@ -45,7 +45,7 @@ const RecallSchema = new mongoose.Schema({
   staffId: { type: String, default: '' },
   staffName: { type: String, default: '' },
   staffSettlement: { type: String, default: '' },
-  idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
+  idempotencyKey: { type: String, default: null, index: { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } } },
 }, { timestamps: true })
 
 export default mongoose.model('Recall', RecallSchema)

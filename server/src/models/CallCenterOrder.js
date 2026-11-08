@@ -53,7 +53,7 @@ const CallCenterOrderSchema = new mongoose.Schema({
   // Sync helpers
   localId: { type: String, default: null, index: true },
   syncedAt: { type: Date, default: null },
-  idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
+  idempotencyKey: { type: String, default: null, index: { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } } },
 }, { timestamps: true })
 
 CallCenterOrderSchema.index({ branchId: 1, status: 1, createdAt: -1 })

@@ -25,7 +25,7 @@ const HeldSchema = new mongoose.Schema({
   staffSettlement: { type: String, default: '' },
   customer: { type: Object, default: null },
   branchId: { type: String, default: '', index: true },
-  idempotencyKey: { type: String, default: null, index: { unique: true, sparse: true } },
+  idempotencyKey: { type: String, default: null, index: { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } } },
 }, { timestamps: true })
 
 export default mongoose.model('Held', HeldSchema)
