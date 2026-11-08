@@ -77,7 +77,17 @@ function deviceId() {
 
 async function fetchJson(url, opts) {
   const res = await fetch(url, opts)
-  const j = await res.json().catch(() => ({}))
+  const ct = String(res.headers.get('content-type') || '')
+  const text = await res.text()
+  if (ct.includes('text/html') || /^\s*<!doctype/i.test(text) || /^\s*<html/i.test(text)) {
+    throw new Error(
+      'Cloud URL returned HTML instead of the API. On the VPS, nginx must proxy /api to Node (port 5000). See deploy/nginx-api-proxy.conf'
+    )
+  }
+  let j = {}
+  try { j = text ? JSON.parse(text) : {} } catch {
+    throw new Error(`Cloud API returned non-JSON (HTTP ${res.status})`)
+  }
   if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
   return j
 }

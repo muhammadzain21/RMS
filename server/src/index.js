@@ -65,12 +65,22 @@ const DB_NAME = process.env.DB_NAME || 'restaurant_pos'
 const PORT = process.env.PORT || 5000
 
 const app = express()
-// Configure CORS to allow Authorization header so authenticated GETs succeed after preflight
+// Configure CORS to allow Authorization header so authenticated GETs succeed after preflight.
+// origin:true mirrors the request Origin (needed for localhost:5173 → VPS cloud sync).
 app.use(cors({
   origin: true,
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key', 'X-Delete-Key', 'X-Branch-Id'],
+  exposedHeaders: ['Content-Type'],
   credentials: false,
+  optionsSuccessStatus: 204,
+  preflightContinue: false,
+}))
+// Explicit preflight for proxies that strip cors package headers on errors
+app.options('*', cors({
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key', 'X-Delete-Key', 'X-Branch-Id'],
   optionsSuccessStatus: 204,
 }))
 app.use(express.json({ limit: '5000mb' }))
