@@ -7,6 +7,7 @@ import DemandModal from '../components/DemandModal.jsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { exportDateStamp } from '../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -159,7 +160,7 @@ export default function DemandList() {
  const exportAllPDF = () => {
  try {
  const doc = buildAllPDF()
- doc.save(`demands-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`demands-${exportDateStamp()}.pdf`)
  toast.success('PDF downloaded successfully')
  } catch {
  toast.error('Failed to download PDF')
@@ -192,13 +193,13 @@ export default function DemandList() {
  settings: state?.settings || {},
  title: 'Demand Management',
  reportLabel: 'Demand Report',
- reportNo: `Rpt #: DM-${format(new Date(), 'yyyy-MM-dd')}`,
+ reportNo: `Rpt #: DM-${exportDateStamp()}`,
  metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', dateFrom || '—'], ['To', dateTo || '—']],
  metaRight: [['Status', statusFilter], ['Search', search.trim() || '—']],
  body,
  footNote: 'Export reflects current page of filtered results.',
  })
- await previewHtmlReport(html, `Demands-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Demands-${exportDateStamp()}.pdf`)
  toast.success('Print preview opened')
  } catch {
  toast.error('Failed to open print preview')
@@ -261,7 +262,7 @@ export default function DemandList() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `demands-${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `demands-${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported successfully')

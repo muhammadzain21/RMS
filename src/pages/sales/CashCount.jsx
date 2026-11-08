@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import jsPDF from 'jspdf'
@@ -7,6 +8,7 @@ import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import SlipDialog from '../../components/SlipDialog.jsx'
 import { Plus, X } from 'lucide-react'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
@@ -47,7 +49,10 @@ export default function CashCount() {
  const currentPage = resetPage ? 1 : page
  params.set('page', currentPage)
  params.set('limit', limit)
- const res = await fetch(`${API}/api/cash-counts?${params.toString()}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+ const res = await fetch(`${API}/api/cash-counts?${params.toString()}`, {
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
+  cache: 'no-store',
+ })
  if (!res.ok) return
  const data = await res.json()
  setRows((data.rows || []).map(x => ({ ...x, id: x.id || x._id })))
@@ -61,6 +66,7 @@ export default function CashCount() {
  useEffect(() => {
  refreshCashCounts()
  }, [refreshCashCounts])
+ useLiveRefresh(() => refreshCashCounts(), { intervalMs: 8000 })
 
  // Reset page when filters change
  useEffect(() => {
@@ -80,21 +86,27 @@ export default function CashCount() {
  const fmt = (n) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 
  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cash Count Slip</title><style>
- body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial; padding:12px;}
+ @page{size:80mm auto;margin:0}
+ html,body{width:72mm;max-width:72mm;margin:0;padding:0;box-sizing:border-box}
+ @media print{html,body{width:72mm!important;max-width:72mm!important;padding:2mm 3mm!important;height:auto!important;min-height:0!important}}
+ @media screen{html,body{max-width:100%;margin:0 auto;padding:6px 8px}}
+ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;font-size:11px;font-weight:500;color:#475569;line-height:1.4}
  .center{text-align:center}
- .bold{font-weight:700}
- table{width:100%; border-collapse:collapse}
- td{font-size:12px; padding:4px 0}
- .line{border-top:1px dashed #333; margin:8px 0}
- .kv{display:flex; justify-content:space-between; align-items:flex-start}
- .kv span:first-child{flex-shrink:0; margin-right:8px}
- .kv span:last-child{white-space:nowrap; text-align:right}
+ .brand-name{font-size:15px;font-weight:700;color:#0f172a;margin:0 0 3px}
+ .meta{font-size:10px;font-weight:500;color:#64748b}
+ .title{font-size:12px;font-weight:700;color:#334155;margin:6px 0}
+ table{width:100%;border-collapse:collapse}
+ td{font-size:11px;padding:4px 0;color:#64748b;font-weight:500}
+ td:last-child{text-align:right;color:#0f172a;font-weight:600}
+ .line{border-top:1px dashed #cbd5e1;margin:8px 0}
+ .kv{display:flex;justify-content:space-between;gap:8px;padding:2px 0;font-size:10.5px;color:#64748b;font-weight:500}
+ .kv span:last-child{color:#0f172a;font-weight:600;text-align:right}
  </style></head><body>
- ${logo ? `<div class="center"><img src="${escapeHtml(logo)}" style="max-height:60px;max-width:100%;display:block;margin:0 auto 4px" /></div>` : ''}
- <div class="center bold" style="font-size:16px">${escapeHtml(companyName)}</div>
- ${phone ? `<div class="center">${escapeHtml(phone)}</div>` : ''}
- ${address ? `<div class="center">${escapeHtml(address)}</div>` : ''}
- <div class="line"></div><div class="center bold">Manager Cash Count</div><div class="kv"><span>Entry Date:</span><span>${createdAt ? format(new Date(createdAt), 'd-M-yyyy') : escapeHtml(date || '')}</span></div><div class="kv"><span>Entry Time:</span><span>${createdAt ? format(new Date(createdAt), 'h:mm a') : '-'}</span></div><div class="kv"><span>Printed Date:</span><span>${nowDate}</span></div><div class="kv"><span>Printed Time:</span><span>${nowTime}</span></div><div class="kv"><span>User (From):</span><span>${escapeHtml(fromUser || userName || '-')}</span></div><div class="kv"><span>Receiver (To):</span><span>${escapeHtml(receiver || '-')}</span></div><div class="line"></div><table><tr><td>Amount Counted</td><td style="text-align:right">PKR ${fmt(amount)}</td></tr><tr><td>Note</td><td style="text-align:right">${escapeHtml(note || '-')}</td></tr></table><div class="line"></div></body></html>`
+ ${logo ? `<div class="center"><img src="${escapeHtml(logo)}" style="max-height:52px;max-width:88%;display:block;margin:0 auto 6px" /></div>` : ''}
+ <div class="center brand-name">${escapeHtml(companyName)}</div>
+ ${phone ? `<div class="center meta">${escapeHtml(phone)}</div>` : ''}
+ ${address ? `<div class="center meta">${escapeHtml(address)}</div>` : ''}
+ <div class="line"></div><div class="center title">Manager Cash Count</div><div class="kv"><span>Entry Date</span><span>${createdAt ? format(new Date(createdAt), 'd-M-yyyy') : escapeHtml(date || '')}</span></div><div class="kv"><span>Entry Time</span><span>${createdAt ? format(new Date(createdAt), 'h:mm a') : '-'}</span></div><div class="kv"><span>Printed Date</span><span>${nowDate}</span></div><div class="kv"><span>Printed Time</span><span>${nowTime}</span></div><div class="kv"><span>User (From)</span><span>${escapeHtml(fromUser || userName || '-')}</span></div><div class="kv"><span>Receiver (To)</span><span>${escapeHtml(receiver || '-')}</span></div><div class="line"></div><table><tr><td>Amount Counted</td><td>PKR ${fmt(amount)}</td></tr><tr><td>Note</td><td>${escapeHtml(note || '-')}</td></tr></table><div class="line"></div></body></html>`
 
  setSlipHtml(html)
  }
@@ -155,7 +167,7 @@ export default function CashCount() {
  body,
  footNote: 'Manager cash counts do not affect day close totals.',
  })
- await previewHtmlReport(html, `Cash-Count-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Cash-Count-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }
@@ -170,7 +182,7 @@ export default function CashCount() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `cash_count_history_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `cash_count_history_${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported successfully')
@@ -201,7 +213,7 @@ export default function CashCount() {
  foot: [['Totals', '', `PKR ${totalAmount.toLocaleString()}`, '', '', '', '']],
  footStyles: { fillColor: [245,245,245] },
  })
- doc.save(`cash_count_history_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`cash_count_history_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

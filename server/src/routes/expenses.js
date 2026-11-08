@@ -180,22 +180,37 @@ router.post('/', requireRole('Admin', 'Manager'), blockIfClosedFromBody('date'),
 
 router.patch('/:id', requireRole('Admin', 'Manager'), blockIfClosedFromModel(Expense), async (req, res, next) => {
   try {
+    const { assertDocumentBranch } = await import('../utils/branchScope.js')
+    const existing = await Expense.findById(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Not found' })
+    assertDocumentBranch(req, existing)
     const payload = normalizeBody({ ...(req.body || {}), date: req.body?.date }, req)
     // Keep date from body if provided; otherwise leave untouched by only setting defined fields
     const patch = { ...payload }
     if (!req.body?.date) delete patch.date
+    if (existing.branchId) patch.branchId = String(existing.branchId)
     const doc = await Expense.findByIdAndUpdate(req.params.id, patch, { new: true })
     await logAudit(req, 'expense', `Updated expense ${req.params.id}`, { id: req.params.id, patch })
     res.json(doc)
-  } catch (e) { next(e) }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
 })
 
 router.delete('/:id', requireRole('Admin', 'Manager'), blockIfClosedFromModel(Expense), async (req, res, next) => {
   try {
+    const { assertDocumentBranch } = await import('../utils/branchScope.js')
+    const existing = await Expense.findById(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Not found' })
+    assertDocumentBranch(req, existing)
     await Expense.findByIdAndDelete(req.params.id)
     await logAudit(req, 'expense', `Deleted expense ${req.params.id}`, { id: req.params.id })
     res.json({ ok: true })
-  } catch (e) { next(e) }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
 })
 
 export default router

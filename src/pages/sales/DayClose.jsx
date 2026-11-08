@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
@@ -77,6 +79,15 @@ export default function DayClose() {
 
  const payIns = useMemo(() => (state.payInOuts||[]).filter(p => p.date === date && p.type === 'IN').reduce((a,b)=>a+Number(b.amount||0),0), [state.payInOuts, date])
  const payOuts = useMemo(() => (state.payInOuts||[]).filter(p => p.date === date && p.type === 'OUT').reduce((a,b)=>a+Number(b.amount||0),0), [state.payInOuts, date])
+ // Cash expenses reduce drawer expected cash
+ const expenses = useMemo(() => (state.expenses || [])
+  .filter(e => String(e.date) === String(date))
+  .filter(e => {
+   const account = String(e.accountHead || 'cash').toLowerCase()
+   const method = String(e.paymentMethod || 'cash').toLowerCase()
+   return account === 'cash' || method === 'cash'
+  })
+  .reduce((a, b) => a + Number(b.amount || 0), 0), [state.expenses, date])
 
  const recallDateOf = (r) => {
   if (r?.date) return String(r.date).slice(0, 10)
@@ -90,25 +101,22 @@ export default function DayClose() {
  }
  // Live recalls for the selected date (prefer API so Day Close isn't blocked by stale state)
  const [liveRecalls, setLiveRecalls] = useState([])
- useEffect(() => {
-  let dead = false
-  ;(async () => {
-   if (!token || !date) { setLiveRecalls([]); return }
-   try {
-    const res = await fetch(`${API}/api/recalls`, {
-     headers: { Authorization: `Bearer ${token}` },
-     cache: 'no-store',
-    })
-    if (!res.ok) return
-    const rows = await res.json()
-    const list = Array.isArray(rows) ? rows : []
-    if (!dead) setLiveRecalls(list)
-   } catch {
-    if (!dead) setLiveRecalls(Array.isArray(state.recalls) ? state.recalls : [])
-   }
-  })()
-  return () => { dead = true }
+ const loadRecalls = useCallback(async () => {
+  if (!token || !date) { setLiveRecalls([]); return }
+  try {
+   const res = await fetch(`${API}/api/recalls`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+   })
+   if (!res.ok) return
+   const rows = await res.json()
+   setLiveRecalls(Array.isArray(rows) ? rows : [])
+  } catch {
+   setLiveRecalls(Array.isArray(state.recalls) ? state.recalls : [])
+  }
  }, [token, date, API, state.recalls])
+ useEffect(() => { loadRecalls() }, [loadRecalls])
+ useLiveRefresh(loadRecalls, { intervalMs: 8000 })
 
  const pendingRecalls = useMemo(() => {
   // Any unpaid recall blocks day close — including older dates left open
@@ -124,7 +132,10 @@ export default function DayClose() {
 
  // Expected = what should be in the drawer; handover happens AFTER counting,
  // so it only reduces Left at Counter — not expected cash or variance.
- const expectedCash = useMemo(() => openingCash + cashSales - returns + payIns - payOuts - staffSales, [openingCash, cashSales, staffSales, returns, payIns, payOuts])
+ const expectedCash = useMemo(
+  () => openingCash + cashSales - returns + payIns - payOuts - staffSales - expenses,
+  [openingCash, cashSales, staffSales, returns, payIns, payOuts, expenses]
+ )
  const variance = useMemo(() => Number(countedCash||0) - expectedCash, [countedCash, expectedCash])
 
  const onCloseDay = async (e) => {
@@ -187,6 +198,7 @@ export default function DayClose() {
  leftAtCounter: Number(leftAtCounter || 0),
  payIns,
  payOuts,
+ expenses,
  expectedCash,
  countedCash: counted,
  variance,
@@ -253,12 +265,9 @@ export default function DayClose() {
 
  useEffect(() => { setPage(1) }, [from, to])
 
- // Fetch from server whenever date range changes or on mount
- useEffect(() => {
- let cancelled = false
- ;(async () => {
+ const loadDayCloses = useCallback(async ({ quiet = false } = {}) => {
  try {
- setLoading(true)
+ if (!quiet) setLoading(true)
  const params = new URLSearchParams()
  if (from) params.set('from', from)
  if (to) params.set('to', to)
@@ -271,26 +280,22 @@ export default function DayClose() {
  const data = await res.json()
  const mapId = (x) => ({ ...x, id: x.id || x._id })
  if (Array.isArray(data)) {
- if (!cancelled) {
- setServerRows((data||[]).map(mapId))
- setTotal((data||[]).length)
- }
+ setServerRows((data || []).map(mapId))
+ setTotal((data || []).length)
  } else {
  const rows = Array.isArray(data?.rows) ? data.rows : []
- const tot = Number(data?.total || rows.length || 0)
- if (!cancelled) {
  setServerRows(rows.map(mapId))
- setTotal(tot)
+ setTotal(Number(data?.total || rows.length || 0))
  }
- }
- } catch (e) {
- if (!cancelled) { setServerRows([]); setTotal(0) }
+ } catch {
+ if (!quiet) { setServerRows([]); setTotal(0) }
  } finally {
- if (!cancelled) setLoading(false)
+ if (!quiet) setLoading(false)
  }
- })()
- return () => { cancelled = true }
  }, [API, token, from, to, page, limit, search])
+
+ useEffect(() => { loadDayCloses() }, [loadDayCloses])
+ useLiveRefresh(() => loadDayCloses({ quiet: true }), { intervalMs: 8000 })
 
  const rows = useMemo(() => {
  return [...serverRows]
@@ -369,7 +374,7 @@ export default function DayClose() {
  ]) +
  reportSec(`Day Close History (${rows.length})`) +
  reportTable({
- headers: ['Date', { t: 'Opening', align: 'r' }, { t: 'Cash', align: 'r' }, { t: 'Bank', align: 'r' }, { t: 'Card', align: 'r' }, { t: 'Returns', align: 'r' }, { t: 'Handover', align: 'r' }, { t: 'Pay In', align: 'r' }, { t: 'Pay Out', align: 'r' }, { t: 'Expected', align: 'r' }, { t: 'Counted', align: 'r' }, { t: 'Variance', align: 'r' }, 'User', 'Note'],
+ headers: ['Date', { t: 'Opening', align: 'r' }, { t: 'Cash', align: 'r' }, { t: 'Bank', align: 'r' }, { t: 'Card', align: 'r' }, { t: 'Returns', align: 'r' }, { t: 'Handover', align: 'r' }, { t: 'Pay In', align: 'r' }, { t: 'Pay Out', align: 'r' }, { t: 'Expenses', align: 'r' }, { t: 'Expected', align: 'r' }, { t: 'Counted', align: 'r' }, { t: 'Variance', align: 'r' }, 'User', 'Note'],
  numbered: true,
  rows: rows.map(r => [
  r.date,
@@ -381,6 +386,7 @@ export default function DayClose() {
  { v: money(r.handovers), align: 'r' },
  { v: money(r.payIns), align: 'r' },
  { v: money(r.payOuts), align: 'r' },
+ { v: money(r.expenses || 0), align: 'r' },
  { v: money(r.expectedCash), align: 'r' },
  { v: money(r.countedCash), align: 'r' },
  { v: money(r.variance), align: 'r', cls: Number(r.variance) < 0 ? 'neg' : Number(r.variance) > 0 ? 'pos' : '' },
@@ -397,18 +403,18 @@ export default function DayClose() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Day-Close-History-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Day-Close-History-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }
  }
 
  const exportCSV = () => {
- const header = ['Date','Opening','CashSales','BankSales','CardSales','Returns','Handovers','PayIns','PayOuts','Expected','Counted','Variance','Note','User','ID']
+ const header = ['Date','Opening','CashSales','BankSales','CardSales','Returns','Handovers','PayIns','PayOuts','Expenses','Expected','Counted','Variance','Note','User','ID']
  const lines = [header.join(',')]
  rows.forEach(r => {
  lines.push([
- r.date, r.openingCash, r.cashSales, r.onlineSales ?? 0, r.cardSales||0, r.returns||0, r.handovers, r.payIns, r.payOuts, r.expectedCash, r.countedCash, r.variance, JSON.stringify(r.note||''), r.userName||'', r.id
+ r.date, r.openingCash, r.cashSales, r.onlineSales ?? 0, r.cardSales||0, r.returns||0, r.handovers, r.payIns, r.payOuts, r.expenses||0, r.expectedCash, r.countedCash, r.variance, JSON.stringify(r.note||''), r.userName||'', r.id
  ].join(','))
  })
  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
@@ -424,7 +430,7 @@ export default function DayClose() {
  doc.text('Day Close History', 14, 16)
  autoTable(doc, {
  startY: 20,
- head: [[ 'Date','Opening','Cash','Bank','Card','Returns','Handover','Pay In','Pay Out','Expected','Counted','Variance','User','ID' ]],
+ head: [[ 'Date','Opening','Cash','Bank','Card','Returns','Handover','Pay In','Pay Out','Expenses','Expected','Counted','Variance','User','ID' ]],
  body: rows.map(r => [
  r.date,
  `PKR ${Number(r.openingCash).toLocaleString()}`,
@@ -435,6 +441,7 @@ export default function DayClose() {
  `PKR ${Number(r.handovers).toLocaleString()}`,
  `PKR ${Number(r.payIns).toLocaleString()}`,
  `PKR ${Number(r.payOuts).toLocaleString()}`,
+ `PKR ${Number(r.expenses||0).toLocaleString()}`,
  `PKR ${Number(r.expectedCash).toLocaleString()}`,
  `PKR ${Number(r.countedCash).toLocaleString()}`,
  `PKR ${Number(r.variance).toLocaleString()}`,
@@ -468,15 +475,19 @@ export default function DayClose() {
 
  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Day Close Slip</title><style>
  *{box-sizing:border-box}
- body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;padding:8px 10px;max-width:320px;margin:0 auto;font-size:11px;line-height:1.25;color:#111}
- .center{text-align:center}.bold{font-weight:700}
- .line{border-top:1px dashed #333;margin:4px 0}
- .kv{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:1px 0}
- .kv span:last-child{white-space:nowrap;text-align:right}
- .meta{font-size:10px;color:#444}.title{font-size:13px;margin:2px 0}
- .section{font-size:11px;margin:2px 0}.neg{color:#dc2626}.foot{font-size:10px;color:#666;margin-top:2px}
+ @page{size:80mm auto;margin:0}
+ html,body{width:72mm;max-width:72mm;margin:0;padding:0}
+ @media print{html,body{width:72mm!important;max-width:72mm!important;padding:2mm 3mm!important;height:auto!important;min-height:0!important}}
+ @media screen{html,body{max-width:100%;margin:0 auto;padding:6px 8px}}
+ body{font-family:"Segoe UI",system-ui,Arial,sans-serif;font-size:11px;font-weight:500;line-height:1.35;color:#475569}
+ .center{text-align:center}.bold{font-weight:700;color:#0f172a}
+ .line{border-top:1px dashed #cbd5e1;margin:6px 0}
+ .kv{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:2px 0;font-size:10.5px;color:#64748b;font-weight:500}
+ .kv span:last-child{white-space:nowrap;text-align:right;color:#0f172a;font-weight:600}
+ .meta{font-size:10px;color:#64748b;font-weight:500}.title{font-size:15px;margin:0 0 3px;font-weight:700;color:#0f172a}
+ .section{font-size:12px;margin:4px 0;font-weight:700;color:#334155}.neg{color:#b91c1c}.foot{font-size:10px;color:#94a3b8;margin-top:4px;text-align:center}
  </style></head><body>
- ${logo ? `<div class="center"><img src="${escapeHtml(logo)}" style="max-height:42px;max-width:100%;display:block;margin:0 auto 2px" /></div>` : ''}
+ ${logo ? `<div class="center"><img src="${escapeHtml(logo)}" style="max-height:48px;max-width:88%;display:block;margin:0 auto 6px" /></div>` : ''}
  <div class="center bold title">${escapeHtml(companyName)}</div>
  ${phone ? `<div class="center meta">${escapeHtml(phone)}</div>` : ''}
  ${address ? `<div class="center meta">${escapeHtml(address)}</div>` : ''}
@@ -490,13 +501,13 @@ export default function DayClose() {
  <div class="kv"><span>Cash Sales</span><span>PKR ${fmt(r.cashSales)}</span></div>
  <div class="kv"><span>Bank Sales</span><span>PKR ${fmt(r.onlineSales ?? 0)}</span></div>
  <div class="kv"><span>Card Sales</span><span>PKR ${fmt(r.cardSales || 0)}</span></div>
- <div class="kv"><span>Personal Sales</span><span>PKR ${fmt(r.complimentarySales || 0)}</span></div>
  <div class="kv"><span>Staff Sales</span><span>PKR ${fmt(r.staffSales || 0)}</span></div>
  <div class="kv"><span>Returns</span><span>PKR ${fmt(r.returns || 0)}</span></div>
  <div class="kv"><span>${handoverLabel}</span><span>PKR ${fmt(r.handovers)}</span></div>
  <div class="kv"><span>Left at Counter</span><span>PKR ${fmt(r.leftAtCounter || 0)}</span></div>
  <div class="kv"><span>Pay In</span><span>PKR ${fmt(r.payIns)}</span></div>
  <div class="kv"><span>Pay Out</span><span>PKR ${fmt(r.payOuts)}</span></div>
+ <div class="kv"><span>Expenses</span><span>PKR ${fmt(r.expenses || 0)}</span></div>
  <div class="line"></div>
  <div class="kv bold"><span>Expected Cash</span><span>PKR ${fmt(r.expectedCash)}</span></div>
  <div class="kv"><span>Counted Cash</span><span>PKR ${fmt(r.countedCash)}</span></div>
@@ -549,13 +560,13 @@ export default function DayClose() {
  PKR {bankSales.toLocaleString()}
  </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Card Sales (net)</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 font-medium text-indigo-600 dark:text-indigo-400">
  PKR {cardSales.toLocaleString()}
- </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Personal (net)</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 font-medium text-rose-600 dark:text-rose-400">
- PKR {complimentarySales.toLocaleString()}
  </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Staff (net)</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 font-medium text-violet-600 dark:text-violet-400">
  PKR {staffSales.toLocaleString()}
  </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Returns</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 font-medium text-orange-600 dark:text-orange-400">
  PKR {returns.toLocaleString()}
- </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pay In / Pay Out</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-700 text-sm"><span className="text-emerald-600 dark:text-emerald-400 font-medium">IN: PKR {payIns.toLocaleString()}</span><span className="mx-2 text-gray-400">|</span><span className="text-rose-600 dark:text-rose-400 font-medium">OUT: PKR {payOuts.toLocaleString()}</span></div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expected Cash</label><div className="px-3 py-2 border-2 border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50 dark:bg-blue-900/20 font-bold text-blue-700 dark:text-blue-300">
+ </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pay In / Pay Out</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-700 text-sm"><span className="text-emerald-600 dark:text-emerald-400 font-medium">IN: PKR {payIns.toLocaleString()}</span><span className="mx-2 text-gray-400">|</span><span className="text-rose-600 dark:text-rose-400 font-medium">OUT: PKR {payOuts.toLocaleString()}</span></div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expenses (cash)</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 font-medium text-amber-600 dark:text-amber-400">
+ PKR {expenses.toLocaleString()}
+ </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expected Cash</label><div className="px-3 py-2 border-2 border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50 dark:bg-blue-900/20 font-bold text-blue-700 dark:text-blue-300">
  PKR {expectedCash.toLocaleString()}
  </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Counted Cash</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="0" value={countedCash} onChange={e=>setCountedCash(e.target.value)} className="w-full pl-12 pr-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" placeholder="Enter counted amount" /></div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Variance</label><div className={`px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-700 font-bold ${variance !== 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
  {variance > 0 ? '+' : ''}PKR {variance.toLocaleString()}
@@ -564,9 +575,9 @@ export default function DayClose() {
  {isSelectedDateClosed ? 'Day Already Closed' : hasOpenRecalls ? `Clear ${pendingRecalls.length} Recall${pendingRecalls.length === 1 ? '' : 's'} First` : 'Close Day'}
  </button></div></form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Day Close History</h2><div className="flex flex-wrap items-center gap-4 mb-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input placeholder="Date, note, user..." value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex gap-3 flex-shrink-0"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button></div>
  {loading && <div className="text-xs text-gray-500"> Loading...</div>}
- </div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Opening</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Cash</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Bank</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Card</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Personal</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Returns</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Handover</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay In</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay Out</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Expected</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Counted</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Variance</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Print</th></tr></thead><tbody>
+ </div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Opening</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Cash</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Bank</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Card</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Returns</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Handover</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay In</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay Out</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Expenses</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Expected</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Counted</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Variance</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Print</th></tr></thead><tbody>
  {rows.map(r => (
- <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-3 py-3 text-gray-700 dark:text-gray-300 font-medium">{r.date}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.openingCash).toLocaleString()}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.cashSales).toLocaleString()}</td><td className="px-3 py-3 text-blue-600 dark:text-blue-400">PKR {Number(r.onlineSales ?? 0).toLocaleString()}</td><td className="px-3 py-3 text-indigo-600 dark:text-indigo-400">PKR {Number(r.cardSales||0).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.complimentarySales||0).toLocaleString()}</td><td className="px-3 py-3 text-orange-600 dark:text-orange-400">PKR {Number(r.returns||0).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.handovers).toLocaleString()}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.payIns).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.payOuts).toLocaleString()}</td><td className="px-3 py-3 font-semibold text-blue-700 dark:text-blue-300">PKR {Number(r.expectedCash).toLocaleString()}</td><td className="px-3 py-3 text-gray-700 dark:text-gray-300">PKR {Number(r.countedCash).toLocaleString()}</td><td className={`px-3 py-3 font-semibold ${Number(r.variance)!==0?'text-red-600 dark:text-red-400':'text-emerald-600 dark:text-emerald-400'}`}>
+ <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-3 py-3 text-gray-700 dark:text-gray-300 font-medium">{r.date}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.openingCash).toLocaleString()}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.cashSales).toLocaleString()}</td><td className="px-3 py-3 text-blue-600 dark:text-blue-400">PKR {Number(r.onlineSales ?? 0).toLocaleString()}</td><td className="px-3 py-3 text-indigo-600 dark:text-indigo-400">PKR {Number(r.cardSales||0).toLocaleString()}</td><td className="px-3 py-3 text-orange-600 dark:text-orange-400">PKR {Number(r.returns||0).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.handovers).toLocaleString()}</td><td className="px-3 py-3 text-emerald-600 dark:text-emerald-400">PKR {Number(r.payIns).toLocaleString()}</td><td className="px-3 py-3 text-rose-600 dark:text-rose-400">PKR {Number(r.payOuts).toLocaleString()}</td><td className="px-3 py-3 text-amber-600 dark:text-amber-400">PKR {Number(r.expenses||0).toLocaleString()}</td><td className="px-3 py-3 font-semibold text-blue-700 dark:text-blue-300">PKR {Number(r.expectedCash).toLocaleString()}</td><td className="px-3 py-3 text-gray-700 dark:text-gray-300">PKR {Number(r.countedCash).toLocaleString()}</td><td className={`px-3 py-3 font-semibold ${Number(r.variance)!==0?'text-red-600 dark:text-red-400':'text-emerald-600 dark:text-emerald-400'}`}>
  {Number(r.variance) > 0 ? '+' : ''}PKR {Number(r.variance).toLocaleString()}
  </td><td className="px-3 py-3 text-gray-600 dark:text-gray-400 text-sm max-w-xs truncate" title={r.note}>{r.note || '-'}</td><td className="px-3 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-3 py-3"><div className="flex items-center gap-2"><button
  className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors font-medium text-sm border border-blue-200 dark:border-blue-700"

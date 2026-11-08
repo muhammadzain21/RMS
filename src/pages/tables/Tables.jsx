@@ -10,33 +10,33 @@ import { Plus, X } from 'lucide-react'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function Tables() {
-  const { state, dispatch } = useData()
-  const { token } = useAuth()
-  const { confirm, ConfirmDialog } = useConfirm()
-  const [newTable, setNewTable] = useState('')
-  const [newFloor, setNewFloor] = useState('')
-  const [newImage, setNewImage] = useState('')
-  const [addOpen, setAddOpen] = useState(false)
-  const [editTable, setEditTable] = useState(null)
-  const [editOpen, setEditOpen] = useState(false)
-  const [editName, setEditName] = useState('')
-  const [editFloor, setEditFloor] = useState('')
-  const [editImage, setEditImage] = useState('')
-  const [search, setSearch] = useState('')
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [selectedTable, setSelectedTable] = useState('')
-  const [tables, setTables] = useState([])
-  const [history, setHistory] = useState([])
+ const { state, dispatch } = useData()
+ const { token } = useAuth()
+ const { confirm, ConfirmDialog } = useConfirm()
+ const [newTable, setNewTable] = useState('')
+ const [newFloor, setNewFloor] = useState('')
+ const [newImage, setNewImage] = useState('')
+ const [addOpen, setAddOpen] = useState(false)
+ const [editTable, setEditTable] = useState(null)
+ const [editOpen, setEditOpen] = useState(false)
+ const [editName, setEditName] = useState('')
+ const [editFloor, setEditFloor] = useState('')
+ const [editImage, setEditImage] = useState('')
+ const [search, setSearch] = useState('')
+ const [drawerOpen, setDrawerOpen] = useState(false)
+ const [selectedTable, setSelectedTable] = useState('')
+ const [tables, setTables] = useState([])
+ const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
-  const [summary, setSummary] = useState([])
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(100)
+ const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+ const [fromDate, setFromDate] = useState('')
+ const [toDate, setToDate] = useState('')
+ const [summary, setSummary] = useState([])
+ const [page, setPage] = useState(1)
+ const [limit, setLimit] = useState(100)
   const API = (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
   const resolveWaiterName = (raw) => {
@@ -51,48 +51,48 @@ export default function Tables() {
     return st?.name || id
   }
 
-  const syncSettingsTables = async (names) => {
-    try {
-      const headers = { 'Content-Type': 'application/json' }
-      await fetch(`${API}/api/settings`, { method: 'PATCH', headers, body: JSON.stringify({ tables: names }) })
-    } catch {}
-  }
+ const syncSettingsTables = async (names) => {
+ try {
+ const headers = { 'Content-Type': 'application/json' }
+ await fetch(`${API}/api/settings`, { method: 'PATCH', headers, body: JSON.stringify({ tables: names }) })
+ } catch {}
+ }
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const headers = token ? { Authorization: `Bearer ${token}` } : {}
-        const res = await fetch(`${API}/api/tables`, { headers })
-        if (!res.ok) return
+ useEffect(() => {
+ const load = async () => {
+ try {
+ const headers = token ? { Authorization: `Bearer ${token}` } : {}
+ const res = await fetch(`${API}/api/tables`, { headers })
+ if (!res.ok) return
         setTables(await res.json() || [])
-      } catch {}
-    }
-    load()
-  }, [API, token])
+ } catch {}
+ }
+ load()
+ }, [API, token])
 
-  useEffect(() => {
-    const loadSummary = async () => {
-      try {
-        const headers = token ? { Authorization: `Bearer ${token}` } : {}
-        const params = new URLSearchParams()
-        if (selectedDate && !fromDate && !toDate) params.set('date', selectedDate)
-        if (fromDate) params.set('from', fromDate)
-        if (toDate) params.set('to', toDate)
+ useEffect(() => {
+ const loadSummary = async () => {
+ try {
+ const headers = token ? { Authorization: `Bearer ${token}` } : {}
+ const params = new URLSearchParams()
+ if (selectedDate && !fromDate && !toDate) params.set('date', selectedDate)
+ if (fromDate) params.set('from', fromDate)
+ if (toDate) params.set('to', toDate)
         const res = await fetch(`${API}/api/tables/summary?${params}`, { headers })
-        if (!res.ok) { setSummary([]); return }
-        const data = await res.json()
-        setSummary(data?.tables || [])
-      } catch { setSummary([]) }
-    }
-    loadSummary()
-  }, [API, token, selectedDate, fromDate, toDate])
+ if (!res.ok) { setSummary([]); return }
+ const data = await res.json()
+ setSummary(data?.tables || [])
+ } catch { setSummary([]) }
+ }
+ loadSummary()
+ }, [API, token, selectedDate, fromDate, toDate])
 
-  const rows = useMemo(() => {
+ const rows = useMemo(() => {
     const dineInSales = (state.sales || []).filter(s => s.orderType === 'Dine-in')
-    const mapped = tables.map((t) => {
-      const name = t.name || t
+ const mapped = tables.map((t) => {
+ const name = t.name || t
       const salesForTable = dineInSales.filter(s => String(s.tableNo || '').trim() === name)
-      const sumRow = summary.find(s => s.table === name)
+ const sumRow = summary.find(s => s.table === name)
       const lastDate = sumRow?.lastDate || t.lastOrderDate || (salesForTable.length ? salesForTable[0].date : '—')
       const lastWaiterRaw = sumRow?.lastWaiter
         || (t.lastWaiter && String(t.lastWaiter).trim())
@@ -102,29 +102,29 @@ export default function Tables() {
         : (typeof t.totalAmount === 'number'
           ? t.totalAmount
           : salesForTable.reduce((a, b) => a + Number(b.total || 0), 0))
-      return {
-        table: name,
-        orders: typeof sumRow?.orders === 'number' ? sumRow.orders : (typeof t.totalOrders === 'number' ? t.totalOrders : salesForTable.length),
-        lastDate,
+ return {
+ table: name,
+ orders: typeof sumRow?.orders === 'number' ? sumRow.orders : (typeof t.totalOrders === 'number' ? t.totalOrders : salesForTable.length),
+ lastDate,
         lastWaiter: resolveWaiterName(lastWaiterRaw),
-        totalAmount,
-        _id: t._id,
-      }
-    })
+ totalAmount,
+ _id: t._id,
+ }
+ })
     if (!search) return mapped
-    const q = search.toLowerCase()
-    return mapped.filter(r => r.table.toLowerCase().includes(q))
+ const q = search.toLowerCase()
+ return mapped.filter(r => r.table.toLowerCase().includes(q))
   }, [tables, state.sales, state.staff, summary, search])
 
-  const pages = Math.ceil(rows.length / limit) || 1
-  const paginatedRows = rows.slice((page - 1) * limit, page * limit)
+ const pages = Math.ceil(rows.length / limit) || 1
+ const paginatedRows = rows.slice((page - 1) * limit, page * limit)
 
-  useEffect(() => {
-    const loadHistory = async () => {
-      if (!drawerOpen || !selectedTable) return
+ useEffect(() => {
+ const loadHistory = async () => {
+ if (!drawerOpen || !selectedTable) return
       setHistoryLoading(true)
-      try {
-        const headers = token ? { Authorization: `Bearer ${token}` } : {}
+ try {
+ const headers = token ? { Authorization: `Bearer ${token}` } : {}
         const params = new URLSearchParams()
         if (fromDate) params.set('from', fromDate)
         if (toDate) params.set('to', toDate)
@@ -134,7 +134,7 @@ export default function Tables() {
         }
         const qs = params.toString()
         const res = await fetch(`${API}/api/tables/by-name/${encodeURIComponent(selectedTable)}/history${qs ? `?${qs}` : ''}`, { headers })
-        if (!res.ok) { setHistory([]); return }
+ if (!res.ok) { setHistory([]); return }
         const sales = await res.json()
         setHistory((sales || []).map(s => ({
           id: s.id || s._id,
@@ -155,8 +155,8 @@ export default function Tables() {
       } finally {
         setHistoryLoading(false)
       }
-    }
-    loadHistory()
+ }
+ loadHistory()
   }, [drawerOpen, selectedTable, API, token, fromDate, toDate, selectedDate, state.staff])
 
   const historyTotal = useMemo(
@@ -164,92 +164,92 @@ export default function Tables() {
     [history]
   )
 
-  const tableReportRows = () => rows.map(r => {
-    const floor = tables.find(t => (t.name || t) === r.table)?.floor || '-'
+ const tableReportRows = () => rows.map(r => {
+ const floor = tables.find(t => (t.name || t) === r.table)?.floor || '-'
     return [r.table, floor, Number(r.orders || 0), r.lastDate || '-', r.lastWaiter || '-', Number(r.totalAmount || 0)]
-  })
+ })
 
-  const periodLabel = selectedDate && !fromDate && !toDate
-    ? selectedDate
-    : `${fromDate || '…'} to ${toDate || '…'}`
+ const periodLabel = selectedDate && !fromDate && !toDate
+   ? selectedDate
+   : `${fromDate || '…'} to ${toDate || '…'}`
 
-  const openPrintPreview = async () => {
-    try {
-      const totalBill = rows.reduce((a, r) => a + Number(r.totalAmount || 0), 0)
-      const body =
-        reportSummary([
-          { label: 'Tables', amount: String(rows.length) },
-          { label: 'Total bill (PKR)', amount: totalBill.toLocaleString() },
-        ]) +
-        reportSec(`Tables (${rows.length})`) +
-        reportTable({
-          headers: ['Table', 'Floor', { t: 'Orders', align: 'r' }, 'Last Order', 'Last Waiter', { t: 'Total Bill (PKR)', align: 'r' }],
-          numbered: true,
-          rows: rows.map(r => {
-            const floor = tables.find(t => (t.name || t) === r.table)?.floor || '-'
-            return [
-              r.table,
-              floor,
-              { v: r.orders, align: 'r' },
-              r.lastDate || '-',
-              r.lastWaiter || '-',
-              { v: Number(r.totalAmount || 0).toLocaleString(), align: 'r' },
-            ]
-          }),
-          emptyText: 'No tables match filters',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Tables Summary',
-        reportLabel: 'Tables Report',
-        reportNo: `Rpt #: TBL-${format(new Date(), 'yyyy-MM-dd')}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', periodLabel]],
-        metaRight: [['Search', search.trim() || 'All'], ['Records', String(rows.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Tables-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
-      toast.success('Print preview opened')
-    } catch (e) {
-      console.error(e)
-      toast.error('Print preview failed')
-    }
-  }
+ const openPrintPreview = async () => {
+ try {
+ const totalBill = rows.reduce((a, r) => a + Number(r.totalAmount || 0), 0)
+ const body =
+ reportSummary([
+ { label: 'Tables', amount: String(rows.length) },
+ { label: 'Total bill (PKR)', amount: totalBill.toLocaleString() },
+ ]) +
+ reportSec(`Tables (${rows.length})`) +
+ reportTable({
+ headers: ['Table', 'Floor', { t: 'Orders', align: 'r' }, 'Last Order', 'Last Waiter', { t: 'Total Bill (PKR)', align: 'r' }],
+ numbered: true,
+ rows: rows.map(r => {
+ const floor = tables.find(t => (t.name || t) === r.table)?.floor || '-'
+ return [
+ r.table,
+ floor,
+ { v: r.orders, align: 'r' },
+ r.lastDate || '-',
+ r.lastWaiter || '-',
+ { v: Number(r.totalAmount || 0).toLocaleString(), align: 'r' },
+ ]
+ }),
+ emptyText: 'No tables match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Tables Summary',
+ reportLabel: 'Tables Report',
+ reportNo: `Rpt #: TBL-${exportDateStamp()}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', periodLabel]],
+ metaRight: [['Search', search.trim() || 'All'], ['Records', String(rows.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Tables-${exportDateStamp()}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
+ }
 
-  const exportPDF = () => {
-    try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Tables', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${periodLabel} · ${rows.length} tables`, 40, 46)
-      doc.autoTable({
-        head: [['Table', 'Floor', 'Orders', 'Last Order', 'Last Waiter', 'Total Bill (PKR)']],
-        body: tableReportRows(),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [6, 182, 212], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`tables_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
-      toast.success('PDF exported successfully')
-    } catch (e) {
-      console.error(e)
-      toast.error('Failed to export PDF')
-    }
-  }
+ const exportPDF = () => {
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Tables', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${periodLabel} · ${rows.length} tables`, 40, 46)
+ doc.autoTable({
+ head: [['Table', 'Floor', 'Orders', 'Last Order', 'Last Waiter', 'Total Bill (PKR)']],
+ body: tableReportRows(),
+ startY: 54,
+ styles: { fontSize: 8, cellPadding: 4 },
+ headStyles: { fillColor: [6, 182, 212], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`tables_${exportDateStamp()}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
 
-  const exportCSV = () => {
-    try {
-      downloadCsvFile(
-        `tables_${format(new Date(), 'yyyy-MM-dd')}.csv`,
-        ['Table', 'Floor', 'Orders', 'Last Order Date', 'Last Waiter', 'Total Bill (PKR)'],
-        tableReportRows()
-      )
-      toast.success('CSV exported successfully')
-    } catch {
-      toast.error('Failed to export CSV')
-    }
-  }
+ const exportCSV = () => {
+ try {
+ downloadCsvFile(
+ `tables_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ ['Table', 'Floor', 'Orders', 'Last Order Date', 'Last Waiter', 'Total Bill (PKR)'],
+ tableReportRows()
+ )
+ toast.success('CSV exported successfully')
+ } catch {
+ toast.error('Failed to export CSV')
+ }
+ }
 
   const onEditTable = (r) => {
     const t = tables.find(x => (x.name || x) === r.table)
@@ -299,14 +299,14 @@ export default function Tables() {
   const deleteTable = async (r) => {
     const ok = await confirm({ title: 'Delete Table', message: `Delete table "${r.table}"? This will not delete sales history.` })
     if (!ok) return
-    try {
-      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+ try {
+ const headers = token ? { Authorization: `Bearer ${token}` } : {}
       const t = tables.find(x => (x.name || x) === r.table)
-      const id = t?._id
-      if (!id) throw new Error('Not found')
-      const res = await fetch(`${API}/api/tables/${id}`, { method: 'DELETE', headers })
-      if (!res.ok) throw new Error('Failed')
-      setTables(prev => {
+ const id = t?._id
+ if (!id) throw new Error('Not found')
+ const res = await fetch(`${API}/api/tables/${id}`, { method: 'DELETE', headers })
+ if (!res.ok) throw new Error('Failed')
+ setTables(prev => {
         const next = prev.filter(x => (x._id || x.name) !== id)
         syncSettingsTables(next.map(x => x.name || x).filter(Boolean))
         dispatch({
@@ -318,12 +318,12 @@ export default function Tables() {
             },
           },
         })
-        return next
-      })
-      toast.success('Table deleted')
+ return next
+ })
+ toast.success('Table deleted')
     } catch {
-      toast.error('Failed to delete table. Please retry.')
-    }
+ toast.error('Failed to delete table. Please retry.')
+ }
   }
 
   return (
@@ -391,19 +391,19 @@ export default function Tables() {
                   </div>
                 </td>
               </tr>
-            ))}
-            {!rows.length && (
+ ))}
+ {!rows.length && (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400">No tables found</td>
               </tr>
-            )}
+ )}
           </tbody>
         </table>
       </div>
 
       <Pagination page={page} pages={pages} total={rows.length} limit={limit} onLimitChange={n => { setLimit(n); setPage(1) }} onPageChange={setPage} />
 
-      {addOpen && (
+ {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setAddOpen(false) }}>
           <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
@@ -425,17 +425,17 @@ export default function Tables() {
                   type="button"
                   disabled={!newTable.trim()}
                   onClick={async () => {
-                    const name = newTable.trim()
-                    if (!name) return
-                    try {
-                      const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+ const name = newTable.trim()
+ if (!name) return
+ try {
+ const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
                       const res = await fetch(`${API}/api/tables`, {
                         method: 'POST',
                         headers,
                         body: JSON.stringify({ name, floor: (newFloor || '').trim(), imageUrl: newImage }),
                       })
                       if (!res.ok) throw new Error('Failed')
-                      const row = await res.json()
+ const row = await res.json()
                       setTables(prev => {
                         const next = [...prev, row]
                         syncSettingsTables(next.map(x => x.name || x).filter(Boolean))
@@ -450,7 +450,7 @@ export default function Tables() {
                         })
                         return next
                       })
-                      setNewTable(''); setNewFloor(''); setNewImage(''); setAddOpen(false)
+ setNewTable(''); setNewFloor(''); setNewImage(''); setAddOpen(false)
                       toast.success('Table added')
                     } catch {
                       toast.error('Failed to add table')
@@ -464,9 +464,9 @@ export default function Tables() {
             </div>
           </div>
         </div>
-      )}
+ )}
 
-      {editOpen && (
+ {editOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditOpen(false) }}>
           <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
@@ -491,7 +491,7 @@ export default function Tables() {
         </div>
       )}
 
-      {drawerOpen && (
+ {drawerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setDrawerOpen(false) }}>
           <div className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900">
             <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
@@ -569,7 +569,7 @@ export default function Tables() {
             </div>
           </div>
         </div>
-      )}
-    </div>
-  )
+ )}
+ </div>
+ )
 }

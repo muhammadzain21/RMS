@@ -9,7 +9,7 @@ import Pagination from '../../components/Pagination.jsx'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
-import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 import { warehouseApiBase, warehouseHeaders } from './warehouseApi.js'
 import WarehouseSupplierModal from './WarehouseSupplierModal.jsx'
@@ -115,12 +115,12 @@ export default function WarehouseSuppliers() {
         settings: state?.settings || {},
         title: 'Warehouse Suppliers',
         reportLabel: 'Warehouse Supplier List',
-        reportNo: `Rpt #: WHS-${format(new Date(), 'yyyy-MM-dd')}`,
+        reportNo: `Rpt #: WHS-${exportDateStamp()}`,
         metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
         metaRight: [['Records', String(filtered.length)]],
         body,
       })
-      await previewHtmlReport(html, `Warehouse-Suppliers-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      await previewHtmlReport(html, `Warehouse-Suppliers-${exportDateStamp()}.pdf`)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
@@ -142,7 +142,7 @@ export default function WarehouseSuppliers() {
         headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`warehouse_suppliers_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`warehouse_suppliers_${exportDateStamp()}.pdf`)
       toast.success('PDF exported')
     } catch {
       toast.error('PDF export failed')

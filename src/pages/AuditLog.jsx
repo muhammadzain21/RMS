@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable'
 import DatePicker from '../components/DatePicker.jsx'
 import Pagination from '../components/Pagination.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { exportDateStamp } from '../utils/listReportExport.js'
 
 export default function AuditLog() {
  const { state } = useData()
@@ -129,7 +130,7 @@ export default function AuditLog() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Audit-Log-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Audit-Log-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }
@@ -148,7 +149,7 @@ export default function AuditLog() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `audit_log_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `audit_log_${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported successfully')
@@ -177,7 +178,7 @@ export default function AuditLog() {
  styles: { fontSize: 9 },
  headStyles: { fillColor: [59, 130, 246], textColor: 255 }
  })
- doc.save(`audit_log_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`audit_log_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

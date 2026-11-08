@@ -7,8 +7,10 @@ const MenuItemSchema = new mongoose.Schema({
   description: String,
   imageUrl: String,
 
-  // Simple fixed price for the item
+  // Simple fixed price for the item (Dine-in / Take-away / Delivery)
   price: { type: Number, required: true, default: 0 },
+  // Optional Foodpanda / aggregator price (falls back to `price` when 0/empty)
+  priceFoodpanda: { type: Number, default: 0 },
 
   // Recipe: map of ingredient name -> amount consumed per 1 qty of this menu item
   // Amount should be in the same base unit as inventory `ingredients.qty` (e.g., grams or pcs)

@@ -1,6 +1,7 @@
 import { useData } from '../../state/DataContext.jsx'
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
@@ -9,6 +10,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function ReturnHistory() {
  const { state, dispatch, businessDate } = useData()
@@ -32,20 +34,22 @@ export default function ReturnHistory() {
  // Show only item name(s) for the Items column (no qty)
  const itemsToText = (r) => r.items.map(it => `${state.menu.find(m => m.id===it.itemId)?.name || 'Item'}`).join(', ')
 
- const refreshReturns = async () => {
+ const refreshReturns = useCallback(async () => {
  try {
  const q = new URLSearchParams()
  if (fromDate) q.set('from', fromDate)
  if (toDate) q.set('to', toDate)
- const res = await fetch(`${API}/api/returns?${q.toString()}`, { headers: authHeaders })
+ const headers = token ? { Authorization: `Bearer ${token}` } : {}
+ const res = await fetch(`${API}/api/returns?${q.toString()}`, { headers, cache: 'no-store' })
  if (!res.ok) return
  const list = await res.json()
  const mapId = (x) => ({ ...x, id: x.id || x._id })
  dispatch({ type: 'HYDRATE', payload: { returns: (list || []).map(mapId) } })
  } catch {}
- }
+ }, [API, token, fromDate, toDate, dispatch])
 
- useEffect(() => { refreshReturns() }, [fromDate, toDate])
+ useEffect(() => { refreshReturns() }, [refreshReturns])
+ useLiveRefresh(refreshReturns, { intervalMs: 8000 })
 
  const rows = useMemo(() => {
  let list = state.returns || []
@@ -112,7 +116,7 @@ export default function ReturnHistory() {
  styles: { fontSize: 9 },
  headStyles: { fillColor: [59, 130, 246], textColor: 255 }
  })
- doc.save(`returns-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`returns-${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)
@@ -129,7 +133,7 @@ export default function ReturnHistory() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `returns-${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `returns-${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported')
@@ -166,7 +170,7 @@ export default function ReturnHistory() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Return-History-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Return-History-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }

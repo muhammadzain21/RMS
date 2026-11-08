@@ -17,9 +17,15 @@ export default function SyncBootstrap() {
     }
     startSyncEngine(() => token)
     const onSync = () => setSt(getSyncStatus())
+    const onConfig = () => {
+      startSyncEngine(() => token)
+      setSt(getSyncStatus())
+    }
     window.addEventListener('epicspire:sync', onSync)
+    window.addEventListener('cloud_sync_config_changed', onConfig)
     return () => {
       window.removeEventListener('epicspire:sync', onSync)
+      window.removeEventListener('cloud_sync_config_changed', onConfig)
       stopSyncEngine()
     }
   }, [token])

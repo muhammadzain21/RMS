@@ -7,6 +7,8 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { useBranch } from '../../state/BranchContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { ccStatusLabel, ccStatusStyle } from '../../utils/callCenterStatus.js'
+import { resolveMenuUnitPrice } from '../sales/utils.js'
+import { useLiveRefresh, pokeLiveRefresh } from '../../hooks/useLiveRefresh.js'
 
 function api() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -16,7 +18,7 @@ const ORDER_TYPES = ['Dine-in', 'Take-away', 'Delivery', 'Foodpanda']
 
 export default function CallCenterOrders() {
   const { token } = useAuth()
-  const { branches } = useBranch()
+  const { branches, activeBranchId } = useBranch()
   const { state } = useData()
   const menu = state?.menu || []
   const categories = useMemo(() => {
@@ -27,7 +29,8 @@ export default function CallCenterOrders() {
   }, [state?.categories, menu])
 
   const [orders, setOrders] = useState([])
-  const [branchId, setBranchId] = useState('')
+  // Prefill with header branch, but queue always lists every branch
+  const [branchId, setBranchId] = useState(() => String(activeBranchId || ''))
   const [orderType, setOrderType] = useState('Delivery')
   const [customer, setCustomer] = useState({ id: '', name: '', phone: '', address: '' })
   const [remarks, setRemarks] = useState('')
@@ -57,28 +60,30 @@ export default function CallCenterOrders() {
     }).map(m => ({ ...m, id: m.id || m._id }))
   }, [menu, selectedCategory, search])
 
-  const load = async () => {
+  const load = async ({ quiet = false } = {}) => {
     try {
       const qs = statusFilter === 'open' ? 'pendingOnly=1' : ''
       const res = await fetch(`${api()}/api/call-center-orders${qs ? `?${qs}` : ''}`, {
         // No X-Branch-Id — queue shows all accessible branches by default
         headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
       })
       if (!res.ok) throw new Error('load failed')
       setOrders(await res.json())
     } catch {
-      toast.error('Could not load call-center orders')
+      if (!quiet) toast.error('Could not load call-center orders')
     }
   }
 
   useEffect(() => { load() }, [token, statusFilter])
+  useLiveRefresh(() => load({ quiet: true }), { intervalMs: 8000 })
   useEffect(() => {
-    const t = setInterval(load, 8000)
-    return () => clearInterval(t)
-  }, [token, statusFilter])
-  useEffect(() => {
-    if (!branchId && branches[0]?._id) setBranchId(String(branches[0]._id))
-  }, [branches, branchId])
+    if (branchId) return
+    const preferred = activeBranchId && branches.some(b => String(b._id) === String(activeBranchId))
+      ? String(activeBranchId)
+      : (branches[0]?._id ? String(branches[0]._id) : '')
+    if (preferred) setBranchId(preferred)
+  }, [branches, branchId, activeBranchId])
   useEffect(() => {
     if (!selectedCategory && categories[0]) {
       const n = typeof categories[0] === 'object' ? categories[0].name : categories[0]
@@ -90,18 +95,35 @@ export default function CallCenterOrders() {
     const m = menu.find(x => String(x.id || x._id) === String(id))
     if (!m) return
     const itemId = String(m.id || m._id)
+    const unit = resolveMenuUnitPrice(m, orderType)
     setCart(prev => {
       const existing = prev.find(x => x.itemId === itemId)
       if (existing) return prev.map(x => x.itemId === itemId ? { ...x, qty: x.qty + 1 } : x)
       return [...prev, {
         itemId,
         name: m.name,
-        price: Number(m.price) || 0,
+        price: unit,
         qty: 1,
         category: m.category || '',
       }]
     })
   }
+
+  // Reprice cart when switching to/from Foodpanda
+  useEffect(() => {
+    setCart(prev => {
+      if (!prev.length) return prev
+      let changed = false
+      const next = prev.map(it => {
+        const m = menu.find(x => String(x.id || x._id) === String(it.itemId))
+        if (!m) return it
+        const price = resolveMenuUnitPrice(m, orderType)
+        if (Number(it.price) !== price) { changed = true; return { ...it, price } }
+        return it
+      })
+      return changed ? next : prev
+    })
+  }, [orderType, menu])
 
   const total = cart.reduce((s, it) => s + it.qty * it.price, 0)
   const cartQty = cart.reduce((s, it) => s + it.qty, 0)
@@ -296,6 +318,7 @@ export default function CallCenterOrders() {
       setRemarks('')
       setParentOrderId('')
       await load()
+      pokeLiveRefresh({ source: 'call-center-submit', branchId })
       return true
     } catch (err) {
       toast.error(err.message || 'Failed')
@@ -611,7 +634,7 @@ export default function CallCenterOrders() {
           </div>
           <div className="min-w-0">
             <div className="text-base font-black">Call Center</div>
-            <div className="hidden text-[11px] text-slate-500 sm:block">Sell-style order entry · add-on for same customer</div>
+            <div className="hidden text-[11px] text-slate-500 sm:block">All branches · order for any branch (incl. current) · add-on for same customer</div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

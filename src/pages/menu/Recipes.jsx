@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function Recipes() {
  const { state, dispatch } = useData()
@@ -178,12 +178,12 @@ export default function Recipes() {
  settings: state?.settings || {},
  title: 'Recipes',
  reportLabel: 'Recipe Report',
- reportNo: `Rpt #: REC-${format(new Date(), 'yyyy-MM-dd')}`,
+ reportNo: `Rpt #: REC-${exportDateStamp()}`,
  metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', listSearch.trim() || 'All']],
  metaRight: [['Records', String(filteredList.length)]],
  body,
  })
- await previewHtmlReport(html, `Recipes-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Recipes-${exportDateStamp()}.pdf`)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -206,7 +206,7 @@ export default function Recipes() {
  headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
  margin: { left: 40, right: 40 },
  })
- doc.save(`recipes_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`recipes_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (e) {
  console.error(e)

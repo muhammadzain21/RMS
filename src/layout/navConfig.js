@@ -41,13 +41,20 @@ const salesSection = {
  { path: '/sales/kot-history', label: 'KOT History', icon: FileText, order: 7 },
  { path: '/sales/kds', label: 'KDS', icon: ChefHat, order: 7.5 },
  { path: '/sales/void-history', label: 'Void History', icon: XCircle, order: 8 },
- { path: '/sales/cash-opening', label: 'Day Opening', icon: Wallet, order: 9 },
   { path: '/customers', label: 'Customers', icon: Users, order: 19 },
 
  { path: '/sales/cash-count', label: 'Manager Cash Count', icon: Calculator, order: 11 },
  { path: '/sales/advance-booking', label: 'Advance Booking', icon: CalendarCheck, order: 12 },
- { path: '/sales/day-close', label: 'Day Close', icon: Moon, order: 13 },
- { path: '/sales/pay-in-out', label: 'Pay In/Out', icon: ArrowLeftRight, order: 14 },
+ ]
+}
+
+const daySection = {
+ label: 'Day',
+ items: [
+ { path: '/sales/cash-opening', label: 'Day Opening', icon: Wallet, order: 9 },
+ { path: '/sales/pay-in-out', label: 'Pay In/Out', icon: ArrowLeftRight, order: 10 },
+ { path: '/sales/my-shift', label: 'My Day', icon: ClipboardList, order: 11 },
+ { path: '/sales/day-close', label: 'Day Closing', icon: Moon, order: 12 },
  ]
 }
 
@@ -96,7 +103,7 @@ const staffSection = {
 const financeSection = {
  label: 'Finance',
  items: [
- { path: '/expenses/new', label: 'Expenses', icon: Receipt, order: 31 },
+ { path: '/expenses/new', label: 'Expenses', icon: Receipt, order: 31.5 },
  { path: '/profit-loss', label: 'P&L', icon: TrendingUp, order: 32 },
  ]
 }
@@ -117,6 +124,7 @@ const adminSection = {
 // Comment out any section to hide it from sidebar + permissions
 export const allSections = [
  salesSection,
+ daySection,
  operationsSection,
  warehouseSection,
  staffSection,
@@ -152,6 +160,7 @@ const UPGRADE_ENABLED_PATHS = [
   '/warehouse/transfer-history',
   '/branches',
   '/hq/compare',
+  '/sales/my-shift',
 ]
 
 /**

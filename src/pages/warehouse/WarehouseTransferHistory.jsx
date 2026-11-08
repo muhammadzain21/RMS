@@ -9,7 +9,7 @@ import DataTable from '../../components/DataTable.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
-import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 import { warehouseApiBase } from './warehouseApi.js'
 
@@ -88,7 +88,7 @@ export default function WarehouseTransferHistory() {
         settings: state?.settings || {},
         title: 'Transfer History',
         reportLabel: 'Warehouse Transfers',
-        reportNo: `Rpt #: WHT-${format(new Date(), 'yyyy-MM-dd')}`,
+        reportNo: `Rpt #: WHT-${exportDateStamp()}`,
         metaLeft: [
           ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
           ['From', from || 'All'],
@@ -97,7 +97,7 @@ export default function WarehouseTransferHistory() {
         metaRight: [['Records', String(filtered.length)]],
         body,
       })
-      await previewHtmlReport(html, `Transfer-History-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      await previewHtmlReport(html, `Transfer-History-${exportDateStamp()}.pdf`)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
@@ -119,7 +119,7 @@ export default function WarehouseTransferHistory() {
         headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`transfer_history_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`transfer_history_${exportDateStamp()}.pdf`)
       toast.success('PDF exported')
     } catch {
       toast.error('PDF export failed')

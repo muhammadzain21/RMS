@@ -15,6 +15,7 @@ const DayCloseSchema = new mongoose.Schema({
   leftAtCounter: { type: Number, default: 0 }, // cash left in drawer → next day's opening
   payIns: { type: Number, required: true },
   payOuts: { type: Number, required: true },
+  expenses: { type: Number, default: 0 }, // cash drawer expenses for the day
   expectedCash: { type: Number, required: true },
   countedCash: { type: Number, required: true },
   variance: { type: Number, required: true },

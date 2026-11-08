@@ -11,7 +11,7 @@ import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function SupplierList() {
  const { state } = useData()
@@ -119,12 +119,12 @@ export default function SupplierList() {
  settings: state?.settings || {},
  title: 'Suppliers',
  reportLabel: 'Supplier List',
- reportNo: `Rpt #: SUP-${format(new Date(), 'yyyy-MM-dd')}`,
+ reportNo: `Rpt #: SUP-${exportDateStamp()}`,
  metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(list.length)]],
  body,
  })
- await previewHtmlReport(html, `Suppliers-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Suppliers-${exportDateStamp()}.pdf`)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -148,7 +148,7 @@ export default function SupplierList() {
  headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
  margin: { left: 40, right: 40 },
  })
- doc.save(`suppliers_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`suppliers_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (e) {
  console.error(e)

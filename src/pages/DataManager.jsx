@@ -9,6 +9,7 @@ import { useData } from '../state/DataContext.jsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { exportDateStamp } from '../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -277,7 +278,7 @@ export default function DataManager() {
         headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`datamanager_${collection}_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`datamanager_${collection}_${exportDateStamp()}.pdf`)
       toast.success('PDF downloaded', { id: 'dm-pdf' })
     } catch (err) {
       toast.error(String(err?.message || 'PDF export failed'), { id: 'dm-pdf' })
@@ -299,7 +300,7 @@ export default function DataManager() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `datamanager_${collection}_${format(new Date(), 'yyyy-MM-dd')}.csv`
+      a.download = `datamanager_${collection}_${exportDateStamp()}.csv`
       a.click()
       URL.revokeObjectURL(url)
       toast.success('CSV exported', { id: 'dm-csv' })

@@ -107,12 +107,12 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  >
  {sidebarHidden ? <PanelLeftOpen size={18} /> : <PanelLeftDashed size={18} />}
  </button><div className="md:hidden font-bold text-white drop-shadow truncate max-w-[42vw]">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
- {branches.length > 0 ? (
+ {(user?.role === 'Admin' || user?.role === 'SuperAdmin') && branches.length > 0 ? (
   <select
     value={activeBranchId || ''}
     onChange={(e) => setActiveBranchId(e.target.value)}
     title="Active branch"
-    className="hidden sm:block max-w-[14rem] truncate rounded-lg border-0 bg-white/25 px-3 py-2 text-sm sm:text-base font-bold text-white outline-none shadow-sm"
+    className="max-w-[9.5rem] sm:max-w-[14rem] truncate rounded-lg border-0 bg-white/25 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-base font-bold text-white outline-none shadow-sm"
   >
     {branches.map(b => (
       <option key={b._id} value={b._id} className="text-slate-900">{b.name || b.code}</option>

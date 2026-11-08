@@ -207,10 +207,10 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
 @layer components {
   .ui-page { @apply space-y-4 pb-8; }
 
-  .card {
-    border-radius: 1rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+.card {
+  border-radius: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
     box-shadow: 0 1px 2px 0 var(--color-shadow);
     color: var(--color-text-body);
   }
@@ -262,7 +262,7 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
   .ui-btn-primary:hover { background: #2563eb; }
 
   .ui-btn-secondary,
-  .btn-outline-navy {
+.btn-outline-navy {
     background: var(--color-surface);
     color: var(--color-primary);
     border-color: var(--color-primary);
@@ -295,10 +295,10 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
     gap: 0.5rem;
   }
 
-  .input {
+.input {
     width: 100%;
     border-radius: 0.5rem;
-    border: 1px solid var(--color-border-strong);
+  border: 1px solid var(--color-border-strong);
     background: var(--color-surface);
     padding: 0.55rem 0.8rem;
     font-size: 0.975rem;
@@ -346,7 +346,7 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
   }
 
   .tbl { width: 100%; border-collapse: collapse; font-size: 1rem; }
-  .tbl thead th {
+.tbl thead th {
     text-align: left;
     font-size: 0.8125rem;
     font-weight: 800;
@@ -363,7 +363,7 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
     padding: 0.65rem 0.8rem;
     color: var(--color-text-body);
   }
-  .tbl tbody tr:hover td { background: var(--color-surface-muted); }
+.tbl tbody tr:hover td { background: var(--color-surface-muted); }
 
   .kpi-tile {
     border-radius: 0.875rem;
@@ -397,15 +397,15 @@ html.dark *::-webkit-scrollbar-track { background: #0f172a; }
     color: var(--color-text-primary);
   }
 
-  .stat-card {
+.stat-card {
     position: relative;
     overflow: hidden;
     border-radius: 1rem;
     padding: 1rem 1.25rem;
     color: #fff;
     box-shadow: 0 4px 12px -2px rgba(15, 45, 92, 0.25);
-  }
-  .stat-card .stat-value { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+}
+.stat-card .stat-value { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
   .stat-card .stat-label {
     font-size: 0.7rem;
     font-weight: 600;

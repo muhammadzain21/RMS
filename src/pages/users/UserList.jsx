@@ -10,7 +10,7 @@ import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 function Toggle({ on, onClick }) {
   return (
@@ -452,12 +452,12 @@ export default function UserList() {
         settings: state?.settings || {},
         title: 'User List',
         reportLabel: 'Users Report',
-        reportNo: `Rpt #: USR-${format(new Date(), 'yyyy-MM-dd')}`,
+        reportNo: `Rpt #: USR-${exportDateStamp()}`,
         metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
         metaRight: [['Records', String(userList.length)]],
         body,
       })
-      await previewHtmlReport(html, `Users-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      await previewHtmlReport(html, `Users-${exportDateStamp()}.pdf`)
       toast.success('Print preview opened')
     } catch (e) {
       console.error(e)
@@ -480,7 +480,7 @@ export default function UserList() {
         headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`users_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`users_${exportDateStamp()}.pdf`)
       toast.success('PDF exported successfully')
     } catch (e) {
       console.error(e)

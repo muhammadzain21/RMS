@@ -1,7 +1,7 @@
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { addDays, format } from 'date-fns'
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import UpdateStockDialog from '../../components/UpdateStockDialog.jsx'
 import IngredientModal from '../../components/IngredientModal.jsx'
 import { toast } from 'react-hot-toast'
@@ -10,13 +10,15 @@ import Pagination from '../../components/Pagination.jsx'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
+import { parseSpreadsheetFile, rowsToInventoryImportPayload, INVENTORY_EXPORT_HEADERS } from '../../utils/spreadsheetIo.js'
 
 export default function InventoryList() {
  const { state, dispatch, businessDate } = useData()
  const { token } = useAuth()
  const { confirm, ConfirmDialog } = useConfirm()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const fileInputRef = useRef(null)
  const [updateOpen, setUpdateOpen] = useState(false)
  const [ingModalOpen, setIngModalOpen] = useState(false)
  const [editingItem, setEditingItem] = useState(null)
@@ -24,6 +26,7 @@ export default function InventoryList() {
  const [limit, setLimit] = useState(100)
  const [jump, setJump] = useState(1)
  const [search, setSearch] = useState('')
+ const [importing, setImporting] = useState(false)
 
  const refreshIngredients = async () => {
  try {
@@ -209,12 +212,12 @@ export default function InventoryList() {
  settings: state?.settings || {},
  title: 'Inventory',
  reportLabel: 'Inventory Report',
- reportNo: `Rpt #: INV-${format(new Date(), 'yyyy-MM-dd')}`,
+ reportNo: `Rpt #: INV-${exportDateStamp()}`,
  metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Tab', tabLabel], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })
- await previewHtmlReport(html, `Inventory-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Inventory-${exportDateStamp()}.pdf`)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -237,7 +240,7 @@ export default function InventoryList() {
  headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
  margin: { left: 40, right: 40 },
  })
- doc.save(`inventory_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`inventory_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (e) {
  console.error(e)
@@ -248,8 +251,8 @@ export default function InventoryList() {
  const exportCSV = () => {
  try {
  downloadCsvFile(
- `inventory_${format(new Date(), 'yyyy-MM-dd')}.csv`,
- ['Name', 'Category', 'Qty', 'Status', 'Threshold', 'Unit', 'Expiry', 'Price Per Unit (PKR)', 'Total Value (PKR)', 'Supplier'],
+ `inventory_${exportDateStamp(businessDate)}.csv`,
+ INVENTORY_EXPORT_HEADERS,
  inventoryReportRows()
  )
  toast.success('CSV exported successfully')
@@ -259,9 +262,38 @@ export default function InventoryList() {
  }
  }
 
+ const importInventoryFile = async (file) => {
+ if (!file) return
+ try {
+ setImporting(true)
+ const rows = await parseSpreadsheetFile(file)
+ const payload = rowsToInventoryImportPayload(rows)
+ if (!payload.items.length) throw new Error('No inventory rows found (need a Name column)')
+ const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+ const res = await fetch(`${API}/api/ingredients/import`, {
+ method: 'POST',
+ headers,
+ body: JSON.stringify(payload),
+ })
+ const j = await res.json().catch(() => ({}))
+ if (!res.ok) throw new Error(j.error || 'Import failed')
+ await refreshIngredients()
+ toast.success(
+ `Imported ${j.items || 0} items` +
+ (j.created || j.updated
+ ? ` (${j.created || 0} new, ${j.updated || 0} updated)`
+ : '')
+ )
+ } catch (e) {
+ toast.error(e.message || 'Invalid CSV / Excel file')
+ } finally {
+ setImporting(false)
+ }
+ }
+
  return (
  <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Inventory
- </h1><div className="flex flex-wrap gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button onClick={refreshIngredients} className="ui-btn ui-btn-secondary">Refresh</button><button onClick={() => { setUpdateOpen(true) }} className="ui-btn ui-btn-secondary">Update Stock</button><button onClick={() => setIngModalOpen(true)} className="ui-btn ui-btn-primary">Add Ingredient</button></div></div><div className="grid grid-cols-2 md:grid-cols-5 gap-4"><StatCard title="Total Items" value={totalItems} variant="blue" icon="" /><StatCard title="Low Stock" value={lowStockCount} variant="amber" icon="" /><StatCard title="Expiry Soon" value={expirySoonCount} variant="orange" icon="" /><StatCard title="Out of Stock" value={outOfStockCount} variant="red" icon="" /><StatCard title="Total Value" value={`PKR ${totalInventoryValue.toLocaleString()}`} variant="emerald" icon="" /></div>
+ </h1><div className="flex flex-wrap gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button type="button" disabled={importing} onClick={() => fileInputRef.current?.click()} className="ui-btn ui-btn-secondary disabled:opacity-50" title="Upload the same CSV/Excel format as export">{importing ? 'Importing…' : 'Import CSV / Excel'}</button><input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; importInventoryFile(f) }} /><button onClick={refreshIngredients} className="ui-btn ui-btn-secondary">Refresh</button><button onClick={() => { setUpdateOpen(true) }} className="ui-btn ui-btn-secondary">Update Stock</button><button onClick={() => setIngModalOpen(true)} className="ui-btn ui-btn-primary">Add Ingredient</button></div></div><div className="grid grid-cols-2 md:grid-cols-5 gap-4"><StatCard title="Total Items" value={totalItems} variant="blue" icon="" /><StatCard title="Low Stock" value={lowStockCount} variant="amber" icon="" /><StatCard title="Expiry Soon" value={expirySoonCount} variant="orange" icon="" /><StatCard title="Out of Stock" value={outOfStockCount} variant="red" icon="" /><StatCard title="Total Value" value={`PKR ${totalInventoryValue.toLocaleString()}`} variant="emerald" icon="" /></div>
  {/* Search */}
  <div className="relative">
  <input

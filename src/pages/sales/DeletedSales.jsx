@@ -1,6 +1,7 @@
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
-import { useEffect, useMemo, useState } from 'react'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import jsPDF from 'jspdf'
@@ -8,6 +9,7 @@ import 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function DeletedSales() {
  const { state, dispatch, businessDate } = useData()
@@ -21,12 +23,9 @@ export default function DeletedSales() {
  const [limit, setLimit] = useState(100)
  const [jump, setJump] = useState(1)
 
- // Fetch deleted sales from backend on mount and when date filter changes
- useEffect(() => {
+ const refreshDeleted = useCallback(async () => {
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const headers = token ? { Authorization: `Bearer ${token}` } : {}
- let cancelled = false
- ;(async () => {
  try {
  let qs = ''
  if (fromDate || toDate) {
@@ -37,13 +36,13 @@ export default function DeletedSales() {
  const res = await fetch(`${API}/api/sales/deleted${qs}`, { headers, cache: 'no-store' })
  if (!res.ok) return
  const rows = await res.json()
- if (cancelled) return
  const mapId = (x) => ({ ...x, id: x.id || x._id })
- dispatch({ type: 'HYDRATE', payload: { deletedSales: (rows||[]).map(mapId) } })
+ dispatch({ type: 'HYDRATE', payload: { deletedSales: (rows || []).map(mapId) } })
  } catch {}
- })()
- return () => { cancelled = true }
  }, [token, fromDate, toDate, dispatch])
+
+ useEffect(() => { refreshDeleted() }, [refreshDeleted])
+ useLiveRefresh(refreshDeleted, { intervalMs: 8000 })
 
  const customerText = (c) => {
  if (!c) return '-'
@@ -175,7 +174,7 @@ export default function DeletedSales() {
  margin: { left: 40, right: 40 },
  tableWidth: 'auto'
  })
- doc.save(`deleted_sales_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`deleted_sales_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)
@@ -214,7 +213,7 @@ export default function DeletedSales() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Deleted-Sales-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Deleted-Sales-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }
@@ -229,7 +228,7 @@ export default function DeletedSales() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `deleted_sales_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `deleted_sales_${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported successfully')

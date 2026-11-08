@@ -10,7 +10,7 @@ import Pagination from '../../components/Pagination.jsx'
 import StatCard from '../../components/StatCard.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 
 function api() {
@@ -103,12 +103,12 @@ export default function HqCompare() {
         settings: state?.settings || {},
         title: 'Branch Compare',
         reportLabel: 'HQ Compare',
-        reportNo: `Rpt #: CMP-${format(new Date(), 'yyyy-MM-dd')}`,
+        reportNo: `Rpt #: CMP-${exportDateStamp()}`,
         metaLeft: [['From', from], ['To', to], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
         metaRight: [['Branches', String(filtered.length)]],
         body,
       })
-      await previewHtmlReport(html, `Branch-Compare-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      await previewHtmlReport(html, `Branch-Compare-${exportDateStamp()}.pdf`)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
@@ -130,7 +130,7 @@ export default function HqCompare() {
         headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`branch_compare_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`branch_compare_${exportDateStamp()}.pdf`)
       toast.success('PDF exported')
     } catch {
       toast.error('PDF export failed')

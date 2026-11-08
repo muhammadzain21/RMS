@@ -29,6 +29,9 @@ function toPublic(item, override = null, branchId = '') {
     id,
     _id: base._id || id,
     price: o?.price !== undefined && o?.price !== null ? Number(o.price) : Number(base.price || 0),
+    priceFoodpanda: o?.priceFoodpanda !== undefined && o?.priceFoodpanda !== null
+      ? Number(o.priceFoodpanda)
+      : Number(base.priceFoodpanda || 0),
     discount: o?.discount !== undefined && o?.discount !== null ? Number(o.discount) : Number(base.discount || 0),
     active: o?.active !== undefined && o?.active !== null ? !!o.active : (base.active !== false),
     name: (o?.name !== undefined && o?.name !== null && String(o.name).trim()) ? String(o.name) : base.name,
@@ -40,6 +43,7 @@ function toPublic(item, override = null, branchId = '') {
     isBranchOnly: !shared,
     hasOverride: !!o,
     basePrice: Number(base.price || 0),
+    basePriceFoodpanda: Number(base.priceFoodpanda || 0),
     baseActive: base.active !== false,
     viewBranchId: branchId || '',
   }
@@ -161,69 +165,33 @@ router.post('/', requireRole('Admin', 'Manager'), async (req, res, next) => {
       payload.recipe = await normalizeRecipe(payload.recipe)
     }
 
-    const editShared = !!payload.editShared || String(payload.scope || '').toLowerCase() === 'shared'
     delete payload.editShared
     delete payload.scope
     delete payload.hasOverride
     delete payload.isShared
     delete payload.isBranchOnly
     delete payload.basePrice
+    delete payload.basePriceFoodpanda
     delete payload.baseActive
     delete payload.viewBranchId
 
     let branchId = ''
     try { branchId = resolveBranchId(req) || '' } catch { branchId = String(req.headers['x-branch-id'] || payload.branchId || '').trim() }
 
-    // Managers always create branch-only items. Admin can create shared (default) or branch-only.
-    const branchOnly = !!payload.branchOnly || (!isAdminActor(req.user) && !editShared) || (isAdminActor(req.user) && !!payload.branchOnly)
+    // Shared across all branches by default. Only create branch-only when explicitly requested.
+    const branchOnly = !!payload.branchOnly
     delete payload.branchOnly
 
     if (branchOnly) {
       if (!branchId) return res.status(400).json({ error: 'branchId required for branch-only menu items' })
       payload.branchId = String(branchId)
     } else {
-      if (!isAdminActor(req.user) && !editShared) {
-        // non-admin without explicit shared → branch-only
-        if (!branchId) return res.status(400).json({ error: 'branchId required' })
-        payload.branchId = String(branchId)
-      } else {
-        payload.branchId = ''
-      }
+      payload.branchId = ''
     }
 
     const item = await MenuItem.create(payload)
     await logAudit(req, 'menu', `Added menu ${item?.name || item?._id}`, { id: item._id, branchId: item.branchId || '' })
     res.status(201).json(toPublic(item, null, branchId))
-  } catch (e) { next(e) }
-})
-
-router.post('/seed', requireRole('Admin', 'Manager'), async (req, res, next) => {
-  try {
-    const presets = req.body?.items || getDefaultSeed()
-    const results = []
-    const catNames = new Set()
-    for (const p of presets) {
-      const filter = {
-        name: p.name,
-        category: p.category,
-        $or: [{ branchId: '' }, { branchId: null }, { branchId: { $exists: false } }],
-      }
-      const update = { ...p, active: p.active ?? true, branchId: '' }
-      delete update._id
-      delete update.id
-      const item = await MenuItem.findOneAndUpdate(filter, update, { new: true, upsert: true })
-      results.push(item)
-      if (p.category) catNames.add(String(p.category).trim())
-    }
-    for (const name of catNames) {
-      if (!name) continue
-      await Category.findOneAndUpdate(
-        { name },
-        { $setOnInsert: { name, showOnPos: true, active: true, sortOrder: 0, discount: 0 } },
-        { upsert: true, new: true }
-      )
-    }
-    res.json({ ok: true, count: results.length, items: results })
   } catch (e) { next(e) }
 })
 
@@ -236,20 +204,51 @@ router.post('/import', requireRole('Admin', 'Manager'), async (req, res, next) =
       return res.status(400).json({ error: 'Provide items and/or categories to import' })
     }
 
-    let catsUpserted = 0
+    const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const ensuredCats = new Map() // lowerName -> canonical name
+    let catsCreated = 0
+
+    /**
+     * Categories live in a separate collection. Any Category column value from the
+     * spreadsheet is upserted here so POS filters and Menu dropdowns stay in sync.
+     */
     const ensureCat = async (raw) => {
       const name = String(typeof raw === 'string' ? raw : (raw?.name || '')).trim()
-      if (!name) return
-      const patch = {
-        name,
-        showOnPos: raw?.showOnPos !== false,
-        active: raw?.active !== false,
-        imageUrl: String(raw?.imageUrl || ''),
-        sortOrder: Number(raw?.sortOrder ?? 0),
-        discount: Number(raw?.discount ?? 0),
+      if (!name) return ''
+      const key = name.toLowerCase()
+      if (ensuredCats.has(key)) return ensuredCats.get(key)
+
+      const isObj = raw && typeof raw === 'object'
+      const existing = await Category.findOne({ name: new RegExp(`^${escapeRegex(name)}$`, 'i') })
+      if (existing) {
+        // Keep existing name casing; only refresh optional fields when provided as object
+        if (isObj) {
+          const patch = {}
+          if (raw.showOnPos !== undefined) patch.showOnPos = raw.showOnPos !== false
+          if (raw.active !== undefined) patch.active = raw.active !== false
+          if (raw.imageUrl !== undefined) patch.imageUrl = String(raw.imageUrl || '')
+          if (raw.sortOrder !== undefined) patch.sortOrder = Number(raw.sortOrder ?? 0)
+          if (raw.discount !== undefined) patch.discount = Number(raw.discount ?? 0)
+          if (Object.keys(patch).length) {
+            Object.assign(existing, patch)
+            await existing.save()
+          }
+        }
+        ensuredCats.set(key, existing.name)
+        return existing.name
       }
-      await Category.findOneAndUpdate({ name }, patch, { upsert: true, new: true })
-      catsUpserted += 1
+
+      const created = await Category.create({
+        name,
+        showOnPos: isObj ? (raw.showOnPos !== false) : true,
+        active: isObj ? (raw.active !== false) : true,
+        imageUrl: isObj ? String(raw.imageUrl || '') : '',
+        sortOrder: isObj ? Number(raw.sortOrder ?? 0) : 0,
+        discount: isObj ? Number(raw.discount ?? 0) : 0,
+      })
+      catsCreated += 1
+      ensuredCats.set(key, created.name)
+      return created.name
     }
 
     for (const c of categories) await ensureCat(c)
@@ -257,9 +256,12 @@ router.post('/import', requireRole('Admin', 'Manager'), async (req, res, next) =
     let itemsUpserted = 0
     for (const raw of items) {
       const name = String(raw?.name || '').trim()
-      const category = String(raw?.category || '').trim()
       if (!name) continue
-      if (category) await ensureCat(category)
+      let category = String(raw?.category || '').trim()
+      if (!category) category = 'Uncategorized'
+      // Always ensure Category document exists before linking MenuItem.category (string name)
+      category = (await ensureCat(category)) || category
+
       const activeRaw = raw.active
       const active = !(
         activeRaw === false
@@ -270,6 +272,7 @@ router.post('/import', requireRole('Admin', 'Manager'), async (req, res, next) =
         name,
         category,
         price: Number(raw.price ?? 0),
+        priceFoodpanda: Number(raw.priceFoodpanda ?? 0),
         sku: raw.sku || '',
         description: raw.description || '',
         sortOrder: Number(raw.sortOrder ?? 0),
@@ -287,11 +290,17 @@ router.post('/import', requireRole('Admin', 'Manager'), async (req, res, next) =
       itemsUpserted += 1
     }
 
-    await logAudit(req, 'menu', `Imported shared menu (${itemsUpserted} items, ${catsUpserted} categories)`, {
+    await logAudit(req, 'menu', `Imported shared menu (${itemsUpserted} items, ${catsCreated} new categories)`, {
       items: itemsUpserted,
-      categories: catsUpserted,
+      categories: ensuredCats.size,
+      categoriesCreated: catsCreated,
     })
-    res.json({ ok: true, items: itemsUpserted, categories: catsUpserted })
+    res.json({
+      ok: true,
+      items: itemsUpserted,
+      categories: ensuredCats.size,
+      categoriesCreated: catsCreated,
+    })
   } catch (e) { next(e) }
 })
 
@@ -351,31 +360,24 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
       return res.json(toPublic(item, null, branchId || item.branchId))
     }
 
-    // Shared item + Admin editing shared catalog
-    if (editShared || !branchId) {
-      if (!isAdminActor(req.user) && editShared) {
+    // Shared catalog edit only when explicitly requested (editShared / scope=shared).
+    // Admin working in a header branch always writes a BranchMenuOverride — not global.
+    if (editShared) {
+      if (!isAdminActor(req.user)) {
         return res.status(403).json({ error: 'Only admin can edit the shared catalog' })
       }
-      if (!branchId || editShared) {
-        if (!isAdminActor(req.user) && !branchId) {
-          return res.status(400).json({ error: 'branchId required to set a branch override' })
-        }
-        if (editShared || (isAdminActor(req.user) && !branchId)) {
-          Object.assign(item, payload)
-          // never accidentally assign branchId onto shared
-          item.branchId = ''
-          await item.save()
-          await logAudit(req, 'menu', `Updated shared menu ${req.params.id}`, { id: req.params.id, patch: req.body })
-          return res.json(toPublic(item, null, ''))
-        }
-      }
+      Object.assign(item, payload)
+      item.branchId = ''
+      await item.save()
+      await logAudit(req, 'menu', `Updated shared menu ${req.params.id}`, { id: req.params.id, patch: req.body })
+      return res.json(toPublic(item, null, ''))
     }
 
     // Shared item viewed in a branch → upsert override (does not change shared defaults)
-    if (!branchId) return res.status(400).json({ error: 'branchId required for branch override' })
+    if (!branchId) return res.status(400).json({ error: 'branchId required for branch override — select a branch in the header' })
 
     const overrideFields = {}
-    for (const key of ['price', 'discount', 'active', 'name', 'category', 'sortOrder', 'imageUrl']) {
+    for (const key of ['price', 'priceFoodpanda', 'discount', 'active', 'name', 'category', 'sortOrder', 'imageUrl']) {
       if (payload[key] !== undefined) overrideFields[key] = payload[key]
     }
     // Recipe always updates shared item (recipes are shared across branches)
@@ -424,7 +426,7 @@ router.delete('/:id', requireRole('Admin', 'Manager'), async (req, res, next) =>
       return res.json({ ok: true })
     }
 
-    // Shared item: hide on this branch via override, unless Admin hard-deletes shared
+    // Shared item: hide on this branch via override, unless Admin hard-deletes shared catalog
     if (hardDeleteShared && isAdminActor(req.user)) {
       await MenuItem.findByIdAndDelete(req.params.id)
       await BranchMenuOverride.deleteMany({ menuItemId: req.params.id })
@@ -433,11 +435,7 @@ router.delete('/:id', requireRole('Admin', 'Manager'), async (req, res, next) =>
     }
 
     if (!branchId) {
-      if (!isAdminActor(req.user)) return res.status(400).json({ error: 'branchId required' })
-      await MenuItem.findByIdAndDelete(req.params.id)
-      await BranchMenuOverride.deleteMany({ menuItemId: req.params.id })
-      await logAudit(req, 'menu', `Deleted shared menu ${req.params.id}`, { id: req.params.id })
-      return res.json({ ok: true })
+      return res.status(400).json({ error: 'branchId required — select a branch in the header (or hard-delete shared catalog)' })
     }
 
     await BranchMenuOverride.findOneAndUpdate(
@@ -454,48 +452,3 @@ router.delete('/:id', requireRole('Admin', 'Manager'), async (req, res, next) =>
 })
 
 export default router
-
-function getDefaultSeed() {
-  const starters = [
-    { name: 'Chicken Strips (5 Pcs)', category: 'Starters', price: 520 },
-    { name: 'Chicken Strips (10 Pcs)', category: 'Starters', price: 950 },
-    { name: 'Cheese Sticks (Small)', category: 'Starters', price: 499 },
-    { name: 'Cheese Sticks (Medium)', category: 'Starters', price: 1090 },
-    { name: 'Cheese Sticks (Large)', category: 'Starters', price: 1549 },
-    { name: 'Chicken Spin Roll (3 Pcs)', category: 'Starters', price: 249 },
-    { name: 'Chicken Spin Roll (6 Pcs)', category: 'Starters', price: 449 },
-    { name: 'Oven Baked Wings (6 Pcs)', category: 'Starters', price: 299 },
-    { name: 'Oven Baked Wings (12 Pcs)', category: 'Starters', price: 549 },
-    { name: 'Loaded Fries (Medium)', category: 'Starters', price: 549 },
-    { name: 'Loaded Fries (Large)', category: 'Starters', price: 749 },
-    { name: 'Trio Platter', category: 'Starters', price: 620 },
-    { name: 'Pasta', category: 'Starters', price: 599 },
-  ]
-
-  const sideOrders = [
-    { name: 'French Fries (Regular)', category: 'Side Orders', price: 239 },
-    { name: 'French Fries (Large)', category: 'Side Orders', price: 399 },
-    { name: 'Nuggets (5 Pcs)', category: 'Side Orders', price: 250 },
-    { name: 'Nuggets (10 Pcs)', category: 'Side Orders', price: 450 },
-    { name: 'Curly Fries with Dip', category: 'Side Orders', price: 400 },
-  ]
-
-  const burgers = [
-    { name: 'Patty Burger', category: 'Burger', price: 240 },
-    { name: 'Zinger Burger', category: 'Burger', price: 380 },
-    { name: 'Mighty Thunder Burger', category: 'Burger', price: 580 },
-    { name: "O'resto Special Wrap", category: 'Burger', price: 580 },
-    { name: "O'resto Grill Wrap", category: 'Burger', price: 580 },
-    { name: 'Grill Burger, Single fillet', category: 'Grill Burger', price: 580 },
-    { name: 'Grill Burger, Double fillet', category: 'Grill Burger', price: 690 },
-    { name: 'Grill Burger, Triple fillet', category: 'Grill Burger', price: 750 },
-  ]
-
-  const deals = [
-    { name: 'Regular Deal', category: 'Value Deals', price: 630, description: '1 Zinger Burger + Regular Fries + Regular Drink' },
-    { name: 'Double Deal', category: 'Value Deals', price: 750, description: '2 Zinger Burger + 1 Regular Drink' },
-    { name: 'Hunger Deal', category: 'Value Deals', price: 780, description: '1 Mighty Thunder Burger + Regular Fries + Regular Drink' },
-  ]
-
-  return [...starters, ...sideOrders, ...burgers, ...deals]
-}

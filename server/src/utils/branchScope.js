@@ -1,8 +1,9 @@
 /**
  * Branch scoping helpers.
  *
- * Shared (no branch filter): customers, menu items/categories/rates
- * Branch-scoped: sales, KOTs, staff, settings, biometric, inventory, expenses, etc.
+ * Shared catalog (menu/categories defaults) can use BranchMenuOverride per branch.
+ * Operational data (sales, inventory, staff, expenses, …) is always branch-scoped
+ * when X-Branch-Id / homeBranchId is present — including Admin / SuperAdmin.
  */
 
 export function isHqUser(user) {
@@ -24,7 +25,7 @@ export function resolveBranchId(req, { required = false } = {}) {
   if (home) return home
 
   if (required) {
-    const err = new Error('branchId is required')
+    const err = new Error('branchId is required — select a branch in the header')
     err.status = 400
     throw err
   }
@@ -44,10 +45,31 @@ export function assertBranchAccess(req, branchId) {
   throw err
 }
 
+/**
+ * Block cross-branch edits: Admin viewing Branch A cannot PATCH a Branch B record.
+ * Legacy docs with empty branchId are allowed (then stamped on save).
+ */
+export function assertDocumentBranch(req, doc) {
+  if (!doc) return
+  const active = resolveBranchId(req)
+  if (!active) return
+  const docBranch = String(doc.branchId || '').trim()
+  if (!docBranch) return
+  if (String(docBranch) !== String(active)) {
+    const err = new Error('This record belongs to another branch. Switch the header branch to edit it.')
+    err.status = 403
+    throw err
+  }
+}
+
 /** Stamp branchId onto a create/update payload (header → body → homeBranch). */
 export function stampBranchId(req, doc = {}) {
-  const branchId = resolveBranchId(req) || String(doc.branchId || '').trim()
-  if (!branchId) return { ...doc }
+  let branchId = resolveBranchId(req) || String(doc.branchId || '').trim()
+  if (!branchId) {
+    const err = new Error('branchId is required — select a branch in the header')
+    err.status = 400
+    throw err
+  }
   assertBranchAccess(req, branchId)
   return { ...doc, branchId: String(branchId) }
 }
@@ -63,8 +85,13 @@ export function accessibleBranchFilter(req) {
   return { branchId: { $in: uniq } }
 }
 
-/** Build a Mongo filter fragment for branch-scoped lists. */
-export function branchFilter(req, { allowAllForHq = true, allAccessible = false } = {}) {
+/**
+ * Build a Mongo filter fragment for branch-scoped lists.
+ * Admin/SuperAdmin with an active branch only see THAT branch (not all branches).
+ * Use allAccessible:true for call-center / cross-branch inbox.
+ * Use allowAllForHq:true only for intentional HQ-wide reports.
+ */
+export function branchFilter(req, { allowAllForHq = false, allAccessible = false } = {}) {
   // Cross-branch pages (call center / inbox): every branch the user can access
   if (allAccessible) return accessibleBranchFilter(req)
 
@@ -73,7 +100,10 @@ export function branchFilter(req, { allowAllForHq = true, allAccessible = false 
     assertBranchAccess(req, branchId)
     return { branchId: String(branchId) }
   }
+
+  // No header/home: HQ-wide only when explicitly opted in
   if (allowAllForHq && isHqUser(req.user)) return {}
+
   return accessibleBranchFilter(req)
 }
 

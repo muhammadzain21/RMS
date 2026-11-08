@@ -1,13 +1,15 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 import DatePicker from '../../components/DatePicker.jsx'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function AdvanceBooking() {
  const { state, dispatch, businessDate } = useData()
@@ -17,15 +19,16 @@ export default function AdvanceBooking() {
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
 
- const refreshBookings = async () => {
+ const refreshBookings = useCallback(async () => {
  try {
- const res = await fetch(`${API}/api/advance-bookings`, { headers: { ...authHeaders } })
+ const headers = token ? { Authorization: `Bearer ${token}` } : {}
+ const res = await fetch(`${API}/api/advance-bookings`, { headers, cache: 'no-store' })
  if (!res.ok) throw new Error('Failed to load bookings')
  const rows = await res.json()
  const list = (rows || []).map(x => ({ ...x, id: x.id || x._id }))
  dispatch({ type: 'HYDRATE', payload: { advanceBookings: list } })
  } catch {}
- }
+ }, [API, token, dispatch])
 
  // form
  const [date, setDate] = useState(today)
@@ -41,8 +44,9 @@ export default function AdvanceBooking() {
  const [statusFilter, setStatusFilter] = useState('') // '', 'Booked', 'Completed', 'Cancelled'
  const [search, setSearch] = useState('')
 
- // Load bookings on mount
- useEffect(() => { refreshBookings() }, [])
+ // Load bookings on mount + live multi-branch refresh
+ useEffect(() => { refreshBookings() }, [refreshBookings])
+ useLiveRefresh(refreshBookings, { intervalMs: 8000 })
 
  const rows = useMemo(() => {
  let list = state.advanceBookings || []
@@ -207,7 +211,7 @@ export default function AdvanceBooking() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Advance-Bookings-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Advance-Bookings-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }
@@ -222,7 +226,7 @@ export default function AdvanceBooking() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `advance_bookings_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `advance_bookings_${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported successfully')
@@ -245,7 +249,7 @@ export default function AdvanceBooking() {
  foot: [['Totals', '', '', '', `PKR ${totalDeposits.toLocaleString()}`, '', '', '', '']],
  footStyles: { fillColor: [245,245,245] },
  })
- doc.save(`advance_bookings_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`advance_bookings_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

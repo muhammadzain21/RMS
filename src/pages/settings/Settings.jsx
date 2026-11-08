@@ -3,6 +3,7 @@ import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
+import { getSyncStatus, syncOnce, startSyncEngine, normalizeCloudUrl } from '../../sync/SyncEngine.js'
 
 // Helper components defined outside Settings to prevent remounting on state changes
 const TabButton = ({ id, label, icon, activeTab, onClick }) => (
@@ -96,6 +97,66 @@ export default function Settings() {
  backupFolderPath: String(s.backupFolderPath || ''),
  salesDeleteKey: String(s.salesDeleteKey || ''),
  })
+
+ const [cloudSync, setCloudSync] = useState(() => {
+  try {
+   return {
+    url: String(localStorage.getItem('cloud_sync_url') || ''),
+    token: String(localStorage.getItem('cloud_sync_token') || ''),
+   }
+  } catch {
+   return { url: '', token: '' }
+  }
+ })
+ const [cloudSyncStatus, setCloudSyncStatus] = useState(() => getSyncStatus())
+ const [cloudSyncBusy, setCloudSyncBusy] = useState(false)
+
+ const refreshCloudSyncStatus = () => {
+  try { setCloudSyncStatus(getSyncStatus()) } catch {}
+ }
+
+ useEffect(() => {
+  const onSync = () => refreshCloudSyncStatus()
+  window.addEventListener('epicspire:sync', onSync)
+  return () => window.removeEventListener('epicspire:sync', onSync)
+ }, [])
+
+ const saveCloudSync = () => {
+  try {
+   const url = normalizeCloudUrl(cloudSync.url)
+   const tok = String(cloudSync.token || '').trim()
+   if (url) localStorage.setItem('cloud_sync_url', url)
+   else localStorage.removeItem('cloud_sync_url')
+   if (tok) localStorage.setItem('cloud_sync_token', tok)
+   else localStorage.removeItem('cloud_sync_token')
+   setCloudSync(v => ({ ...v, url, token: tok }))
+   try { window.dispatchEvent(new CustomEvent('cloud_sync_config_changed', { detail: { url } })) } catch {}
+   if (token) startSyncEngine(() => token)
+   refreshCloudSyncStatus()
+   toast.success(url ? `Cloud sync URL saved (${url})` : 'Cloud sync cleared (local-only)')
+  } catch {
+   toast.error('Could not save cloud sync settings')
+  }
+ }
+
+ const runCloudSyncNow = async () => {
+  if (!token) { toast.error('Login required'); return }
+  setCloudSyncBusy(true)
+  try {
+   const r = await syncOnce(token)
+   refreshCloudSyncStatus()
+   if (r?.skipped) toast(r.reason === 'cloud_sync_url not set or same as local'
+     ? 'Set a VPS URL different from this PC’s local API'
+     : (r.reason || 'Sync skipped'), { icon: 'ℹ️' })
+   else if (r?.ok) toast.success('Synced with cloud')
+   else toast.error(r?.error || 'Sync failed')
+  } catch (e) {
+   toast.error(e?.message || 'Sync failed')
+  } finally {
+   setCloudSyncBusy(false)
+   refreshCloudSyncStatus()
+  }
+ }
 
  const defaultSellFields = () => ({
  totalTax: false,
@@ -309,7 +370,7 @@ export default function Settings() {
  <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><span className="text-2xl text-white font-bold">S</span></div><div><h1 className="text-2xl font-bold text-gray-900">Settings</h1><p className="text-sm text-gray-500">Manage your restaurant and system preferences</p></div></div>
 
  {/* Tabs */}
- <div className="border-b border-gray-200 dark:border-gray-700"><div className="flex flex-wrap gap-1"><TabButton id="company" label="Restaurant" icon="" activeTab={tab} onClick={setTab} /><TabButton id="system" label="System" icon="" activeTab={tab} onClick={setTab} /><TabButton id="restriction" label="Restriction" icon="" activeTab={tab} onClick={setTab} /><TabButton id="backup" label="Backup & Security" icon="" activeTab={tab} onClick={setTab} /></div></div>
+ <div className="border-b border-gray-200 dark:border-gray-700"><div className="flex flex-wrap gap-1"><TabButton id="company" label="Restaurant" icon="" activeTab={tab} onClick={setTab} /><TabButton id="system" label="System" icon="" activeTab={tab} onClick={setTab} /><TabButton id="restriction" label="Restriction" icon="" activeTab={tab} onClick={setTab} /><TabButton id="cloud" label="Cloud Sync" icon="" activeTab={tab} onClick={setTab} /><TabButton id="backup" label="Backup & Security" icon="" activeTab={tab} onClick={setTab} /></div></div>
 
  {/* Company Settings */}
  {tab === 'company' && (
@@ -492,6 +553,59 @@ export default function Settings() {
  )}
 
  {/* Backup & Security */}
+ {tab === 'cloud' && (
+ <div className="space-y-4">
+  <Card>
+   <CardHeader
+    title="Cloud Sync (Branch ↔ VPS)"
+    subtitle="On branch PCs: point this to your VPS so local Mongo stays in sync online. Leave empty on the VPS / call-center machine."
+    icon=""
+   />
+   <CardBody>
+    <InputGroup
+     label="Cloud Sync URL (VPS)"
+     helpText="Example: https://pos.yourdomain.com — no trailing slash. Must be different from this PC’s local API."
+    >
+     <input
+      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+      value={cloudSync.url}
+      onChange={e => setCloudSync(v => ({ ...v, url: e.target.value }))}
+      placeholder="https://forksnknives.epicspire.com"
+      autoComplete="off"
+     />
+    </InputGroup>
+    <InputGroup
+     label="Cloud Sync Token (optional)"
+     helpText="Only if the VPS needs a separate JWT. Usually leave blank and use the same login token."
+    >
+     <input
+      type="password"
+      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+      value={cloudSync.token}
+      onChange={e => setCloudSync(v => ({ ...v, token: e.target.value }))}
+      placeholder="Optional HQ JWT"
+      autoComplete="off"
+     />
+    </InputGroup>
+    <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 p-4 text-sm space-y-1">
+     <div><span className="text-gray-500">Local API:</span> <span className="font-medium break-all">{cloudSyncStatus.local || '—'}</span></div>
+     <div><span className="text-gray-500">Cloud URL:</span> <span className="font-medium break-all">{cloudSyncStatus.cloud || '(not set)'}</span></div>
+     <div><span className="text-gray-500">Last OK:</span> <span className="font-medium">{cloudSyncStatus.lastOkAt || '—'}</span></div>
+     {cloudSyncStatus.lastError ? (
+      <div className="text-rose-600 dark:text-rose-400">Error: {cloudSyncStatus.lastError}</div>
+     ) : null}
+    </div>
+    <div className="flex flex-wrap justify-end gap-2 pt-2">
+     <SecondaryButton onClick={runCloudSyncNow} icon="">
+      {cloudSyncBusy ? 'Syncing…' : 'Sync Now'}
+     </SecondaryButton>
+     <PrimaryButton onClick={saveCloudSync} icon="">Save Cloud Sync</PrimaryButton>
+    </div>
+   </CardBody>
+  </Card>
+ </div>
+ )}
+
  {tab === 'backup' && (
  <div className="space-y-4">
  {/* Manual Backup */}

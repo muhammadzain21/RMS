@@ -5,11 +5,13 @@ import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import { openKotPrintUtil } from './printUtils.js'
 import { createLineTotal } from './utils.js'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -33,9 +35,9 @@ export default function KotHistory() {
  const [fromDate, setFromDate] = useState(businessDate || '')
  const [toDate, setToDate] = useState(businessDate || '')
 
- const loadServer = async () => {
+ const loadServer = useCallback(async ({ quiet = false } = {}) => {
  try {
- setLoading(true)
+ if (!quiet) setLoading(true)
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const params = new URLSearchParams()
  params.set('limit', String(limit))
@@ -43,7 +45,7 @@ export default function KotHistory() {
  if (typeFilter) params.set('type', typeFilter)
  if (fromDate) params.set('from', fromDate)
  if (toDate) params.set('to', toDate)
- const res = await fetch(`${API}/api/kots?${params.toString()}`, { headers })
+ const res = await fetch(`${API}/api/kots?${params.toString()}`, { headers, cache: 'no-store' })
  if (res.ok) {
  const data = await res.json()
  const list = Array.isArray(data?.rows) ? data.rows : (Array.isArray(data) ? data : [])
@@ -51,15 +53,24 @@ export default function KotHistory() {
  setTotal(data?.total || list.length)
  return
  }
- } catch {}
+ if (!quiet) {
  setRows([])
  setTotal(0)
- setLoading(false)
  }
+ } catch {
+ if (!quiet) {
+ setRows([])
+ setTotal(0)
+ }
+ } finally {
+ if (!quiet) setLoading(false)
+ }
+ }, [API, token, limit, page, typeFilter, fromDate, toDate])
 
  const totalPages = Math.max(1, Math.ceil(total / limit)) || 1
 
- useEffect(() => { loadServer().finally(()=>setLoading(false)) }, [page, limit, typeFilter, fromDate, toDate])
+ useEffect(() => { loadServer() }, [loadServer])
+ useLiveRefresh(() => loadServer({ quiet: true }), { intervalMs: 8000 })
 
  const staffWaiterName = (id) => (state.staff || []).find(s => s.id === id)?.name || '-'
 
@@ -188,7 +199,7 @@ export default function KotHistory() {
  headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
  margin: { left: 40, right: 40 },
  })
- doc.save(`kot_history_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`kot_history_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error(err)
@@ -207,7 +218,7 @@ export default function KotHistory() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `kot_history_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `kot_history_${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported successfully')

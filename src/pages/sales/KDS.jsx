@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import DatePicker from '../../components/DatePicker.jsx'
 import { previewHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '../../utils/reportDoc'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 
 const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
@@ -96,7 +97,6 @@ export default function KDS() {
   // Mobile: show one kanban column at a time
   const [mobileCol, setMobileCol] = useState('new')
   const audioRef = useRef(null)
-  const pollRef = useRef(null)
 
   useEffect(() => {
     if (!dateTouched && businessDate) setSelectedDate(businessDate)
@@ -116,7 +116,7 @@ export default function KDS() {
         params.set('from', selectedDate)
         params.set('to', selectedDate)
       }
-      const res = await fetch(`${API}/api/kots?${params.toString()}`, { headers: authHeaders })
+      const res = await fetch(`${API}/api/kots?${params.toString()}`, { headers: authHeaders, cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         const list = Array.isArray(data?.rows) ? data.rows : (Array.isArray(data) ? data : [])
@@ -148,11 +148,7 @@ export default function KDS() {
     loadKots()
   }, [loadKots])
 
-  useEffect(() => {
-    if (!autoRefresh) return
-    pollRef.current = setInterval(() => loadKots(true), 8000)
-    return () => clearInterval(pollRef.current)
-  }, [autoRefresh, loadKots])
+  useLiveRefresh(() => loadKots(true), { intervalMs: autoRefresh ? 8000 : 0 })
 
   const updateStatus = async (id, status) => {
     try {

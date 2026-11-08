@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, exportDateStamp } from '../../utils/listReportExport.js'
 import { parseSpreadsheetFile, exportCategoriesSpreadsheet, rowsToCategoryImportPayload } from '../../utils/spreadsheetIo.js'
 
 export default function Categories() {
@@ -191,12 +191,12 @@ export default function Categories() {
  settings: state?.settings || {},
  title: 'Categories',
  reportLabel: 'Category Report',
- reportNo: `Rpt #: CAT-${format(new Date(), 'yyyy-MM-dd')}`,
+ reportNo: `Rpt #: CAT-${exportDateStamp()}`,
  metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })
- await previewHtmlReport(html, `Categories-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Categories-${exportDateStamp()}.pdf`)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -219,7 +219,7 @@ export default function Categories() {
  headStyles: { fillColor: [147, 51, 234], textColor: 255, fontStyle: 'bold' },
  margin: { left: 40, right: 40 },
  })
- doc.save(`categories_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`categories_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (e) {
  console.error(e)

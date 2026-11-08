@@ -9,7 +9,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function SupplierProfile() {
   const { id } = useParams()
@@ -98,7 +98,7 @@ export default function SupplierProfile() {
         metaRight: [['Status', supplier?.status || 'Active'], ['Lines', String(supplyLines.length)]],
         body,
       })
-      await previewHtmlReport(html, `Supplier-Supplies-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      await previewHtmlReport(html, `Supplier-Supplies-${exportDateStamp()}.pdf`)
       toast.success('Print preview opened')
     } catch (e) {
       console.error(e)
@@ -121,7 +121,7 @@ export default function SupplierProfile() {
         headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`supplier_supplies_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`supplier_supplies_${exportDateStamp()}.pdf`)
       toast.success('PDF exported successfully')
     } catch (e) {
       console.error(e)

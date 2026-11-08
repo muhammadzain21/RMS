@@ -32,9 +32,25 @@ contextBridge.exposeInMainWorld('printing', {
   printRaw: async (text, deviceName) => {
     try { return await ipcRenderer.invoke('printing:raw', { text, deviceName }) } catch (e) { return { ok: false, error: String(e) } }
   },
-  printHTML: async (html, deviceName) => {
-    try { return await ipcRenderer.invoke('printing:print-html', { html, deviceName }) } catch (e) { return { ok: false, error: String(e) } }
-  }
+  printHTML: async (html, deviceName, opts = {}) => {
+    try {
+      return await ipcRenderer.invoke('printing:print-html', {
+        html,
+        deviceName,
+        silent: opts && Object.prototype.hasOwnProperty.call(opts, 'silent') ? opts.silent : undefined,
+      })
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  },
+  /** Show system print dialog from a hidden window (safe for the POS shell). */
+  printHTMLDialog: async (html) => {
+    try {
+      return await ipcRenderer.invoke('printing:print-html', { html, silent: false })
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  },
 })
 
 // PDF preview: open a base64 PDF, or render report HTML to A4 PDF, in the preview window

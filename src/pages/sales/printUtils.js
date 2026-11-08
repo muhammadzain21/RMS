@@ -12,6 +12,342 @@ const getAPIBase = () => {
   } catch {}
   return 'http://localhost:5000'
 }
+
+/**
+ * Thermal roll + professional typography (preview & print share the same CSS).
+ * Hierarchy: muted labels, medium body, semibold totals — not all-black heavy text.
+ */
+export const THERMAL_SLIP_CSS = `
+  @page { size: 80mm auto; margin: 0; }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 72mm;
+    max-width: 72mm;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    box-sizing: border-box;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  img { max-width: 100% !important; height: auto !important; }
+  .toolbar, .no-print { display: none !important; }
+  @media print {
+    html, body {
+      width: 72mm !important;
+      max-width: 72mm !important;
+      height: auto !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+      padding: 2mm 5mm 2mm 2mm !important;
+      overflow: visible !important;
+    }
+    .toolbar, .no-print { display: none !important; }
+  }
+  @media screen {
+    html, body {
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 4px 14px 8px 6px;
+    }
+  }
+`
+
+/** Shared visual language for bill + KOT slips (dialog preview === printed output). */
+export const PROFESSIONAL_SLIP_CSS = `
+  /* Arial prints clearest on thermal; everything bold */
+  html, body, body * {
+    font-family: Arial, Helvetica, sans-serif !important;
+    font-weight: 700 !important;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font-size: 12px;
+    line-height: 1.45;
+    color: #111827;
+    letter-spacing: 0.015em;
+    padding-right: 4mm !important;
+  }
+  b, strong { font-weight: 700 !important; }
+  .center { text-align: center; }
+  .brand { text-align: center; margin-bottom: 8px; padding-right: 2mm; }
+  .brand img {
+    display: block;
+    margin: 0 auto 6px;
+    max-height: 52px;
+    max-width: 82%;
+    object-fit: contain;
+  }
+  .brand-name {
+    margin: 0 0 4px;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    color: #111827;
+    line-height: 1.2;
+  }
+  .brand-meta {
+    margin: 2px 0;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #111827;
+  }
+  .chip {
+    display: block;
+    margin: 6px 2mm 0 0;
+    padding: 6px 8px;
+    border: 1px solid #94a3b8;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #111827;
+    background: #f8fafc;
+  }
+  .chip-token {
+    border-color: #60a5fa;
+    background: #eff6ff;
+    color: #0f172a;
+    font-size: 14px !important;
+    font-weight: 900 !important;
+  }
+  .chip-token .token-num {
+    font-size: 20px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.04em;
+  }
+  .block { margin: 8px 4mm 8px 0; }
+  .muted { color: #111827; font-size: 11px !important; font-weight: 700 !important; }
+  .emph { font-weight: 700 !important; color: #111827; }
+  .kvtable {
+    width: calc(100% - 4mm);
+    border-collapse: collapse;
+    table-layout: auto;
+    margin: 0 4mm 0 0;
+  }
+  .kvtable td {
+    padding: 4px 0;
+    border: 0;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #111827;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  .kvtable td.val {
+    text-align: right;
+    color: #111827;
+    font-weight: 700 !important;
+    padding-left: 8px;
+    white-space: normal;
+  }
+  table.items {
+    width: calc(100% - 4mm);
+    border-collapse: collapse;
+    margin-top: 6px;
+    margin-right: 4mm;
+    table-layout: fixed;
+  }
+  table.items th, table.items td { padding: 5px 2px; vertical-align: top; }
+  table.items th {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #111827;
+    border-bottom: 1px solid #cbd5e1;
+    background: transparent;
+  }
+  table.items td {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #111827;
+    border-bottom: 1px solid #e5e7eb;
+    word-break: break-word;
+  }
+  .desc { width: 46%; text-align: left; }
+  th.desc { text-align: left; }
+  .qty { width: 14%; text-align: right; }
+  .rate { width: 20%; text-align: right; }
+  .amount { width: 20%; text-align: right; font-variant-numeric: tabular-nums; }
+  .kv {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 3px 4mm 3px 0;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #111827;
+  }
+  .kv span:first-child { flex: 1 1 auto; min-width: 0; font-weight: 700 !important; }
+  .kv span:last-child {
+    flex: 0 0 auto;
+    color: #111827;
+    font-weight: 700 !important;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    max-width: 48%;
+    word-break: break-word;
+  }
+  .hr {
+    border: 0;
+    border-top: 1px dashed #94a3b8;
+    margin: 8px 4mm 8px 0;
+  }
+  .totals { margin-top: 2px; margin-right: 4mm; }
+  .total {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: #111827 !important;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid #cbd5e1;
+  }
+  .total span { color: #111827 !important; font-weight: 700 !important; }
+  .footer {
+    margin: 10px 2mm 0 0;
+    padding-top: 6px;
+    border-top: 1px dashed #94a3b8;
+    text-align: center;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #111827;
+    white-space: pre-wrap;
+    line-height: 1.35;
+  }
+  .endline {
+    border-top: 1px dashed #94a3b8;
+    margin: 10px 2mm 6px 0;
+    text-align: center;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em;
+    color: #111827;
+    padding-top: 6px;
+  }
+  .kitchen-note {
+    text-align: center;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #b91c1c;
+    margin: 6px 2mm 0 0;
+    padding: 6px 8px;
+    border: 1px dashed #fca5a5;
+    border-radius: 6px;
+    background: #fff7f7;
+  }
+  .toolbar { display: none !important; }
+`
+
+function nudgeAppShellLayout() {
+  try {
+    window.dispatchEvent(new Event('resize'))
+  } catch {}
+  try {
+    // Clear any leftover print-only inline styles Chromium may leave behind
+    document.documentElement.style.height = ''
+    document.documentElement.style.minHeight = ''
+    document.body.style.height = ''
+    document.body.style.minHeight = ''
+    document.body.style.overflow = ''
+  } catch {}
+}
+
+/**
+ * Interactive print (shows printer picker) without calling window.print() on the POS shell.
+ * Uses an isolated iframe so Electron layout stays intact; Electron dialog IPC is a backup.
+ */
+export function printThermalInPage(html) {
+  const raw = String(html || '')
+  try {
+    // Isolated iframe.print() reliably opens the system printer dialog in Electron + browser.
+    // (Hidden BrowserWindow print dialogs are often swallowed on Windows.)
+    printViaIsolatedIframe(raw)
+  } catch (e) {
+    console.warn('[printThermalInPage] iframe print failed, trying Electron dialog:', e)
+    try {
+      if (typeof window !== 'undefined' && window.printing) {
+        const run = window.printing.printHTMLDialog
+          || ((h) => window.printing.printHTML(h, '', { silent: false }))
+        Promise.resolve(run(raw))
+          .then((r) => {
+            if (r && r.ok === false) console.warn('[printThermalInPage] Electron dialog:', r.error)
+            nudgeAppShellLayout()
+          })
+          .catch(() => nudgeAppShellLayout())
+        return
+      }
+    } catch {}
+  }
+}
+
+function printViaIsolatedIframe(html) {
+  try {
+    const prev = document.getElementById('rms-print-iframe')
+    try { prev?.remove() } catch {}
+
+    const iframe = document.createElement('iframe')
+    iframe.id = 'rms-print-iframe'
+    iframe.setAttribute('title', 'Print')
+    // Keep iframe in the viewport (opacity 0) — off-screen iframes often block print dialogs in Electron
+    iframe.style.cssText = 'position:fixed;inset:0;width:1px;height:1px;opacity:0;border:0;pointer-events:none;z-index:2147483646;'
+    document.body.appendChild(iframe)
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document
+    if (!doc) { try { iframe.remove() } catch {}; return }
+
+    let payload = String(html || '')
+    // Ensure thermal page sizing when a full document is provided
+    if (!/<html[\s>]/i.test(payload)) {
+      payload = `<!doctype html><html><head><meta charset="utf-8"><style>
+        @page{size:80mm auto;margin:0}
+        html,body{margin:0;padding:0;background:#fff}
+        body{width:72mm;max-width:72mm;padding:3mm 5mm 3mm 2.5mm;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif;font-weight:700;color:#111}
+      </style></head><body>${payload}</body></html>`
+    } else if (!/@page/i.test(payload)) {
+      payload = payload.replace(
+        /<\/head>/i,
+        '<style>@page{size:80mm auto;margin:0}</style></head>'
+      )
+    }
+
+    doc.open()
+    doc.write(payload)
+    doc.close()
+
+    let cleaned = false
+    const cleanup = () => {
+      if (cleaned) return
+      cleaned = true
+      try { iframe.contentWindow?.removeEventListener('afterprint', cleanup) } catch {}
+      try { window.removeEventListener('focus', onFocusCleanup) } catch {}
+      try { iframe.remove() } catch {}
+      nudgeAppShellLayout()
+    }
+    const onFocusCleanup = () => { setTimeout(cleanup, 400) }
+
+    try { iframe.contentWindow?.addEventListener('afterprint', cleanup) } catch {}
+    try { window.addEventListener('focus', onFocusCleanup) } catch {}
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+      } catch (err) {
+        console.warn('[printViaIsolatedIframe] print() error:', err)
+        cleanup()
+      }
+      // Safety net if afterprint never fires
+      setTimeout(cleanup, 120000)
+    }, 250)
+  } catch (e) {
+    console.warn('[printViaIsolatedIframe] failed:', e)
+  }
+}
 async function tryServerPrint(html, type = 'bill', printerName = '') {
   try {
     const api = getAPIBase()
@@ -51,8 +387,11 @@ async function tryServerPrint(html, type = 'bill', printerName = '') {
 async function trySilentPrint(html, type, deviceName) {
   try {
     if (window && window.printing && window.printing.printHTML) {
-      const out = await window.printing.printHTML(html, deviceName)
-      if (out && out.ok) return true
+      const out = await window.printing.printHTML(html, deviceName, { silent: true })
+      if (out && out.ok) {
+        nudgeAppShellLayout()
+        return true
+      }
       if (out && out.error) console.warn('[trySilentPrint] Electron print failed:', out.error)
     }
   } catch (e) {
@@ -62,74 +401,133 @@ async function trySilentPrint(html, type, deviceName) {
   return false
 }
 
+/**
+ * Shared in-app slip preview — height fits content (no huge empty white area),
+ * padded so receipt is not flush to the left edge.
+ */
+export function openSlipPreviewDialog({
+  html,
+  printType = 'bill',
+  deviceName = '',
+  auto = false,
+  title = 'Slip preview',
+  printBtnClass = 'slip-print-btn',
+  closeBtnClass = 'slip-close-btn',
+} = {}) {
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(2px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;'
+  const frameWrap = document.createElement('div')
+  frameWrap.style.cssText = 'background:#fff;width:min(380px,96vw);max-height:92vh;border-radius:16px;box-shadow:0 25px 60px rgba(15,23,42,0.22);display:flex;flex-direction:column;overflow:hidden;border:1px solid #e2e8f0;'
+
+  const toolbar = document.createElement('div')
+  toolbar.style.cssText = 'display:flex;gap:8px;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid #eef2f7;background:#fff;flex-shrink:0;'
+  const titleEl = document.createElement('div')
+  titleEl.textContent = title
+  titleEl.style.cssText = 'font-size:13px;font-weight:700;color:#0f172a;letter-spacing:-0.01em;font-family:system-ui,Segoe UI,sans-serif;'
+  const actions = document.createElement('div')
+  actions.style.cssText = 'display:flex;gap:8px;align-items:center;'
+  const btnPrint = document.createElement('button')
+  btnPrint.textContent = 'Print'
+  btnPrint.className = printBtnClass
+  btnPrint.style.cssText = 'padding:8px 14px;border:0;background:#2563eb;color:#fff;cursor:pointer;border-radius:10px;font-weight:600;font-size:12px;box-shadow:0 6px 14px rgba(37,99,235,0.28)'
+  const btnClose = document.createElement('button')
+  btnClose.textContent = 'OK'
+  btnClose.className = closeBtnClass
+  btnClose.style.cssText = 'padding:8px 14px;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;border-radius:10px;font-weight:600;font-size:12px;'
+
+  // Flat white — slip content sits on the dialog surface
+  const scroll = document.createElement('div')
+  scroll.style.cssText = 'flex:1 1 auto;overflow:auto;padding:10px 20px 18px 12px;background:#fff;'
+
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'border:0;display:block;width:100%;height:120px;background:#fff;'
+  iframe.setAttribute('scrolling', 'no')
+  iframe.title = title
+
+  actions.appendChild(btnPrint)
+  actions.appendChild(btnClose)
+  toolbar.appendChild(titleEl)
+  toolbar.appendChild(actions)
+  scroll.appendChild(iframe)
+  frameWrap.appendChild(toolbar)
+  frameWrap.appendChild(scroll)
+  overlay.appendChild(frameWrap)
+  document.body.appendChild(overlay)
+
+  const cleanup = () => { try { document.body.removeChild(overlay) } catch {} }
+  overlay.tabIndex = -1
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') cleanup() })
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup() })
+  try { overlay.focus() } catch {}
+
+  const fitIframe = () => {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document
+      if (!doc) return
+      const h = Math.max(
+        doc.documentElement?.scrollHeight || 0,
+        doc.body?.scrollHeight || 0,
+        80
+      )
+      iframe.style.height = `${h + 4}px`
+    } catch {}
+  }
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document
+  if (doc) {
+    doc.open()
+    doc.write(html)
+    doc.close()
+  }
+  // Resize after layout + images
+  setTimeout(fitIframe, 50)
+  setTimeout(fitIframe, 250)
+  setTimeout(fitIframe, 600)
+  try {
+    iframe.addEventListener('load', fitIframe)
+  } catch {}
+
+  const doPrint = () => { printThermalInPage(html) }
+  btnPrint.onclick = () => {
+    if (deviceName) {
+      trySilentPrint(html, printType, deviceName)
+        .then(ok => { if (!ok) doPrint() })
+        .catch(() => doPrint())
+        .finally(cleanup)
+      return
+    }
+    doPrint()
+    cleanup()
+  }
+  btnClose.onclick = cleanup
+  if (auto) setTimeout(() => btnPrint.click(), 80)
+}
+
 export async function openKotPrintUtil(opts = {}) {
   try {
     const state = opts.state || {}
     const html = buildKOTHtml({ ...opts, state })
     const auto = opts.autoPrint !== false
-    // Prefer Electron silent printing when a KOT/Void printer is configured
     const deviceName = opts.deviceName || state?.settings?.kotPrinterName || ''
-    
-    // If auto print mode and printer configured, try silent/server print first (no dialog)
+
     if (auto && deviceName) {
       if (await trySilentPrint(html, 'kot', deviceName)) return
     }
-    
-    // Show preview dialog for manual printing or when silent printing not available
-    const useInApp = opts.previewInApp !== false
-    if (useInApp) {
-      const overlay = document.createElement('div')
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px;'
-      const dark = isDarkMode()
-      const frameWrap = document.createElement('div')
-      frameWrap.style.cssText = `background:${dark?'#111827':'#fff'};width:420px;max-width:95vw;height:640px;max-height:95vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;`
-      const toolbar = document.createElement('div')
-      toolbar.style.cssText = `display:flex;gap:8px;justify-content:flex-end;padding:8px;border-bottom:1px solid ${dark?'#374151':'#e5e7eb'};background:${dark?'#1f2937':'#fafafa'}`
-      const btnPrint = document.createElement('button')
-      btnPrint.textContent = 'Print'
-      btnPrint.className = 'kot-print-btn'
-      btnPrint.style.cssText = 'padding:8px 16px;border:0;background:linear-gradient(135deg,#10b981,#059669);color:#fff;cursor:pointer;border-radius:6px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1)'
-      const btnClose = document.createElement('button')
-      btnClose.textContent = 'OK'
-      btnClose.className = 'kot-close-btn'
-      btnClose.style.cssText = `padding:8px 16px;border:1px solid ${dark?'#4b5563':'#d1d5db'};background:${dark?'#374151':'#f9fafb'};color:${dark?'#e5e7eb':'#374151'};cursor:pointer;border-radius:6px;font-weight:500`
-      const iframe = document.createElement('iframe')
-      iframe.style.cssText = 'border:0;flex:1;width:100%'
-      toolbar.appendChild(btnPrint); toolbar.appendChild(btnClose)
-      frameWrap.appendChild(toolbar); frameWrap.appendChild(iframe)
-      overlay.appendChild(frameWrap)
-      document.body.appendChild(overlay)
-      // Allow closing via ESC and backdrop click
-      overlay.tabIndex = -1
-      overlay.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') cleanup() })
-      overlay.addEventListener('click', (e)=>{ if (e.target === overlay) cleanup() })
-      try { overlay.focus() } catch {}
-      const doc = iframe.contentDocument || iframe.contentWindow?.document
-      if (doc) { doc.open(); doc.write(html); doc.close() }
-      const doPrint = () => { try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch {} }
-      const cleanup = () => { try { document.body.removeChild(overlay) } catch {} }
-      // Silent-print to the configured KOT printer; if every silent path fails,
-      // fall back to the system print dialog so the job is never silently lost
-      btnPrint.onclick = () => {
-        if (deviceName) {
-          trySilentPrint(html, 'kot', deviceName)
-            .then(ok => { if (!ok) doPrint() })
-            .catch(() => doPrint())
-            .finally(cleanup)
-          return
-        }
-        doPrint()
-        cleanup()
-      }
-      btnClose.onclick = cleanup
-      if (auto) setTimeout(() => btnPrint.click(), 50)
+
+    if (opts.previewInApp !== false) {
+      openSlipPreviewDialog({
+        html,
+        printType: 'kot',
+        deviceName,
+        auto,
+        title: 'KOT preview',
+        printBtnClass: 'kot-print-btn',
+        closeBtnClass: 'kot-close-btn',
+      })
       return
     }
-    
-    // Fallback: open in popup window if preview disabled
-    const w = window.open('', 'kotPrint', 'width=380,height=640')
-    if (!w) return
-    w.document.open(); w.document.write(html); w.document.close()
+
+    printThermalInPage(html)
   } catch {}
 }
 export function printReceiptUtil(_opts = {}) {}
@@ -274,88 +672,68 @@ export async function printSaleReceiptUtil(opts = {}) {
   <title>Sale Receipt</title>
   <base href="${escapeHtml(window.location.href)}" />
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;margin:0;padding:8px}
-    h1{font-size:14px;margin:0 0 4px;text-align:center}
-    .center{ text-align:center }
-    .muted{ color:#444; font-size:10px }
-    .block{ margin:4px 0 }
-    table{width:100%;border-collapse:collapse;margin-top:6px;table-layout:fixed}
-    th,td{padding:2px 0;border-bottom:1px solid #ddd}
-    th{font-weight:bold;background:#f7f7f7}
-    .desc{ width:50%; word-break:break-word; text-align:left }
-    th.desc{ text-align:left }
-    .qty{ text-align:right; width:10% }
-    .rate{ text-align:right; width:20% }
-    .amount{ text-align:right; width:20% }
-    .kv{ display:flex; justify-content:space-between; margin:1px 0 }
-    .emph{ font-weight:700; color:#000 }
-    .total{ font-weight:bold; font-size:12px; }
-    .hr{ border-top:1px dashed #999; margin:4px 0 }
-    .toolbar{ position:sticky; top:0; background:#fff; padding:6px 0; display:${auto ? 'none' : 'flex'}; gap:8px; justify-content:flex-end; border-bottom:1px solid #ddd }
-    .btn{ padding:6px 10px; border:1px solid #999; background:#f5f5f5; cursor:pointer }
+    ${THERMAL_SLIP_CSS}
+    ${PROFESSIONAL_SLIP_CSS}
   </style>
 </head>
 <body>
-  <div class="center">
-    <img id="receiptLogo" alt="logo" src="${escapeHtml(logoAbs)}" onerror="this.style.display='none'" style="max-height:60px;max-width:100%;object-fit:contain;display:block;margin:0 auto 4px" />
-    ${company ? `<h1>${escapeHtml(company)}</h1>` : ''}
-    ${phone ? `<div class="muted emph">Contact : <b>${escapeHtml(phone)}</b></div>` : ''}
-    ${address ? `<div class="muted emph"><b>${escapeHtml(address)}</b></div>` : ''}
+  <div class="brand">
+    <img id="receiptLogo" alt="logo" src="${escapeHtml(logoAbs)}" onerror="this.style.display='none'" />
+    ${company ? `<div class="brand-name">${escapeHtml(company)}</div>` : ''}
+    ${phone ? `<div class="brand-meta">Contact : ${escapeHtml(phone)}</div>` : ''}
+    ${address ? `<div class="brand-meta">${escapeHtml(address)}</div>` : ''}
   </div>
 
-  <div class="block center" style="border:1px solid #ccc; padding:4px; margin-top:6px">${escapeHtml(titleText)}</div>
-  ${tokenNo ? `<div class="center" style="border:1px solid #ccc; padding:4px; margin-top:4px">Token No: <b>${escapeHtml(String(tokenNo))}</b></div>` : ''}
+  <div class="chip">${escapeHtml(titleText)}</div>
+  ${tokenNo ? `<div class="chip chip-token">Token No: <span class="token-num">${escapeHtml(String(tokenNo))}</span></div>` : ''}
 
   <div class="block">
     <table class="kvtable"><tbody>
-      ${billNo ? `<tr><td>Bill No :</td><td class="val">${escapeHtml(String(billNo))}</td></tr>` : ''}
-      <tr><td>Date & Time :</td><td class="val">${dateStr} ${timeStr}</td></tr>
-      ${isReprint ? `<tr><td>Reprint :</td><td class="val"><b>REPRINT</b></td></tr>` : ''}
-      <tr><td>Payment Type :</td><td class="val">${escapeHtml(paymentType)}</td></tr>
-      ${opts.deliveryDate ? `<tr><td>Delivery Date :</td><td class="val">${escapeHtml(String(opts.deliveryDate))}</td></tr>` : ''}
-      ${customer?.name ? `<tr><td>Name :</td><td class="val">${escapeHtml(customer.name)}</td></tr>` : ''}
-      ${customer?.address ? `<tr><td>Address :</td><td class="val">${escapeHtml(customer.address)}</td></tr>` : ''}
-      ${customer?.phone ? `<tr><td>Phone :</td><td class="val">${escapeHtml(customer.phone)}</td></tr>` : ''}
-      ${opts.userName ? `<tr><td>User :</td><td class="val">${escapeHtml(String(opts.userName))}</td></tr>` : ''}
-      ${orderType ? `<tr><td>Channel :</td><td class="val">${escapeHtml(orderType)}</td></tr>` : ''}
-      ${tableNo ? `<tr><td>Table :</td><td class="val">${escapeHtml(String(tableNo))}${floor ? ` / ${escapeHtml(floor)}` : ''}</td></tr>` : ''}
-      ${rider ? `<tr><td>Rider :</td><td class="val">${escapeHtml(rider)}</td></tr>` : ''}
+      ${billNo ? `<tr><td>Bill No</td><td class="val">${escapeHtml(String(billNo))}</td></tr>` : ''}
+      <tr><td>Date &amp; Time</td><td class="val">${dateStr} ${timeStr}</td></tr>
+      ${isReprint ? `<tr><td>Reprint</td><td class="val">REPRINT</td></tr>` : ''}
+      <tr><td>Payment Type</td><td class="val">${escapeHtml(paymentType)}</td></tr>
+      ${opts.deliveryDate ? `<tr><td>Delivery Date</td><td class="val">${escapeHtml(String(opts.deliveryDate))}</td></tr>` : ''}
+      ${customer?.name ? `<tr><td>Name</td><td class="val">${escapeHtml(customer.name)}</td></tr>` : ''}
+      ${customer?.address ? `<tr><td>Address</td><td class="val">${escapeHtml(customer.address)}</td></tr>` : ''}
+      ${customer?.phone ? `<tr><td>Phone</td><td class="val">${escapeHtml(customer.phone)}</td></tr>` : ''}
+      ${opts.userName ? `<tr><td>User</td><td class="val">${escapeHtml(String(opts.userName))}</td></tr>` : ''}
+      ${orderType ? `<tr><td>Channel</td><td class="val">${escapeHtml(orderType)}</td></tr>` : ''}
+      ${tableNo ? `<tr><td>Table</td><td class="val">${escapeHtml(String(tableNo))}${floor ? ` / ${escapeHtml(floor)}` : ''}</td></tr>` : ''}
+      ${rider ? `<tr><td>Rider</td><td class="val">${escapeHtml(rider)}</td></tr>` : ''}
     </tbody></table>
   </div>
 
-  <table>
+  <table class="items">
     <colgroup>
-      <col style="width:50%" />
-      <col style="width:10%" />
+      <col style="width:46%" />
+      <col style="width:14%" />
       <col style="width:20%" />
       <col style="width:20%" />
     </colgroup>
     <thead>
-      <tr><th class="desc">Des</th><th class="qty">Qty</th><th class="rate">Rate</th><th class="amount">Amt</th></tr>
+      <tr><th class="desc">Item</th><th class="qty">Qty</th><th class="rate">Rate</th><th class="amount">Amt</th></tr>
     </thead>
     <tbody>
       ${rowsHtml}
     </tbody>
   </table>
 
-  <div class="block">
-    <div class="kv"><span>No Of Items:</span><span>${items.length}</span></div>
-    <div class="kv"><span>Total Qty:</span><span>${items.reduce((s,it)=>s+qty(it),0)}</span></div>
+  <div class="hr"></div>
+  <div class="totals">
+    <div class="kv"><span>Total amount</span><span>${fmt(subtotal)}</span></div>
+    <div class="kv"><span>Discount</span><span>${fmt(itemsDiscount + billDiscount)}</span></div>
+    ${serviceAmt ? `<div class="kv"><span>Service charges</span><span>${fmt(serviceAmt)}</span></div>` : ''}
+    ${deliveryAmt ? `<div class="kv"><span>Delivery charges</span><span>${fmt(deliveryAmt)}</span></div>` : ''}
+    ${taxAmt ? `<div class="kv"><span>Tax</span><span>${fmt(taxAmt)}</span></div>` : ''}
+    <div class="kv total"><span>Net total</span><span>${fmt(total)}</span></div>
+    <div class="kv"><span>Cash paid</span><span>${fmt(cashPaid)}</span></div>
+    ${tipAmt > 0
+      ? `<div class="kv"><span>Waiter tip</span><span>${fmt(tipAmt)}</span></div>`
+      : `<div class="kv"><span>Cash balance</span><span>${fmt(balance)}</span></div>`}
   </div>
 
-  <div class="hr"></div>
-  <div class="kv"><span>Total Amount :</span><span>${fmt(subtotal)}</span></div>
-  <div class="kv"><span>Discount :</span><span>${fmt(itemsDiscount + billDiscount)}</span></div>
-  ${serviceAmt ? `<div class="kv"><span>Service Charges :</span><span>${fmt(serviceAmt)}</span></div>` : ''}
-  ${deliveryAmt ? `<div class="kv"><span>Delivery Charges :</span><span>${fmt(deliveryAmt)}</span></div>` : ''}
-  ${taxAmt ? `<div class="kv"><span>Tax :</span><span>${fmt(taxAmt)}</span></div>` : ''}
-  <div class="kv total"><span>Net Total :</span><span>${fmt(total)}</span></div>
-  <div class="kv"><span>Cash Paid :</span><span>${fmt(cashPaid)}</span></div>
-  ${tipAmt > 0
-    ? `<div class="kv"><span>Waiter Tip :</span><span>${fmt(tipAmt)}</span></div>`
-    : `<div class="kv"><span>Cash Balance :</span><span>${fmt(balance)}</span></div>`}
-
-  ${state?.settings?.billingFooter ? `<div class="center muted emph" style="margin-top:4px; white-space:pre-wrap"><b>${escapeHtml(state.settings.billingFooter)}</b></div>` : ''}
+  ${state?.settings?.billingFooter ? `<div class="footer">${escapeHtml(state.settings.billingFooter)}</div>` : ''}
 
   <script>
     (function(){
@@ -376,7 +754,6 @@ export async function printSaleReceiptUtil(opts = {}) {
       }catch(e){}
     })();
   </script>
-  ${auto ? '<script>window.onload=()=>{window.print();}</script>' : ''}
 </body>
 </html>`
 
@@ -385,66 +762,20 @@ export async function printSaleReceiptUtil(opts = {}) {
       if (await trySilentPrint(html, 'bill', deviceName)) return
     }
 
-    // Show preview dialog for manual printing or when silent printing not available
-    const useInApp = opts.previewInApp !== false
-    if (useInApp) {
-      const overlay = document.createElement('div')
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px;'
-      const dark = isDarkMode()
-      const frameWrap = document.createElement('div')
-      frameWrap.style.cssText = `background:${dark?'#111827':'#fff'};width:420px;max-width:95vw;height:640px;max-height:95vh;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;`
-      const toolbar = document.createElement('div')
-      toolbar.style.cssText = `display:flex;gap:8px;justify-content:flex-end;padding:8px;border-bottom:1px solid ${dark?'#374151':'#e5e7eb'};background:${dark?'#1f2937':'#fafafa'}`
-      const btnPrint = document.createElement('button')
-      btnPrint.textContent = 'Print'
-      btnPrint.className = 'receipt-print-btn'
-      btnPrint.style.cssText = 'padding:8px 16px;border:0;background:linear-gradient(135deg,#10b981,#059669);color:#fff;cursor:pointer;border-radius:6px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1)'
-      const btnClose = document.createElement('button')
-      btnClose.textContent = 'OK'
-      btnClose.className = 'receipt-close-btn'
-      btnClose.style.cssText = `padding:8px 16px;border:1px solid ${dark?'#4b5563':'#d1d5db'};background:${dark?'#374151':'#f9fafb'};color:${dark?'#e5e7eb':'#374151'};cursor:pointer;border-radius:6px;font-weight:500`
-      const iframe = document.createElement('iframe')
-      iframe.style.cssText = 'border:0;flex:1;width:100%'
-      toolbar.appendChild(btnPrint); toolbar.appendChild(btnClose)
-      frameWrap.appendChild(toolbar); frameWrap.appendChild(iframe)
-      overlay.appendChild(frameWrap)
-      document.body.appendChild(overlay)
-
-      // Write content
-      const doc = iframe.contentDocument || iframe.contentWindow?.document
-      if (doc) { doc.open(); doc.write(html); doc.close() }
-
-      const doPrint = () => {
-        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch {}
-      }
-      const cleanup = () => { try { document.body.removeChild(overlay) } catch {} }
-      // Silent-print to the configured Bill printer; if every silent path fails,
-      // fall back to the system print dialog so the job is never silently lost
-      btnPrint.onclick = () => {
-        if (deviceName) {
-          trySilentPrint(html, 'bill', deviceName)
-            .then(ok => { if (!ok) doPrint() })
-            .catch(() => doPrint())
-            .finally(cleanup)
-          return
-        }
-        doPrint()
-        cleanup()
-      }
-      btnClose.onclick = cleanup
-      if (auto) {
-        // Auto print then keep preview visible (no auto-close per your preview request)
-        setTimeout(() => btnPrint.click(), 50)
-      }
+    if (opts.previewInApp !== false) {
+      openSlipPreviewDialog({
+        html,
+        printType: 'bill',
+        deviceName,
+        auto,
+        title: 'Sale receipt',
+        printBtnClass: 'receipt-print-btn',
+        closeBtnClass: 'receipt-close-btn',
+      })
       return
     }
 
-    // Fallback: open in popup window
-    const w = window.open('', 'salePrint', 'width=380,height=640')
-    if (!w) return
-    w.document.open()
-    w.document.write(html)
-    w.document.close()
+    printThermalInPage(html)
   } catch {}
 }
 
@@ -481,7 +812,7 @@ export function buildKOTHtml(opts = {}) {
       return escapeHtml(size ? `${base} (${size})` : base)
     }
     const rowsHtml = items.map(it => `<tr><td>${getItemName(it)}</td><td class="qty"><b>${Number(it.qty||0)}</b></td></tr>`).join('')
-    const kitchenNote = opts.kitchenNote || 'Please prepare immediately'
+    const kitchenNote = String(opts.kitchenNote || '').trim()
 
     // Build table info for Dine-in orders
     let tableDisplay = ''
@@ -496,51 +827,39 @@ export function buildKOTHtml(opts = {}) {
   <meta charset="utf-8" />
   <title>KOT</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;margin:0;padding:16px}
-    h1{font-size:16px;margin:0 0 6px;text-align:center}
-    .center{ text-align:center }
-    .muted{ color:#444; font-size:11px }
-    .block{ margin:6px 0 }
-    table{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed}
-    th,td{padding:4px 0;border-bottom:1px solid #ddd;vertical-align:top}
-    th{font-weight:bold;background:#f3f4f6}
-    .qty{ text-align:center; width:40px }
-    .desc{ text-align:left }
-    .kvtable{ width:100%; border-collapse:collapse; table-layout:auto }
-    .kvtable td{ padding:2px 0; border:0; vertical-align:top; word-break:break-word; overflow-wrap:anywhere }
-    .kvtable td.val{ text-align:right; white-space:normal; word-break:break-word; overflow-wrap:anywhere }
-    .emph{ font-weight:900; font-size:13px; color:#000 }
-    .endline{ border-top:2px dashed #999; margin:12px 0; text-align:center; font-size:10px; color:#666; padding-top:4px }
-    .kitchen-note{ text-align:center; font-size:14px; font-weight:bold; color:#c00; margin-top:8px; padding:8px; border:1px dashed #c00; background:#fff8f8 }
+    ${THERMAL_SLIP_CSS}
+    ${PROFESSIONAL_SLIP_CSS}
+    table.items .qty { width: 22%; text-align: right; }
+    table.items .desc { width: 78%; }
   </style>
   </head>
   <body>
-    <div class="center" style="border:1px solid #ccc; padding:4px;">${escapeHtml(title)}</div>
-    ${tokenNo ? `<div class="center" style="border:1px solid #ccc; padding:4px; margin-top:4px">Token No: <b>${escapeHtml(String(tokenNo))}</b></div>` : ''}
+    <div class="chip">${escapeHtml(title)}</div>
+    ${tokenNo ? `<div class="chip chip-token">Token No: <span class="token-num">${escapeHtml(String(tokenNo))}</span></div>` : ''}
     <div class="block">
       <table class="kvtable"><tbody>
-        <tr><td>Date & Time :</td><td class="val"><b>${dateStr} ${timeStr}</b></td></tr>
-        ${isReprint ? `<tr><td>Reprint :</td><td class="val"><b>REPRINT</b></td></tr>` : ''}
-        ${orderType ? `<tr><td>Order Type :</td><td class="val"><b>${escapeHtml(String(orderType))}</b></td></tr>` : ''}
-        ${userName ? `<tr><td>User :</td><td class="val"><b>${escapeHtml(String(userName))}</b></td></tr>` : ''}
-        ${waiter ? `<tr><td>Waiter :</td><td class="val">${escapeHtml(String(waiter))}</td></tr>` : ''}
-        ${tableDisplay ? `<tr><td>Table :</td><td class="val">${escapeHtml(String(tableDisplay).replace(/^Table /, ''))}</td></tr>` : ''}
-        ${rider ? `<tr><td>Rider :</td><td class="val">${escapeHtml(String(rider))}</td></tr>` : ''}
-        ${remarks ? `<tr><td>Remarks :</td><td class="val">${escapeHtml(String(remarks))}</td></tr>` : ''}
+        <tr><td>Date &amp; Time</td><td class="val">${dateStr} ${timeStr}</td></tr>
+        ${isReprint ? `<tr><td>Reprint</td><td class="val">REPRINT</td></tr>` : ''}
+        ${orderType ? `<tr><td>Order Type</td><td class="val">${escapeHtml(String(orderType))}</td></tr>` : ''}
+        ${userName ? `<tr><td>User</td><td class="val">${escapeHtml(String(userName))}</td></tr>` : ''}
+        ${waiter ? `<tr><td>Waiter</td><td class="val">${escapeHtml(String(waiter))}</td></tr>` : ''}
+        ${tableDisplay ? `<tr><td>Table</td><td class="val">${escapeHtml(String(tableDisplay).replace(/^Table /, ''))}</td></tr>` : ''}
+        ${rider ? `<tr><td>Rider</td><td class="val">${escapeHtml(String(rider))}</td></tr>` : ''}
+        ${remarks ? `<tr><td>Remarks</td><td class="val">${escapeHtml(String(remarks))}</td></tr>` : ''}
       </tbody></table>
     </div>
 
-    <table>
+    <table class="items">
       <thead>
-        <tr><th class="desc">DESCRIPTION</th><th class="qty">QTY</th></tr>
+        <tr><th class="desc">Item</th><th class="qty">Qty</th></tr>
       </thead>
       <tbody>
         ${rowsHtml}
       </tbody>
     </table>
 
-    <div class="endline">--- END OF ORDER ---</div>
-    <div class="kitchen-note">${escapeHtml(kitchenNote)}</div>
+    <div class="endline">END OF ORDER</div>
+    ${kitchenNote ? `<div class="kitchen-note">${escapeHtml(kitchenNote)}</div>` : ''}
   </body>
 </html>`
     return html

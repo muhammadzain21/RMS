@@ -10,6 +10,7 @@ import DatePicker from '../../components/DatePicker.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useBranch } from '../../state/BranchContext.jsx'
 import { ccStatusLabel, ccStatusStyle } from '../../utils/callCenterStatus.js'
+import { useLiveRefresh, pokeLiveRefresh } from '../../hooks/useLiveRefresh.js'
 
 function api() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -65,15 +66,18 @@ export default function CallCenterInbox() {
     return branches.find(b => String(b._id) === String(oOrId))?.name || oOrId || '—'
   }
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) setLoading(true)
     try {
+      // No X-Branch-Id / branchId — inbox shows every branch by default
       const [remRes, doneRes] = await Promise.all([
-        fetch(`${api()}/api/call-center-orders/inbox?all=1&tab=remaining`, {
+        fetch(`${api()}/api/call-center-orders/inbox?tab=remaining`, {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
         }),
-        fetch(`${api()}/api/call-center-orders/inbox?all=1&tab=complete`, {
+        fetch(`${api()}/api/call-center-orders/inbox?tab=complete`, {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
         }),
       ])
       const rem = remRes.ok ? await remRes.json() : []
@@ -81,17 +85,14 @@ export default function CallCenterInbox() {
       setCounts({ remaining: rem.length, complete: done.length })
       setList(tab === 'complete' ? done : rem)
     } catch {
-      toast.error('Could not load inbox')
+      if (!quiet) toast.error('Could not load inbox')
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }, [token, tab])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const t = setInterval(load, 10000)
-    return () => clearInterval(t)
-  }, [load])
+  useLiveRefresh(() => load({ quiet: true }), { intervalMs: 8000 })
   useEffect(() => { setPage(1) }, [tab, from, to, search])
 
   const filtered = useMemo(() => {
@@ -128,10 +129,12 @@ export default function CallCenterInbox() {
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error || 'Accept failed')
-      if (orderBranchId) setActiveBranchId(orderBranchId)
+      // Persist cart first so Sell still loads after a header-branch switch remount
       try {
         sessionStorage.setItem('cc_cart_payload', JSON.stringify(j.cart))
       } catch {}
+      if (orderBranchId) setActiveBranchId(orderBranchId)
+      pokeLiveRefresh({ source: 'call-center-accept', branchId: orderBranchId })
       toast.success(`In cart at ${branchName(o)} — review and send KOT`)
       navigate('/sales/new?from=callcenter')
     } catch (e) {

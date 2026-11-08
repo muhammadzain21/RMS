@@ -35,6 +35,7 @@ import staffAdvancesRouter from './routes/staffAdvances.js'
 import staffPurchasesRouter from './routes/staffPurchases.js'
 import staffPortalRouter from './routes/staffPortal.js'
 import myRouter from './routes/my.js'
+import myShiftRouter from './routes/myShift.js'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -130,6 +131,7 @@ app.use('/api/staff-advances', staffAdvancesRouter)
 app.use('/api/staff-purchases', staffPurchasesRouter)
 app.use('/api/staff-portal', staffPortalRouter)
 app.use('/api/my', myRouter)
+app.use('/api/my-shift', myShiftRouter)
 app.use('/api/payroll', payrollRouter)
 app.use('/api/kots', kotsRouter)
 app.use('/api/voids', voidsRouter)
@@ -172,6 +174,26 @@ app.get('*', (req, res, next) => {
 
 app.use('/api/data-manager', dataManagerRouter)
 
+// Central API error handler — never crash the process on a route exception
+app.use((err, req, res, _next) => {
+  try {
+    console.error('[api-error]', req?.method, req?.originalUrl || req?.url, err?.stack || err?.message || err)
+  } catch {}
+  if (res.headersSent) return
+  const status = Number(err?.status || err?.statusCode) || 500
+  const message = status >= 500
+    ? 'Internal server error'
+    : (err?.message || 'Request failed')
+  res.status(status).json({ error: message })
+})
+
+process.on('unhandledRejection', (reason) => {
+  try { console.error('[unhandledRejection]', reason) } catch {}
+})
+process.on('uncaughtException', (err) => {
+  try { console.error('[uncaughtException]', err) } catch {}
+})
+
 async function start() {
   try {
     await mongoose.connect(MONGO_URI, { autoIndex: true, dbName: DB_NAME })
@@ -192,7 +214,11 @@ async function start() {
     app.listen(PORT, '0.0.0.0', () => console.log(`Server listening on http://localhost:${PORT}`))
 
     // Start biometric attendance poller
-    await startBiometricPoller()
+    try {
+      await startBiometricPoller()
+    } catch (e) {
+      console.error('Biometric poller failed to start:', e?.message || e)
+    }
   } catch (err) {
     console.error('Failed to start server:', err)
     process.exit(1)

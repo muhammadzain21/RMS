@@ -10,7 +10,7 @@ import DataTable from '../../components/DataTable.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
-import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 import { warehouseApiBase } from './warehouseApi.js'
 import WarehousePaymentModal from './WarehousePaymentModal.jsx'
@@ -252,7 +252,7 @@ export default function WarehouseSupplierHistory() {
         settings: state?.settings || {},
         title: `Supplier History — ${supplier?.name || id}`,
         reportLabel: `Warehouse Supplier ${title}`,
-        reportNo: `Rpt #: WSH-${format(new Date(), 'yyyy-MM-dd')}`,
+        reportNo: `Rpt #: WSH-${exportDateStamp()}`,
         metaLeft: [
           ['Supplier', supplier?.name || id],
           ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
@@ -266,7 +266,7 @@ export default function WarehouseSupplierHistory() {
         ],
         body,
       })
-      await previewHtmlReport(html, `Supplier-History-${supplier?.name || id}-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      await previewHtmlReport(html, `Supplier-History-${supplier?.name || id}-${exportDateStamp()}.pdf`)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
@@ -293,7 +293,7 @@ export default function WarehouseSupplierHistory() {
         headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`supplier_history_${id}_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`supplier_history_${id}_${exportDateStamp()}.pdf`)
       toast.success('PDF exported')
     } catch {
       toast.error('PDF export failed')
@@ -307,7 +307,7 @@ export default function WarehouseSupplierHistory() {
         : tab === 'payments'
           ? ['Date', 'Method', 'Reference', 'Amount', 'Notes']
           : ['Date', 'Type', 'Ref', 'Debit', 'Credit', 'Method', 'Notes']
-      downloadCsvFile(`supplier_history_${id}_${format(new Date(), 'yyyy-MM-dd')}.csv`, headers, reportRows())
+      downloadCsvFile(`supplier_history_${id}_${exportDateStamp()}.csv`, headers, reportRows())
       toast.success('CSV exported')
     } catch {
       toast.error('CSV export failed')

@@ -40,7 +40,7 @@ router.post('/', async (req, res) => {
       const page = await browser.newPage()
       await page.setContent(html, { waitUntil: 'load' })
       try { await page.emulateMediaType('print') } catch {}
-      await page.addStyleTag({ content: '@page { size: 72mm auto; margin: 0 } html, body { margin: 0; padding: 0 2mm 2mm 2mm; width: 68mm }' }).catch(()=>{})
+      await page.addStyleTag({ content: '@page { size: 80mm auto; margin: 0 } html, body { margin: 0; padding: 2mm 3mm; width: 72mm; height: auto; min-height: 0; overflow: visible }' }).catch(()=>{})
       await page.pdf({ path: pdfPath, printBackground: true, preferCSSPageSize: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
     } finally {
       await browser.close().catch(()=>{})

@@ -9,7 +9,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useBranch } from '../../state/BranchContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
-import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 import BranchModal from './BranchModal.jsx'
 
@@ -105,12 +105,12 @@ export default function BranchesAdmin() {
         settings: state?.settings || {},
         title: 'Branches',
         reportLabel: 'Branch List',
-        reportNo: `Rpt #: BR-${format(new Date(), 'yyyy-MM-dd')}`,
+        reportNo: `Rpt #: BR-${exportDateStamp()}`,
         metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
         metaRight: [['Records', String(filtered.length)]],
         body,
       })
-      await previewHtmlReport(html, `Branches-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      await previewHtmlReport(html, `Branches-${exportDateStamp()}.pdf`)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
@@ -132,7 +132,7 @@ export default function BranchesAdmin() {
         headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
         margin: { left: 40, right: 40 },
       })
-      doc.save(`branches_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`branches_${exportDateStamp()}.pdf`)
       toast.success('PDF exported')
     } catch {
       toast.error('PDF export failed')

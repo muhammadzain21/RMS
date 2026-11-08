@@ -622,8 +622,58 @@ export function DataProvider({ children }) {
 
   // Hydrate on login and whenever the header branch changes
   useEffect(() => {
-    rehydrate()
+    try {
+      const p = rehydrate()
+      if (p != null && typeof p.then === 'function') p.catch(() => {})
+    } catch {}
   }, [rehydrate])
+
+  // Multi-branch live refresh: keep shared state fresh without stale HTTP cache.
+  // Pauses when tab is hidden or browser is offline (safe for later offline↔online sync).
+  useEffect(() => {
+    if (!token) return
+    const safeRehydrate = () => {
+      try {
+        const p = rehydrate()
+        if (p != null && typeof p.then === 'function') p.catch(() => {})
+      } catch {}
+    }
+    const tick = () => {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+        if (typeof document !== 'undefined' && document.hidden) return
+      } catch {}
+      safeRehydrate()
+    }
+    const id = setInterval(tick, 8000)
+    const onVis = () => {
+      try {
+        if (typeof document !== 'undefined' && !document.hidden) safeRehydrate()
+      } catch {}
+    }
+    const onOnline = () => safeRehydrate()
+    const onSync = (e) => {
+      try {
+        if (e?.detail?.ok !== false) safeRehydrate()
+      } catch {}
+    }
+    const onLive = () => safeRehydrate()
+    try {
+      document.addEventListener('visibilitychange', onVis)
+      window.addEventListener('online', onOnline)
+      window.addEventListener('epicspire:sync', onSync)
+      window.addEventListener('live_refresh', onLive)
+    } catch {}
+    return () => {
+      clearInterval(id)
+      try {
+        document.removeEventListener('visibilitychange', onVis)
+        window.removeEventListener('online', onOnline)
+        window.removeEventListener('epicspire:sync', onSync)
+        window.removeEventListener('live_refresh', onLive)
+      } catch {}
+    }
+  }, [token, rehydrate])
 
   // Global Auto-backup (Electron only): runs even when Settings page is not open
   const backupTimerRef = useRef(null)
@@ -677,34 +727,32 @@ export function DataProvider({ children }) {
     return state.daybook
   }, [state.daybook, inferredOpenDate])
 
-  // Use business date when enabled.
-  // If effective daybook is open, keep using its date until a day close occurs.
-  // Else, pick the most recent non-closed date up to today that has any data; else use calendar today.
+  // Business date shown in the header + used for CSV/PDF/Print filenames.
+  // Open daybook always wins (operational day). Otherwise optional "use business day"
+  // setting advances past last close / latest open data day.
   const useBusiness = Boolean(state?.settings?.useBusinessDayForToday)
   let businessDate = realToday
-  if (useBusiness) {
-    if (effectiveDaybook?.open && (effectiveDaybook?.date || '')) {
-      businessDate = effectiveDaybook.date
+  if (effectiveDaybook?.open && (effectiveDaybook?.date || '')) {
+    businessDate = effectiveDaybook.date
+  } else if (useBusiness) {
+    // If there is a recent Day Close, advance business date to the next day (but not beyond today)
+    const closedDatesSorted = Array.from(closedSetDC).filter(Boolean).sort()
+    if (closedDatesSorted.length) {
+      const lastClosed = closedDatesSorted[closedDatesSorted.length - 1]
+      try {
+        const nextDay = format(addDays(new Date(lastClosed), 1), 'yyyy-MM-dd')
+        businessDate = nextDay <= realToday ? nextDay : realToday
+      } catch { businessDate = realToday }
     } else {
-      // If there is a recent Day Close, advance business date to the next day (but not beyond today)
-      const closedDatesSorted = Array.from(closedSetDC).filter(Boolean).sort()
-      if (closedDatesSorted.length) {
-        const lastClosed = closedDatesSorted[closedDatesSorted.length - 1]
-        try {
-          const nextDay = format(addDays(new Date(lastClosed), 1), 'yyyy-MM-dd')
-          businessDate = nextDay <= realToday ? nextDay : realToday
-        } catch { businessDate = realToday }
-      } else {
-        // Otherwise, pick the most recent non-closed date with data up to today
-        const dataDates = new Set([
-          ...((state.sales||[]).map(s=>s.date)),
-          ...((state.returns||[]).map(r=>r.date)),
-          ...((state.expenses||[]).map(e=>e.date)),
-          ...((state.supplies||[]).map(s=>s.date)),
-        ].filter(Boolean))
-        const candidates = Array.from(dataDates).filter(d => d <= realToday && !closedSetDC.has(d)).sort()
-        if (candidates.length) businessDate = candidates[candidates.length - 1]
-      }
+      // Otherwise, pick the most recent non-closed date with data up to today
+      const dataDates = new Set([
+        ...((state.sales||[]).map(s=>s.date)),
+        ...((state.returns||[]).map(r=>r.date)),
+        ...((state.expenses||[]).map(e=>e.date)),
+        ...((state.supplies||[]).map(s=>s.date)),
+      ].filter(Boolean))
+      const candidates = Array.from(dataDates).filter(d => d <= realToday && !closedSetDC.has(d)).sort()
+      if (candidates.length) businessDate = candidates[candidates.length - 1]
     }
   }
   const monthKey = format(new Date(), 'yyyy-MM')
@@ -716,6 +764,16 @@ export function DataProvider({ children }) {
   const monthlySales = Math.max(0, monthlySalesGross - monthlyReturns)
   const lowStock = state.ingredients.filter(i => i.qty <= 5)
   const ordersCount = state.sales.length
+
+  // Expose for CSV/PDF/Print filenames (exportDateStamp reads this)
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.__BUSINESS_DATE__ = businessDate || ''
+        window.BUSINESS_DATE = businessDate || ''
+      }
+    } catch {}
+  }, [businessDate])
 
   const value = useMemo(() => ({
     state: { ...state, daybook: effectiveDaybook },

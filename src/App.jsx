@@ -16,6 +16,7 @@ import AdvanceBooking from './pages/sales/AdvanceBooking.jsx'
 import DayClose from './pages/sales/DayClose.jsx'
 import DataManager from './pages/DataManager.jsx'
 import PayInOut from './pages/sales/PayInOut.jsx'
+import MyShift from './pages/sales/MyShift.jsx'
 import KotHistory from './pages/sales/KotHistory.jsx'
 import KDS from './pages/sales/KDS.jsx'
 import VoidHistory from './pages/sales/VoidHistory.jsx'
@@ -151,6 +152,7 @@ function App() {
         <Route path="sales/day-close" element={<ProtectedRoute roles={["Admin","Manager"]}><DayClose /></ProtectedRoute>} />
         <Route path="data-manager" element={<ProtectedRoute roles={["Admin"]}><DataManager /></ProtectedRoute>} />
         <Route path="sales/pay-in-out" element={<ProtectedRoute roles={["Admin","Manager"]}><PayInOut /></ProtectedRoute>} />
+        <Route path="sales/my-shift" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><MyShift /></ProtectedRoute>} />
 
         <Route path="supply/new" element={<ProtectedRoute roles={["Admin","Manager"]}><SupplyNew /></ProtectedRoute>} />
         <Route path="supply/history" element={<ProtectedRoute roles={["Admin","Manager"]}><SupplyHistory /></ProtectedRoute>} />

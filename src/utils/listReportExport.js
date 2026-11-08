@@ -6,6 +6,29 @@ export const btnCsv = 'ui-btn ui-btn-csv'
 export const btnPrimary = 'ui-btn ui-btn-primary'
 export const btnSecondary = 'ui-btn ui-btn-secondary'
 
+/**
+ * Date stamp for export filenames / report numbers.
+ * Prefers explicit candidates (filter dates), then header Business Date, then calendar today.
+ */
+export function exportDateStamp(...candidates) {
+  for (const c of candidates) {
+    const s = String(c ?? '').trim().slice(0, 10)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  }
+  try {
+    if (typeof window !== 'undefined') {
+      const w = window.__BUSINESS_DATE__ || window.BUSINESS_DATE || ''
+      const s = String(w).trim().slice(0, 10)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+    }
+  } catch {}
+  try {
+    return new Date().toISOString().slice(0, 10)
+  } catch {
+    return '0000-00-00'
+  }
+}
+
 export function downloadCsvFile(filename, header, dataRows) {
   const lines = dataRows.map((row) =>
     row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')

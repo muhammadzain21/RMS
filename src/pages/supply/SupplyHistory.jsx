@@ -9,6 +9,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -179,7 +180,7 @@ export default function SupplyHistory() {
  headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
  margin: { left: 40, right: 40 },
  })
- doc.save(`supply_history_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`supply_history_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error(err)
@@ -198,7 +199,7 @@ export default function SupplyHistory() {
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = `supply_history_${format(new Date(), 'yyyy-MM-dd')}.csv`
+ a.download = `supply_history_${exportDateStamp()}.csv`
  a.click()
  URL.revokeObjectURL(url)
  toast.success('CSV exported successfully')

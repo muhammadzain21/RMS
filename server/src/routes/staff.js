@@ -119,6 +119,16 @@ router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
       }
     }
 
+    const existing = await Staff.findById(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Staff not found' })
+    try {
+      const { assertDocumentBranch } = await import('../utils/branchScope.js')
+      assertDocumentBranch(req, existing)
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message })
+      throw e
+    }
+    if (existing.branchId) staffBody.branchId = String(existing.branchId)
     const s = await Staff.findByIdAndUpdate(req.params.id, staffBody, { new: true })
     if (!s) return res.status(404).json({ error: 'Not found' })
 

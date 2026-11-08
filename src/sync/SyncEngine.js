@@ -19,13 +19,30 @@ function localApi() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 }
 
+function normalizeCloudUrl(raw) {
+  let u = String(raw || '').trim().replace(/\/+$/, '')
+  if (!u) return ''
+  // Preflight fails if http:// redirects to https:// — always prefer https for public hosts
+  try {
+    const parsed = new URL(u.includes('://') ? u : `https://${u}`)
+    const host = parsed.hostname || ''
+    const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(host)
+    if (!isLocal && parsed.protocol === 'http:') parsed.protocol = 'https:'
+    return parsed.origin
+  } catch {
+    return u
+  }
+}
+
 function cloudApi() {
   try {
-    return String(localStorage.getItem('cloud_sync_url') || '').replace(/\/+$/, '')
+    return normalizeCloudUrl(localStorage.getItem('cloud_sync_url') || '')
   } catch {
     return ''
   }
 }
+
+export { normalizeCloudUrl }
 
 function sameHost(a, b) {
   try {
@@ -163,6 +180,9 @@ export async function syncOnce(token) {
     lastError = ''
     try {
       window.dispatchEvent(new CustomEvent('epicspire:sync', { detail: { ok: true, at: lastOkAt } }))
+      // Refresh UI from local API after cloud↔local apply (multi-branch / offline-ready)
+      window.dispatchEvent(new CustomEvent('live_refresh', { detail: { source: 'sync', at: lastOkAt } }))
+      window.dispatchEvent(new CustomEvent('data_rehydrated', { detail: { branchId, source: 'sync' } }))
     } catch {}
     return { ok: true }
   } catch (e) {
@@ -181,10 +201,12 @@ let branchListener = null
 export function startSyncEngine(getToken) {
   stopSyncEngine()
   const tick = () => {
-    const token = typeof getToken === 'function' ? getToken() : getToken
-    if (!token) return
-    if (!cloudApi()) return
-    syncOnce(token)
+    try {
+      const token = typeof getToken === 'function' ? getToken() : getToken
+      if (!token) return
+      if (!cloudApi()) return
+      Promise.resolve(syncOnce(token)).catch(() => {})
+    } catch {}
   }
   timer = setInterval(tick, INTERVAL_MS)
   // first run shortly after start

@@ -579,30 +579,62 @@ ipcMain.handle('printing:list', async () => {
   } catch { return [] }
 })
 
-// IPC: print provided HTML silently to a named device (no native deps)
-ipcMain.handle('printing:print-html', async (_event, { html, deviceName }) => {
+// IPC: print HTML in a dedicated window (never mainWindow — window.print() on the
+// POS shell breaks Electron layout / 100dvh after the dialog closes).
+// Interactive (silent:false): window must be shown briefly or Windows hides the picker.
+ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent }) => {
+  const useSilent = silent === true || (silent !== false && !!deviceName)
   const printWin = new BrowserWindow({
     show: false,
+    width: 420,
+    height: 640,
+    autoHideMenuBar: true,
+    skipTaskbar: true,
     webPreferences: { backgroundThrottling: false },
   })
   try {
     await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || '')))
+    // Let images/fonts settle before print
+    await new Promise((r) => setTimeout(r, 180))
+    if (!useSilent) {
+      try {
+        printWin.center()
+        printWin.show()
+        printWin.focus()
+      } catch {}
+    }
     const result = await new Promise((resolve) => {
-      printWin.webContents.print(
-        { silent: true, printBackground: true, margins: { marginType: 'none' }, deviceName: deviceName || undefined },
-        (success, failureReason) => resolve({ success, failureReason })
-      )
+      try {
+        printWin.webContents.print(
+          {
+            silent: useSilent,
+            printBackground: true,
+            margins: { marginType: 'none' },
+            deviceName: deviceName || undefined,
+          },
+          (success, failureReason) => resolve({ success: !!success, failureReason })
+        )
+      } catch (e) {
+        resolve({ success: false, failureReason: String(e && e.message || e) })
+      }
     })
     if (!result.success) {
-      console.error('[print] silent print failed:', result.failureReason || 'unknown', '| device:', deviceName)
+      console.error('[print] print-html failed:', result.failureReason || 'unknown', '| device:', deviceName, '| silent:', useSilent)
       return { ok: false, error: result.failureReason || 'print failed' }
     }
     return { ok: true }
   } catch (e) {
-    console.error('[print] silent print error:', e && e.message || e)
+    console.error('[print] print-html error:', e && e.message || e)
     return { ok: false, error: String(e && e.message || e) }
   } finally {
     try { printWin.destroy() } catch {}
+    // Re-apply zoom on the POS window — print dialogs can leave Chromium zoom/layout odd
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        applySavedZoom(mainWindow)
+        try { mainWindow.focus() } catch {}
+      }
+    } catch {}
   }
 })
 
@@ -611,12 +643,13 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName }) => {
 const openPdfPreviewWindow = async (fullPath, fileName) => {
   const fileUrl = pathToFileURL(fullPath).toString()
 
+  // Do NOT parent to mainWindow — modal child windows leave the POS shell
+  // looking collapsed / half-blank on Windows after the preview closes.
   const previewWin = new BrowserWindow({
     width: 1000,
     height: 800,
     title: fileName,
     autoHideMenuBar: true,
-    parent: mainWindow,
     webPreferences: {
       plugins: true,          // enables Chromium's built-in PDF viewer
       sandbox: false,         // sandboxed renderers can't host the PDF extension (Electron 20+)
@@ -624,17 +657,37 @@ const openPdfPreviewWindow = async (fullPath, fileName) => {
       nodeIntegration: false,
     },
   })
+  try {
+    previewWin.on('closed', () => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) applySavedZoom(mainWindow)
+      } catch {}
+    })
+  } catch {}
 
   const openExternal = async () => { try { await shell.openPath(fullPath) } catch {} }
 
-  // Never let a PDF navigation turn into a silent file download from this window
+  // Capture session once — never touch previewWin.webContents after destroy
+  // (CSV/PDF saves share this session and would crash with "Object has been destroyed")
+  let ses = null
+  try { ses = previewWin.webContents.session } catch { ses = null }
+
   const onWillDownload = (_e, item, wc) => {
-    if (wc === previewWin.webContents) { try { item.cancel() } catch {} }
+    try {
+      if (!previewWin || previewWin.isDestroyed()) return
+      let target = null
+      try { target = previewWin.webContents } catch { return }
+      if (wc === target) { try { item.cancel() } catch {} }
+    } catch {}
   }
-  previewWin.webContents.session.on('will-download', onWillDownload)
-  setTimeout(() => {
-    try { previewWin.webContents.session.removeListener('will-download', onWillDownload) } catch {}
-  }, 30000)
+  if (ses) {
+    try { ses.on('will-download', onWillDownload) } catch {}
+  }
+  const detachDownloadGuard = () => {
+    try { if (ses) ses.removeListener('will-download', onWillDownload) } catch {}
+  }
+  try { previewWin.on('closed', detachDownloadGuard) } catch {}
+  setTimeout(detachDownloadGuard, 30000)
 
   previewWin.webContents.once('did-fail-load', async () => {
     try { previewWin.destroy() } catch {}

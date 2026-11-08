@@ -8,6 +8,7 @@ const BranchMenuOverrideSchema = new mongoose.Schema({
   branchId: { type: String, required: true, index: true },
   menuItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem', required: true, index: true },
   price: { type: Number },
+  priceFoodpanda: { type: Number },
   discount: { type: Number },
   active: { type: Boolean },
   name: { type: String },

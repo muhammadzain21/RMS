@@ -95,8 +95,14 @@ export default function SalesNew() {
   const decQty = (idx) => updateItem(idx, { qty: Math.max(1, items[idx].qty - 1) })
   const removeItem = (idx) => setItems(prev => prev.filter((_,i)=> i!==idx))
 
-  // Totals
-  const lineTotal = useMemo(() => createLineTotal(state.settings?.modifiers || {}), [state.settings])
+  // Order type first — Foodpanda uses priceFoodpanda on menu items
+  const [orderType, setOrderType] = useState('') // start with no selection; user must choose
+
+  // Totals (rebind when order type changes so Foodpanda rates apply)
+  const lineTotal = useMemo(
+    () => createLineTotal(state.settings?.modifiers || {}, () => orderType),
+    [state.settings, orderType]
+  )
   const allCategories = state.categories || []
   const itemsDiscount = useMemo(() => items.reduce((disc, it) => {
     const m = menu.find(x=>x.id===it.itemId)
@@ -152,8 +158,7 @@ export default function SalesNew() {
     }
   }, [state.settings?.showPersonalPayment, paymentMethod])
 
-  // Order type & held
-  const [orderType, setOrderType] = useState('') // start with no selection; user must choose
+  // Held / recall UI
   const [heldCount, setHeldCount] = useState(0)
   const [showHeld, setShowHeld] = useState(false)
   const [showRecall, setShowRecall] = useState(false)
@@ -707,7 +712,7 @@ export default function SalesNew() {
       if (!ord) return
       const items = (Array.isArray(ord.items) ? ord.items : []).map(it => {
         const m = (state.menu||[]).find(x=>x.id===it.itemId)
-        const price = (typeof it.price === 'number') ? it.price : (m ? (createLineTotal(state.settings?.modifiers||{})(m, { ...it, qty: 1 })||0) : Number(it.custom?.price||0))
+        const price = (typeof it.price === 'number') ? it.price : (m ? (createLineTotal(state.settings?.modifiers||{}, () => ord.orderType)(m, { ...it, qty: 1 })||0) : Number(it.custom?.price||0))
         return { itemId: it.itemId, name: it.name || it.custom?.name || m?.name || '', price: Number(price||0), qty: Number(it.qty||0), mods: it.mods||{}, custom: it.custom||null }
       })
       // Look up floor information from tables array for Dine-in orders
@@ -770,7 +775,7 @@ export default function SalesNew() {
       if (!h) return
       const items = (Array.isArray(h.items) ? h.items : []).map(it => {
         const m = (state.menu||[]).find(x=>x.id===it.itemId)
-        const price = (typeof it.price === 'number') ? it.price : (m ? (createLineTotal(state.settings?.modifiers||{})(m, { ...it, qty: 1 })||0) : Number(it.custom?.price||0))
+        const price = (typeof it.price === 'number') ? it.price : (m ? (createLineTotal(state.settings?.modifiers||{}, () => h.orderType)(m, { ...it, qty: 1 })||0) : Number(it.custom?.price||0))
         return { itemId: it.itemId, name: it.name || it.custom?.name || m?.name || '', price: Number(price||0), qty: Number(it.qty||0), mods: it.mods||{}, custom: it.custom||null }
       })
       const subtotal = items.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
@@ -1493,7 +1498,11 @@ export default function SalesNew() {
         />
         <BillSummary
           orderType={orderType}
-          setOrderType={(ot)=>{ setOrderType(ot); if (ot==='Delivery' && items.length>0) setShowDelivery(true) }}
+          setOrderType={(ot)=>{
+            setOrderType(ot)
+            if (ot==='Delivery' && items.length>0) setShowDelivery(true)
+            if (ot==='Foodpanda' && items.length>0) toast('Foodpanda prices applied to cart')
+          }}
           holdSale={holdSaleToDb}
           setShowHeld={onOpenHeld}
           heldCount={heldCount || (helds?.length||0)}

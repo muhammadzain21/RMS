@@ -10,7 +10,7 @@ import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import PageHero from '../../components/ui/PageHero.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, exportDateStamp } from '../../utils/listReportExport.js'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 
@@ -100,7 +100,7 @@ export default function ExpenseNew() {
  const [q, setQ] = useState('')
 
  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(100)
+ const [limit, setLimit] = useState(100)
  const [total, setTotal] = useState(0)
  const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState({ total: 0, count: 0, byCategory: [], byAccountHead: [], byPaymentMethod: [], byPaidBy: [] })
@@ -283,7 +283,7 @@ export default function ExpenseNew() {
         metaRight: [['Head', type || 'All'], ['Account', accountFilter || 'All']],
  body,
  })
- await previewHtmlReport(html, `Expenses-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Expenses-${exportDateStamp()}.pdf`)
     } catch {
  toast.error('Print preview failed')
  }
@@ -309,7 +309,7 @@ export default function ExpenseNew() {
         styles: { fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
  })
- doc.save(`expenses_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`expenses_${exportDateStamp()}.pdf`)
     } catch {
       toast.error('PDF export failed')
     }

@@ -143,6 +143,9 @@ router.post('/', async (req, res) => {
       tipAmount,
       bankRef: paymentMethod === 'bank' ? '' : (payload.bankRef || ''),
       idempotencyKey: key || null,
+      // Stamp cashier for My Shift activity
+      userId: payload.userId || req.user?.id || '',
+      userName: payload.userName || req.user?.username || req.user?.name || '',
     })
     const saved = await Sale.create(doc)
 

@@ -7,6 +7,7 @@ import { UIProvider } from './state/UIContext.jsx'
 import { AuthProvider } from './state/AuthContext.jsx'
 import { DataProvider } from './state/DataContext.jsx'
 import { BranchProvider } from './state/BranchContext.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { setupNativeChrome } from './native/statusBar.js'
 
 const isElectron = /Electron/i.test(navigator.userAgent)
@@ -15,6 +16,25 @@ const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Cap
 const Router = (isElectron || isCapacitor) ? HashRouter : BrowserRouter
 
 setupNativeChrome()
+
+// Never let an unhandled async/render side-effect blank Electron or the browser tab
+;(function installGlobalGuards() {
+  try {
+    window.addEventListener('unhandledrejection', (ev) => {
+      try {
+        console.error('[unhandledrejection]', ev?.reason)
+        ev?.preventDefault?.()
+      } catch {}
+    })
+    window.addEventListener('error', (ev) => {
+      try {
+        // Resource load failures (script/img) still fire "error"; don't spam if no message
+        if (ev?.error) console.error('[window.error]', ev.error)
+        else if (ev?.message) console.error('[window.error]', ev.message)
+      } catch {}
+    })
+  } catch {}
+})()
 
 // Runtime API base discovery and fetch rewrite
 ;(function(){
@@ -127,16 +147,18 @@ setupNativeChrome()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Router>
-      <UIProvider>
-        <AuthProvider>
-          <BranchProvider>
-            <DataProvider>
-              <App />
-            </DataProvider>
-          </BranchProvider>
-        </AuthProvider>
-      </UIProvider>
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        <UIProvider>
+          <AuthProvider>
+            <BranchProvider>
+              <DataProvider>
+                <App />
+              </DataProvider>
+            </BranchProvider>
+          </AuthProvider>
+        </UIProvider>
+      </Router>
+    </ErrorBoundary>
   </React.StrictMode>
 )

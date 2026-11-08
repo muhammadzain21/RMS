@@ -13,13 +13,24 @@ function calcTotals(items = [], discount = 0) {
   return { subtotal, discount: disc, total: Math.max(0, subtotal - disc) }
 }
 
-/** List — all accessible branches by default; optional ?branchId= to narrow */
+/** Call Center is cross-branch: ignore header X-Branch-Id; show every branch by default. */
+function callCenterListScope(req) {
+  const specific = String(req.query.branchId || '').trim()
+  if (specific && specific.toLowerCase() !== 'all') {
+    assertBranchAccess(req, specific)
+    return { branchId: String(specific) }
+  }
+  // Default: both / all branches (not limited to the header branch)
+  if (isHqUser(req.user) || ['Admin', 'SuperAdmin', 'Manager', 'Staff', 'CallCenter'].includes(String(req.user?.role || ''))) {
+    return {}
+  }
+  return branchFilter(req, { allAccessible: true })
+}
+
+/** List — all branches by default; optional ?branchId= to narrow */
 router.get('/', authRequired, async (req, res, next) => {
   try {
-    const specific = String(req.query.branchId || '').trim()
-    const filter = specific
-      ? (() => { assertBranchAccess(req, specific); return { branchId: specific } })()
-      : branchFilter(req, { allAccessible: true })
+    const filter = callCenterListScope(req)
     if (req.query.status) filter.status = String(req.query.status)
     // Open / active queue: keep tracking through kitchen until completed
     else if (req.query.pendingOnly === '1') {
@@ -34,17 +45,14 @@ router.get('/', authRequired, async (req, res, next) => {
 })
 
 /**
- * Inbox — all accessible branches by default.
+ * Inbox — all branches by default (not tied to header branch).
  * ?tab=remaining (default) → pending / accepted
  * ?tab=complete → kot_created and beyond (incl. cancelled)
  * optional ?branchId= to narrow
  */
 router.get('/inbox', authRequired, async (req, res, next) => {
   try {
-    const specific = String(req.query.branchId || '').trim()
-    const scope = specific && specific.toLowerCase() !== 'all'
-      ? (() => { assertBranchAccess(req, specific); return { branchId: String(specific) } })()
-      : branchFilter(req, { allAccessible: true })
+    const scope = callCenterListScope(req)
     const tab = String(req.query.tab || 'remaining').toLowerCase()
     // Remaining = waiting for cashier / still open at branch
     // Complete = kitchen progress + finished / cancelled
@@ -62,13 +70,19 @@ router.get('/inbox', authRequired, async (req, res, next) => {
   }
 })
 
-/** Call center creates order for a branch — does NOT create KOT */
-router.post('/', authRequired, requireRole('Admin', 'Manager', 'CallCenter'), async (req, res, next) => {
+/** Call center creates order for any branch (including the one in the header) — does NOT create KOT */
+router.post('/', authRequired, requireRole('Admin', 'Manager', 'Staff', 'CallCenter'), async (req, res, next) => {
   try {
     const body = req.body || {}
     const branchId = String(body.branchId || '').trim()
     if (!branchId) return res.status(400).json({ error: 'branchId is required' })
-    assertBranchAccess(req, branchId)
+    // Allow ordering for current header branch and other branches alike
+    try {
+      assertBranchAccess(req, branchId)
+    } catch (e) {
+      // Call-center operators may target any active branch even if header is another one
+      if (!(isHqUser(req.user) || ['Manager', 'Staff', 'CallCenter'].includes(String(req.user?.role || '')))) throw e
+    }
 
     const branch = await Branch.findById(branchId).lean()
     if (!branch || branch.active === false) return res.status(400).json({ error: 'Invalid branch' })
@@ -158,7 +172,12 @@ router.post('/:id/accept', authRequired, async (req, res, next) => {
   try {
     const doc = await CallCenterOrder.findById(req.params.id)
     if (!doc) return res.status(404).json({ error: 'Order not found' })
-    assertBranchAccess(req, doc.branchId)
+    // Allow accept for the order's branch (including when it matches the header branch)
+    try {
+      assertBranchAccess(req, doc.branchId)
+    } catch (e) {
+      if (!(isHqUser(req.user) || ['Manager', 'Staff', 'CallCenter'].includes(String(req.user?.role || '')))) throw e
+    }
 
     if (doc.status === 'cancelled') return res.status(400).json({ error: 'Order cancelled' })
     if (doc.status === 'kot_created') {

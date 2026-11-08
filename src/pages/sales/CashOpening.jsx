@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
@@ -9,6 +10,7 @@ import Pagination from '../../components/Pagination.jsx'
 import { toast } from 'react-hot-toast'
 import DeleteKeyModal from '../../components/DeleteKeyModal.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function CashOpening() {
  const { state, dispatch, businessDate } = useData()
@@ -100,7 +102,7 @@ export default function CashOpening() {
  return () => { cancelled = true }
  }, [API, token, from, to, page, limit, search])
 
- const refreshOpenings = async () => {
+ const refreshOpenings = useCallback(async () => {
  try {
  const params = new URLSearchParams()
  if (from) params.set('from', from)
@@ -123,7 +125,9 @@ export default function CashOpening() {
  dispatch({ type: 'HYDRATE', payload: { cashOpenings: (listAll || []).map(mapId) } })
  }
  } catch {}
- }
+ }, [API, token, from, to, page, limit, search, dispatch])
+
+ useLiveRefresh(refreshOpenings, { intervalMs: 8000 })
 
  const onOpen = async (e) => {
  e.preventDefault()
@@ -255,7 +259,7 @@ export default function CashOpening() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Cash-Opening-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Cash-Opening-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }

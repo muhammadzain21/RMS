@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
@@ -10,6 +11,7 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function PayInOut() {
  const { state, dispatch, businessDate } = useData()
@@ -70,7 +72,10 @@ export default function PayInOut() {
  const currentPage = resetPage ? 1 : page
  params.set('page', currentPage)
  params.set('limit', limit)
- const res = await fetch(`${API}/api/pay-in-outs?${params.toString()}`, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+ const res = await fetch(`${API}/api/pay-in-outs?${params.toString()}`, {
+  headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  cache: 'no-store',
+ })
  if (!res.ok) return
  const data = await res.json()
  const mapId = (x) => ({ ...x, id: x.id || x._id })
@@ -85,6 +90,7 @@ export default function PayInOut() {
  useEffect(() => {
  refreshPayIO()
  }, [refreshPayIO])
+ useLiveRefresh(() => refreshPayIO(), { intervalMs: 8000 })
 
  // Reset page when filters change (but not page itself)
  useEffect(() => {
@@ -168,7 +174,7 @@ export default function PayInOut() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Pay-In-Out-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Pay-In-Out-${exportDateStamp()}.pdf`)
  } catch {
  toast.error('Print preview failed')
  }

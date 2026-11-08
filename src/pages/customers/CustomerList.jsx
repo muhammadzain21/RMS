@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { btnPrint, btnPdf, btnCsv, downloadCsvFile } from '../../utils/listReportExport.js'
+import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function CustomerList() {
  const { state, dispatch } = useData()
@@ -278,12 +278,12 @@ export default function CustomerList() {
  settings: state?.settings || {},
  title: 'Customers',
  reportLabel: 'Customer List',
- reportNo: `Rpt #: CUS-${format(new Date(), 'yyyy-MM-dd')}`,
+ reportNo: `Rpt #: CUS-${exportDateStamp()}`,
  metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(list.length)]],
  body,
  })
- await previewHtmlReport(html, `Customers-${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ await previewHtmlReport(html, `Customers-${exportDateStamp()}.pdf`)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -307,7 +307,7 @@ export default function CustomerList() {
  headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
  margin: { left: 40, right: 40 },
  })
- doc.save(`customers_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+ doc.save(`customers_${exportDateStamp()}.pdf`)
  toast.success('PDF exported successfully')
  } catch (e) {
  console.error(e)
