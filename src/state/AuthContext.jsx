@@ -141,6 +141,20 @@ export function AuthProvider({ children }) {
         setUser(data.user)
         sessionStorage.setItem('auth_token', data.token)
         sessionStorage.setItem('auth_user', JSON.stringify(data.user))
+        // Admin/HQ: reset header workspace to All branches on login
+        try {
+          const u = data.user
+          const hq = u?.role === 'Admin' || u?.role === 'SuperAdmin' || !!u?.isHq
+          if (hq) {
+            localStorage.setItem('active_branch_id', '')
+            const uk = String(u?.id || u?._id || u?.username || '')
+            if (uk) localStorage.setItem(`active_branch_id_u_${uk}`, '')
+            if (typeof window !== 'undefined') {
+              window.ACTIVE_BRANCH_ID = ''
+              window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: '' }))
+            }
+          }
+        } catch {}
         return { ok: true, user: data.user }
       }
       return { ok: false, error: data?.error || 'Invalid credentials' }

@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'react-hot-toast'
 import { useAuth } from './AuthContext.jsx'
+import { isAllBranches } from '../utils/branchWorkspace.js'
 
 const BranchContext = createContext(null)
 
@@ -15,7 +17,7 @@ function isHq(user) {
   return user?.role === 'Admin' || user?.role === 'SuperAdmin' || !!user?.isHq
 }
 
-/** Default header branch: homeBranchId if valid, else first branch by name. */
+/** Default branch for non-HQ: homeBranchId if valid, else first branch by name. */
 function pickDefaultBranchId(branches, user) {
   const list = Array.isArray(branches) ? branches : []
   const home = user?.homeBranchId ? String(user.homeBranchId) : ''
@@ -79,18 +81,21 @@ export function BranchProvider({ children }) {
           return
         }
 
-        // Admin / SuperAdmin:
-        // - New login or user switch → home branch (else first by name)
-        // - Same session refresh → keep current if still valid, else preferred
+        // Admin / SuperAdmin: default workspace = All branches (empty).
+        // On user switch → reset to All. Keep All or a still-valid selection otherwise.
         let storedForUser = ''
         try { storedForUser = localStorage.getItem(`active_branch_id_u_${uk}`) || '' } catch {}
-        const stillValid = next.some(b => String(b._id) === String(activeBranchId))
+        const stillValid = !activeBranchId || next.some(b => String(b._id) === String(activeBranchId))
         const storedValid = storedForUser && next.some(b => String(b._id) === String(storedForUser))
 
-        if (userChanged || !activeBranchId || !stillValid) {
-          const nextId = (storedValid && !userChanged ? storedForUser : null) || preferred
-          if (nextId) setActiveBranchId(nextId)
+        if (userChanged) {
+          setActiveBranchId('')
+          return
         }
+        if (activeBranchId && !stillValid) {
+          setActiveBranchId(storedValid ? storedForUser : '')
+        }
+        // Empty All is intentional for Admin — do not auto-pick a branch.
       } catch {
         if (!cancelled) setBranches([])
       } finally {
@@ -117,6 +122,12 @@ export function BranchProvider({ children }) {
     setActiveBranchId,
     loading,
     isHq: isHq(user),
+    isAllBranches: isAllBranches(activeBranchId),
+    requireBranch: (message) => {
+      if (!isAllBranches(activeBranchId)) return true
+      toast.error(message || 'Select a branch in the header to continue')
+      return false
+    },
     refresh: async () => {
       if (!token) return
       const res = await fetch(`${getApi()}/api/branches`, {

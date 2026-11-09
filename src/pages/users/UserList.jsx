@@ -118,6 +118,7 @@ export default function UserList() {
   const { users, addUser, removeUser, updateUser, token, user: currentUser, refreshUsers } = useAuth()
   const { state } = useData()
   const { branches, activeBranchId } = useBranch()
+  const headerLocksBranch = !!(activeBranchId && String(activeBranchId).trim())
   const getAPI = () => ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
   const managerBranchId = String(
@@ -161,7 +162,8 @@ export default function UserList() {
   const [deleteRoleOpen, setDeleteRoleOpen] = useState(false)
   const [deleteRole, setDeleteRole] = useState(null)
   const [editing, setEditing] = useState(null)
-  const [branchFilter, setBranchFilter] = useState('active') // active | all
+  // Admin default All. Values: 'all' | concrete branchId. Header wins when set.
+  const [branchFilter, setBranchFilter] = useState('all')
 
   const branchName = (id) => {
     if (!id) return '—'
@@ -169,20 +171,22 @@ export default function UserList() {
     return b?.name || id
   }
 
-  // Always reload users for the selected/active branch (managers are branch-scoped)
+  // Header branch preferred over page filter. Admin default: both All.
   useEffect(() => {
     if (!token) return
-    const branchId = isAdminUser
-      ? (branchFilter === 'active' ? (activeBranchId || '') : '')
+    const scoped = isAdminUser
+      ? (headerLocksBranch
+        ? String(activeBranchId)
+        : (branchFilter && branchFilter !== 'all' ? String(branchFilter) : ''))
       : (managerBranchId || '')
-    refreshUsers?.(branchId || undefined)
+    refreshUsers?.(scoped || undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, activeBranchId, managerBranchId, branchFilter, isAdminUser])
+  }, [token, activeBranchId, managerBranchId, branchFilter, isAdminUser, headerLocksBranch])
 
   useEffect(() => {
     if (!isAdminUser && managerBranchId) {
       setNewBranchId(managerBranchId)
-      setBranchFilter('active')
+      setBranchFilter(managerBranchId || 'all')
     }
   }, [isAdminUser, managerBranchId])
 
@@ -319,7 +323,11 @@ export default function UserList() {
         setNewPageAccess([])
         setNewAccessMode('role')
         setAddOpen(false)
-        await refreshUsers?.(isAdminUser ? (branchFilter === 'active' ? activeBranchId : '') : managerBranchId)
+        await refreshUsers?.(isAdminUser
+          ? (headerLocksBranch
+            ? activeBranchId
+            : (branchFilter && branchFilter !== 'all' ? branchFilter : ''))
+          : managerBranchId)
       } else {
         setAddUserError(res?.error || 'Failed to add user')
       }
@@ -410,15 +418,17 @@ export default function UserList() {
 
   const userList = useMemo(() => {
     const list = users || []
-    // Non-admins: API already returns only their branch users
     if (!isAdminUser) return list
-    if (branchFilter === 'all' || !activeBranchId) return list
+    const effectiveId = headerLocksBranch
+      ? String(activeBranchId)
+      : (branchFilter && branchFilter !== 'all' ? String(branchFilter) : '')
+    if (!effectiveId) return list
     return list.filter(u => {
       if (u.role === 'Admin' || u.role === 'SuperAdmin' || u.isHq) return true
-      if (String(u.homeBranchId || '') === String(activeBranchId)) return true
-      return Array.isArray(u.branchIds) && u.branchIds.map(String).includes(String(activeBranchId))
+      if (String(u.homeBranchId || '') === effectiveId) return true
+      return Array.isArray(u.branchIds) && u.branchIds.map(String).includes(effectiveId)
     })
-  }, [users, branchFilter, activeBranchId, isAdminUser])
+  }, [users, branchFilter, activeBranchId, isAdminUser, headerLocksBranch])
 
   const pageAccessLabel = (u) => {
     if (Array.isArray(u.pageAccess) && u.pageAccess.length) return `${u.pageAccess.length} custom pages`
@@ -527,15 +537,25 @@ export default function UserList() {
           <div className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">Users</div>
           <div className="flex flex-wrap items-center gap-3">
             {isAdminUser ? (
-              <select
-                value={branchFilter}
-                onChange={e => setBranchFilter(e.target.value)}
-                className="input py-1.5 text-sm"
-                title="Filter users by branch"
-              >
-                <option value="active">Current branch</option>
-                <option value="all">All branches</option>
-              </select>
+              <div className="flex flex-col gap-0.5">
+                <select
+                  value={headerLocksBranch ? String(activeBranchId) : branchFilter}
+                  onChange={e => setBranchFilter(e.target.value)}
+                  disabled={headerLocksBranch}
+                  className="input py-1.5 text-sm disabled:opacity-60"
+                  title={headerLocksBranch
+                    ? 'Using header branch (set header to All branches to use this filter)'
+                    : 'Page filter — used when header is All branches'}
+                >
+                  <option value="all">All branches</option>
+                  {branches.map(b => (
+                    <option key={b._id} value={String(b._id)}>{b.name || b.code}</option>
+                  ))}
+                </select>
+                {headerLocksBranch ? (
+                  <span className="text-[10px] text-[var(--color-text-muted)]">Header branch preferred</span>
+                ) : null}
+              </div>
             ) : (
               <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs font-semibold text-[var(--color-text-body)]">
                 {branchName(managerBranchId) || 'Your branch'}

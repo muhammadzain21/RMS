@@ -15,6 +15,7 @@ export const defaultSidebarItems = [
   { path: '/sales/deleted', label: 'Deleted Sales', visible: false, order: 5, section: 'Sales' },
   { path: '/sales/return-history', label: 'Return history', visible: false, order: 6, section: 'Sales' },
   { path: '/sales/kot-history', label: 'KOT History', visible: false, order: 7, section: 'Sales' },
+  { path: '/sales/kds', label: 'KDS', visible: false, order: 7.5, section: 'Sales' },
   { path: '/sales/void-history', label: 'Void History', visible: false, order: 8, section: 'Sales' },
   { path: '/sales/cash-opening', label: 'Cash Opening', visible: false, order: 9, section: 'Sales' },
   { path: '/sales/cash-handover', label: 'Cash Handover', visible: false, order: 10, section: 'Sales' },

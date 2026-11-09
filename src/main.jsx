@@ -100,7 +100,8 @@ setupNativeChrome()
         // Auto-attach active branch for multi-branch writes/reads
         try {
           const branchId = g.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || ''
-          const skipBranch = /\/api\/(auth|health|client-config|warehouse|call-center-orders|customers)(\/|$|\?)/i.test(String(url || ''))
+          // Shared catalogs that ignore branch scope (menu still gets branch for overrides when header is set)
+          const skipBranch = /\/api\/(auth|health|client-config|warehouse|call-center-orders|customers|categories)(\/|$|\?)/i.test(String(url || ''))
           if (branchId && !skipBranch && typeof url === 'string' && url.includes('/api/')) {
             const headers = new Headers(nextInit.headers || (input && input.headers) || {})
             if (!headers.has('X-Branch-Id')) headers.set('X-Branch-Id', branchId)

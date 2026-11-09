@@ -16,12 +16,14 @@ import VoidPreview from './components/VoidPreview.jsx'
 import VoidReasonModal from './components/VoidReasonModal.jsx'
 import SelectRiderModal from './components/SelectRiderModal.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
 import { useNavigate } from 'react-router-dom'
 import { printSaleReceiptUtil, openKotPrintUtil } from './printUtils.js'
 
 export default function SalesNew() {
   const { state, dispatch, businessDate } = useData()
   const { token, user } = useAuth()
+  const { requireBranch } = useBranch()
   const { confirm, ConfirmDialog } = useConfirm()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const authHeaders = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' }
@@ -292,6 +294,7 @@ export default function SalesNew() {
   }
   const submit = (e) => {
     e.preventDefault()
+    if (!requireBranch('Select a branch in the header before selling')) return
     if (!items.length) return
     // Build a minimal order object similar to recall for unified payment flow
     const buildOrd = () => {
@@ -1108,6 +1111,7 @@ export default function SalesNew() {
   // 1) kot: create recall entry, or if recalling, append only new items and print delta
   // 2) changeTable: update table/waiter on existing active recall
   const submitKotSelection = () => {
+    if (!requireBranch('Select a branch in the header before sending KOT')) return
     // Prevent accidental double submissions (e.g., double click)
     if (kotSubmittingRef.current) return
     kotSubmittingRef.current = true

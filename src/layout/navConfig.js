@@ -161,6 +161,7 @@ const UPGRADE_ENABLED_PATHS = [
   '/branches',
   '/hq/compare',
   '/sales/my-shift',
+  '/sales/kds',
 ]
 
 /**

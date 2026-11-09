@@ -108,16 +108,20 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  {sidebarHidden ? <PanelLeftOpen size={18} /> : <PanelLeftDashed size={18} />}
  </button><div className="md:hidden font-bold text-white drop-shadow truncate max-w-[42vw]">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
  {(user?.role === 'Admin' || user?.role === 'SuperAdmin') && branches.length > 0 ? (
-  <select
-    value={activeBranchId || ''}
-    onChange={(e) => setActiveBranchId(e.target.value)}
-    title="Active branch"
-    className="max-w-[9.5rem] sm:max-w-[14rem] truncate rounded-lg border-0 bg-white/25 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-base font-bold text-white outline-none shadow-sm"
-  >
-    {branches.map(b => (
-      <option key={b._id} value={b._id} className="text-slate-900">{b.name || b.code}</option>
-    ))}
-  </select>
+  <label className="flex items-center gap-1.5 max-w-[11rem] sm:max-w-[16rem]" title="Header branch wins over page filters">
+    <span className="hidden sm:inline text-[10px] sm:text-xs font-semibold text-white/80 whitespace-nowrap">Working as</span>
+    <select
+      value={activeBranchId || ''}
+      onChange={(e) => setActiveBranchId(e.target.value)}
+      title="Working as — preferred over page branch filters"
+      className="min-w-0 flex-1 truncate rounded-lg border-0 bg-white/25 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white outline-none shadow-sm"
+    >
+      <option value="" className="text-slate-900">All branches</option>
+      {branches.map(b => (
+        <option key={b._id} value={b._id} className="text-slate-900">{b.name || b.code}</option>
+      ))}
+    </select>
+  </label>
  ) : null}
  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs"><span className="text-white/80 font-medium">Business Date:</span><span className="font-bold text-white">{businessDate || new Date().toISOString().slice(0, 10)}</span><span className={`ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${state?.daybook?.open ? 'bg-emerald-400 text-emerald-900' : 'bg-slate-500 text-white'}`}>
  {state?.daybook?.open ? ' Open' : ' Closed'}
