@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useData } from '../state/DataContext.jsx'
-import { visibleItems } from '../layout/navConfig.js'
+import { expandEnabledPaths, visibleItems } from '../layout/navConfig.js'
 
 // Paths that correspond to a gated feature (sidebar pages). Sub-routes of a
 // feature (e.g. /staff/payroll/summary/123) inherit its gate. Routes that don't
@@ -22,7 +22,7 @@ export default function ProtectedRoute({ children, roles }) {
   const canSeeMyWork = Boolean(user.staffId) && user.myWorkAccess === true
 
   const currentPath = location.pathname
-  const enabledPaths = state?.settings?.enabledPaths
+  const enabledPaths = expandEnabledPaths(state?.settings?.enabledPaths)
   const isEnabled = (path) =>
     !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
 

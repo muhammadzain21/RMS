@@ -31,6 +31,8 @@ const WarehouseTransferSchema = new mongoose.Schema({
   receivedBy: { type: String, default: '' },
   // After one-click receive at branch
   appliedToInventory: { type: Boolean, default: false },
+  // Linked branch demand (optional)
+  demandId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 WarehouseTransferSchema.index({ toBranchId: 1, status: 1, createdAt: -1 })

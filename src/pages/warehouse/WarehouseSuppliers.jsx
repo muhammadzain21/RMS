@@ -217,8 +217,9 @@ export default function WarehouseSuppliers() {
                   type="button"
                   onClick={() => navigate(`/warehouse/suppliers/${r._id}/history`)}
                   className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-500 text-white hover:bg-blue-600"
+                  title="Purchases, payments, and balance for this supplier"
                 >
-                  History
+                  Supplier record
                 </button>
                 <button type="button" onClick={() => openPayment(r)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">Payment</button>
                 <button type="button" onClick={() => onDelete(r)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600">Delete</button>

@@ -73,13 +73,18 @@ export default function SidebarPermissions() {
   )
 
   const normalizePermissions = (perms) => {
-    if (!perms || !Array.isArray(perms)) return defaultPermissionItems().filter(p => visiblePaths.has(p.path))
-    return perms
+    const defaults = defaultPermissionItems().filter(p => visiblePaths.has(p.path))
+    if (!perms || !Array.isArray(perms)) return defaults
+    const known = new Set(perms.map(p => p?.path).filter(Boolean))
+    const fromRole = perms
       .filter(p => visiblePaths.has(p.path))
       .map(p => {
         const def = sidebarItems.find(d => d.path === p.path)
         return { ...def, ...p, section: p.section || def?.section || 'Other', order: p.order ?? def?.order ?? 99 }
       })
+    // Append nav pages missing from old role docs (e.g. My Day, KDS) so toggles always appear
+    const missing = defaults.filter(d => !known.has(d.path))
+    return [...fromRole, ...missing].sort((a, b) => (a.order || 0) - (b.order || 0))
   }
 
   const fetchRoles = async () => {

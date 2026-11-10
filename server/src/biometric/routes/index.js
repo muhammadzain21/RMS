@@ -31,9 +31,14 @@ r.post('/sync/once', authRequired, Sync.syncNow)
 
 r.get('/device/users', authRequired, Device.listDeviceUsers)
 
-r.post('/test-connection', authRequired, async (_req, res) => {
+r.post('/test-connection', authRequired, async (req, res) => {
   try {
-    await reloadBiometricConfig()
+    let branchId = ''
+    try {
+      const { resolveBranchId } = await import('../../utils/branchScope.js')
+      branchId = resolveBranchId(req) || ''
+    } catch { branchId = '' }
+    await reloadBiometricConfig(branchId)
     if (!env.BIOMETRIC_ENABLED) return res.json({ ok: false, message: 'Biometric is disabled in settings' })
     if (!env.BIOMETRIC_IP) return res.json({ ok: false, message: 'Device IP is not configured' })
 

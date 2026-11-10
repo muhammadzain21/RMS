@@ -46,7 +46,7 @@ export default function AdvanceBooking() {
 
  // Load bookings on mount + live multi-branch refresh
  useEffect(() => { refreshBookings() }, [refreshBookings])
- useLiveRefresh(refreshBookings, { intervalMs: 8000 })
+ useLiveRefresh(refreshBookings)
 
  const rows = useMemo(() => {
  let list = state.advanceBookings || []

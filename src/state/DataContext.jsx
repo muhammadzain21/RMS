@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useCallback } from 'react'
 import { useAuth } from './AuthContext.jsx'
 import { useBranch } from './BranchContext.jsx'
+import { isUserBusy } from '../utils/userBusy.js'
 import { addDays, format } from 'date-fns'
 
 const DataContext = createContext(null)
@@ -628,49 +629,47 @@ export function DataProvider({ children }) {
     } catch {}
   }, [rehydrate])
 
-  // Multi-branch live refresh: keep shared state fresh without stale HTTP cache.
-  // Pauses when tab is hidden or browser is offline (safe for later offline↔online sync).
+  // Event-driven shared refresh only (no quiet polling).
+  // Full HYDRATE on a timer interrupts editors; branch/sync/visibility is enough.
   useEffect(() => {
     if (!token) return
-    const safeRehydrate = () => {
+    const safeRehydrate = ({ force = false } = {}) => {
       try {
+        if (!force && isUserBusy()) return
+        if (typeof navigator !== 'undefined' && navigator.onLine === false && !force) return
         const p = rehydrate()
         if (p != null && typeof p.then === 'function') p.catch(() => {})
       } catch {}
     }
-    const tick = () => {
-      try {
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-        if (typeof document !== 'undefined' && document.hidden) return
-      } catch {}
-      safeRehydrate()
-    }
-    const id = setInterval(tick, 8000)
     const onVis = () => {
       try {
-        if (typeof document !== 'undefined' && !document.hidden) safeRehydrate()
+        if (typeof document !== 'undefined' && document.hidden) return
+        safeRehydrate()
       } catch {}
     }
     const onOnline = () => safeRehydrate()
     const onSync = (e) => {
       try {
-        if (e?.detail?.ok !== false) safeRehydrate()
+        if (e?.detail?.ok === false) return
+        safeRehydrate()
       } catch {}
     }
     const onLive = () => safeRehydrate()
+    const onBranch = () => safeRehydrate({ force: true })
     try {
       document.addEventListener('visibilitychange', onVis)
       window.addEventListener('online', onOnline)
       window.addEventListener('epicspire:sync', onSync)
       window.addEventListener('live_refresh', onLive)
+      window.addEventListener('active_branch_changed', onBranch)
     } catch {}
     return () => {
-      clearInterval(id)
       try {
         document.removeEventListener('visibilitychange', onVis)
         window.removeEventListener('online', onOnline)
         window.removeEventListener('epicspire:sync', onSync)
         window.removeEventListener('live_refresh', onLive)
+        window.removeEventListener('active_branch_changed', onBranch)
       } catch {}
     }
   }, [token, rehydrate])

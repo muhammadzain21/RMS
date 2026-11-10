@@ -172,7 +172,7 @@ export default function SupplierList() {
  }
 
  return (
- <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Suppliers
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Branch Suppliers
  </h1><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><input value={search} onChange={onSearchChange} placeholder="Search by name/company..." className="px-4 py-2.5 border-2 border-blue-200 dark:border-blue-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all" /><button onClick={onAdd} className="ui-btn ui-btn-primary">Add Supplier</button></div></div><DataTable
  columns={[
  { label: 'SR No', key: 'srNo', render: (_, idx) =><span className="text-gray-500 dark:text-gray-400">{(page - 1) * limit + idx + 1}</span> },

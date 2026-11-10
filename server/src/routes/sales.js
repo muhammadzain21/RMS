@@ -8,14 +8,14 @@ import Recall from '../models/Recall.js'
 import Kot from '../models/Kot.js'
 import Void from '../models/Void.js'
 import Audit from '../models/Audit.js'
-import Settings from '../models/Settings.js'
 import Staff from '../models/Staff.js'
 import StaffAdvance from '../models/StaffAdvance.js'
 import StaffPurchase from '../models/StaffPurchase.js'
 import PayInOut from '../models/PayInOut.js'
 import { authRequired } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
-import { mergeBranchFilter } from '../utils/branchScope.js'
+import { mergeBranchFilter, resolveBranchId } from '../utils/branchScope.js'
+import { getSettingsLean } from '../utils/settingsScope.js'
 import { takeSnapshot } from './inventorySnapshots.js'
 import CallCenterOrder from '../models/CallCenterOrder.js'
 
@@ -553,7 +553,9 @@ router.get('/deleted', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const provided = req.headers['x-delete-key'] || req.query.key || (req.body && req.body.key) || ''
-    const s = await Settings.findOne({}, {}, { sort: { updatedAt: -1, createdAt: -1 } }).lean()
+    let branchId = ''
+    try { branchId = resolveBranchId(req) || '' } catch { branchId = '' }
+    const s = await getSettingsLean(branchId)
     const expected = String(s?.salesDeleteKey || '')
     if (!expected) return res.status(403).json({ error: 'Delete key not set. Set it in Settings.' })
     if (String(provided || '') !== expected) return res.status(403).json({ error: 'Invalid delete key' })

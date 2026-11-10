@@ -11,7 +11,7 @@ import {
   CalendarCheck, UserPlus, CalendarDays, CalendarRange, Settings,
   Receipt, TrendingUp, ShieldCheck, Lock, ScrollText,
   Fingerprint, ChefHat, Database, UserCheck, Home, ShoppingBag,
-  Headphones, Inbox, Building2, PackagePlus, Package,
+  Headphones, Inbox, Building2, PackagePlus, Package, HardDrive, Landmark,
 } from 'lucide-react'
 
 export const dashboardItem = { path: '/', label: 'Dashboard', icon: LayoutDashboard, order: 1 }
@@ -34,7 +34,7 @@ const salesSection = {
  { path: '/sales/new', label: 'Sell', icon: ShoppingCart, order: 2, gated: true },
  { path: '/sales/cc-inbox', label: 'CC Inbox', icon: Inbox, order: 2.2 },
  { path: '/call-center', label: 'Call Center', icon: Headphones, order: 2.3 },
- { path: '/sales/return', label: 'Return', icon: Undo2, order: 3 },
+ { path: '/sales/return', label: 'Return', icon: Undo2, order: 3, end: true },
  { path: '/sales/history', label: 'Sale history', icon: History, order: 4 },
  { path: '/sales/deleted', label: 'Deleted Sales', icon: Trash2, order: 5 },
  { path: '/sales/return-history', label: 'Return history', icon: FileText, order: 6 },
@@ -61,9 +61,9 @@ const daySection = {
 const operationsSection = {
  label: 'Operations',
  items: [
- { path: '/inventory', label: 'Branch Inventory', icon: PackageOpen, order: 15 },
- { path: '/inventory/transfers-in', label: 'Transfers In', icon: PackagePlus, order: 15.5 },
- { path: '/supply/history', label: 'Purchase History', icon: Truck, order: 16 },
+ { path: '/inventory', label: 'Branch Inventory', icon: PackageOpen, order: 15, end: true },
+ { path: '/inventory/transfers-in', label: 'Branch Transfers', icon: PackagePlus, order: 15.5 },
+ { path: '/supply/history', label: 'Branch Purchases', icon: Truck, order: 16 },
  { path: '/demands', label: 'Demands', icon: ClipboardList, order: 17 },
  { path: '/suppliers', label: 'Branch Suppliers', icon: Factory, order: 18 },
  { path: '/tables', label: 'Tables', icon: Armchair, order: 20 },
@@ -80,10 +80,13 @@ const warehouseSection = {
  items: [
  { path: '/branches', label: 'Branches', icon: Building2, order: 14.8 },
  { path: '/hq/compare', label: 'Branch Compare', icon: BarChart3, order: 14.9 },
- { path: '/warehouse/stock', label: 'Inventory', icon: Package, order: 15.1 },
- { path: '/warehouse/suppliers', label: 'Suppliers', icon: Factory, order: 15.2 },
- { path: '/warehouse/transfers', label: 'Transfer Stock', icon: ArrowLeftRight, order: 15.5 },
- { path: '/warehouse/transfer-history', label: 'Transfer History', icon: History, order: 15.6 },
+ { path: '/warehouse/stock', label: 'Warehouse Inventory', icon: Package, order: 15.1 },
+ { path: '/warehouse/suppliers', label: 'Warehouse Suppliers', icon: Factory, order: 15.2, end: true },
+ { path: '/warehouse/purchase-history', label: 'Warehouse Purchases', icon: ShoppingCart, order: 15.3, end: true },
+ { path: '/warehouse/demands', label: 'Branch Demands', icon: ClipboardList, order: 15.4 },
+ { path: '/warehouse/transfers', label: 'Warehouse Transfers', icon: ArrowLeftRight, order: 15.5, end: true },
+ { path: '/warehouse/transfer-history', label: 'Warehouse Transfer History', icon: History, order: 15.6 },
+ { path: '/warehouse/finance', label: 'Warehouse Finance', icon: Landmark, order: 15.7 },
  ]
 }
 
@@ -115,6 +118,7 @@ const adminSection = {
  { path: '/sidebar-permissions', label: 'Permissions', icon: Lock, order: 35 },
  { path: '/audit', label: 'Audit', icon: ScrollText, order: 36 },
  { path: '/settings', label: 'Settings', icon: Settings, order: 37 },
+ { path: '/backup-security', label: 'Backup & Security', icon: HardDrive, order: 37.5 },
  { path: '/biometric-settings', label: 'Biometric', icon: Fingerprint, order: 38 },
  { path: '/data-manager', label: 'Data Manager', icon: Database, order: 39 },
  ]
@@ -142,26 +146,54 @@ export const sidebarItems = [
 
 export const visibleItems = () => sidebarItems.filter(i => !i.hidden)
 
+/**
+ * NavLink without `end` treats a path as active for any longer URL that
+ * starts with it — e.g. /inventory on /inventory/transfers-in, or
+ * /warehouse/transfers on /warehouse/transfer-history.
+ * Force exact match when another nav path shares that prefix.
+ */
+export function needsExactNavMatch(path, allPaths = visibleItems().map(i => i.path)) {
+  const p = String(path || '')
+  if (!p) return true
+  return allPaths.some(other => {
+    const o = String(other || '')
+    return o !== p && o.startsWith(p)
+  })
+}
+
 /** Sections for sidebar rendering */
-export const navSections = () =>
- allSections
+export const navSections = () => {
+ const allPaths = visibleItems().map(i => i.path)
+ return allSections
  .map(s => ({
  label: s.label,
  items: s.items
  .filter(i => !i.hidden)
- .map(i => ({ to: i.path, label: i.label, icon: i.icon || '', end: i.end, gated: i.gated }))
+ .map(i => ({
+ to: i.path,
+ label: i.label,
+ icon: i.icon || '',
+ end: i.end === true || needsExactNavMatch(i.path, allPaths),
+ gated: i.gated,
  }))
+ }))
+}
 
 /** Paths added after SuperAdmin may have last saved enabledPaths — show until explicitly disabled. */
 const UPGRADE_ENABLED_PATHS = [
   '/warehouse/stock',
   '/warehouse/suppliers',
+  '/warehouse/purchases',
+  '/warehouse/purchase-history',
+  '/warehouse/demands',
   '/warehouse/transfers',
   '/warehouse/transfer-history',
+  '/warehouse/finance',
   '/branches',
   '/hq/compare',
   '/sales/my-shift',
   '/sales/kds',
+  '/backup-security',
 ]
 
 /**

@@ -49,7 +49,7 @@ export default function ReturnHistory() {
  }, [API, token, fromDate, toDate, dispatch])
 
  useEffect(() => { refreshReturns() }, [refreshReturns])
- useLiveRefresh(refreshReturns, { intervalMs: 8000 })
+ useLiveRefresh(refreshReturns)
 
  const rows = useMemo(() => {
  let list = state.returns || []

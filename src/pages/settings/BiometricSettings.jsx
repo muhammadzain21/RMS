@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Fingerprint, Info, Network, RefreshCw, Save, PlugZap } from 'lucide-react'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
 import { toast } from 'react-hot-toast'
 import PageHero from '../../components/ui/PageHero.jsx'
 
 export default function BiometricSettings() {
   const { token } = useAuth()
+  const { activeBranch, isAllBranches, requireBranch } = useBranch()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+  const branchLabel = activeBranch?.name || activeBranch?.code || ''
 
   const [form, setForm] = useState({
     enabled: false,
@@ -44,11 +47,15 @@ export default function BiometricSettings() {
     }
   }
 
-  useEffect(() => { fetchConfig() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setLoading(true)
+    fetchConfig()
+  }, [token, activeBranch?.id, activeBranch?._id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
   const save = async () => {
+    if (!requireBranch('Select a branch in the header to edit that branch’s biometric settings')) return
     try {
       setSaving(true)
       const headers = {
@@ -60,16 +67,18 @@ export default function BiometricSettings() {
         headers,
         body: JSON.stringify(form),
       })
-      if (!res.ok) throw new Error('Failed')
-      toast.success('Biometric settings saved')
-    } catch {
-      toast.error('Failed to save biometric settings')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed')
+      toast.success(`Biometric settings saved${branchLabel ? ` (${branchLabel})` : ''}`)
+    } catch (e) {
+      toast.error(e.message || 'Failed to save biometric settings')
     } finally {
       setSaving(false)
     }
   }
 
   const testConnection = async () => {
+    if (!requireBranch('Select a branch in the header to test that branch’s biometric device')) return
     try {
       setTesting(true)
       const headers = token ? { Authorization: `Bearer ${token}` } : {}
@@ -92,13 +101,15 @@ export default function BiometricSettings() {
       <PageHero
         icon={Fingerprint}
         title="Biometric Settings"
-        subtitle="Connect the fingerprint attendance device to this POS"
+        subtitle={branchLabel
+          ? `Fingerprint device for ${branchLabel}`
+          : 'Select a branch in the header to edit that branch’s device'}
         actions={
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={testConnection}
-              disabled={testing || !form.ip}
+              disabled={testing || !form.ip || isAllBranches}
               className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white ring-1 ring-white/30 hover:bg-white/25 disabled:opacity-50"
             >
               <PlugZap className="h-3.5 w-3.5" /> {testing ? 'Testing…' : 'Test'}
@@ -106,7 +117,7 @@ export default function BiometricSettings() {
             <button
               type="button"
               onClick={save}
-              disabled={saving || loading}
+              disabled={saving || loading || isAllBranches}
               className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-blue-700 shadow-lg hover:bg-blue-50 disabled:opacity-50"
             >
               <Save className="h-3.5 w-3.5" /> {saving ? 'Saving…' : 'Save'}
@@ -114,6 +125,12 @@ export default function BiometricSettings() {
           </div>
         }
       />
+
+      {isAllBranches ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          Select a branch in the header (<b>Working as</b>) — each branch has its own biometric device IP / settings.
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 p-5 shadow-sm">
         <div className="flex items-start gap-3">

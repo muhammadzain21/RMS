@@ -11,10 +11,13 @@ import Attendance from '../models/Attendance.js'
 import CallCenterOrder from '../models/CallCenterOrder.js'
 import WarehouseTransfer from '../models/WarehouseTransfer.js'
 import Ingredient from '../models/Ingredient.js'
+import Demand from '../models/Demand.js'
 import Customer from '../models/Customer.js'
 import MenuItem from '../models/MenuItem.js'
 import Category from '../models/Category.js'
 import BranchMenuOverride from '../models/BranchMenuOverride.js'
+import BranchCategoryOverride from '../models/BranchCategoryOverride.js'
+import { mergeCallCenterOrder } from '../utils/syncMerge.js'
 
 const router = Router()
 router.use(authRequired)
@@ -33,7 +36,9 @@ const BRANCH_MODELS = {
   callCenterOrders: CallCenterOrder,
   warehouseTransfers: WarehouseTransfer,
   ingredients: Ingredient,
+  demands: Demand,
   menuOverrides: BranchMenuOverride,
+  categoryOverrides: BranchCategoryOverride,
 }
 
 const SHARED_MODELS = {
@@ -123,15 +128,24 @@ router.post('/push', async (req, res, next) => {
         const id = row._id || row.id
         const clean = { ...row }
         delete clean.__v
+        delete clean.id
         // Force branch ownership (except transfers use toBranchId)
         if (name === 'warehouseTransfers') {
           clean.toBranchId = clean.toBranchId || branchId
         } else if (name === 'callCenterOrders') {
-          clean.branchId = clean.branchId || branchId
+          // Keep original branch; never overwrite with sync device branch if already set
+          if (!clean.branchId) clean.branchId = branchId
         } else {
-          clean.branchId = branchId
+          clean.branchId = clean.branchId || branchId
         }
-        if (id) {
+
+        if (id && name === 'callCenterOrders') {
+          const existing = await Model.findById(id).lean()
+          const merged = mergeCallCenterOrder(existing, clean)
+          delete merged._id
+          delete merged.__v
+          await Model.findByIdAndUpdate(id, { $set: merged }, { upsert: true, setDefaultsOnInsert: true })
+        } else if (id) {
           await Model.findByIdAndUpdate(id, { $set: clean }, { upsert: true, setDefaultsOnInsert: true })
         } else {
           await Model.create(clean)

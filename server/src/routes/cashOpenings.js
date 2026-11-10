@@ -1,8 +1,9 @@
 import { Router } from 'express'
 import CashOpening from '../models/CashOpening.js'
-import Settings from '../models/Settings.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { resolveBranchId } from '../utils/branchScope.js'
+import { getSettingsLean } from '../utils/settingsScope.js'
 
 const router = Router()
 router.use(authRequired)
@@ -74,7 +75,9 @@ router.delete('/:id', requireRole('Admin','Manager'), async (req, res, next) => 
   try {
     // Same secret-key guard as sale deletion
     const provided = req.headers['x-delete-key'] || req.query.key || (req.body && req.body.key) || ''
-    const s = await Settings.findOne({}, {}, { sort: { updatedAt: -1, createdAt: -1 } }).lean()
+    let branchId = ''
+    try { branchId = resolveBranchId(req) || '' } catch { branchId = '' }
+    const s = await getSettingsLean(branchId)
     const expected = String(s?.salesDeleteKey || '')
     if (!expected) return res.status(403).json({ error: 'Delete key not set. Set it in Settings.' })
     if (String(provided || '') !== expected) return res.status(403).json({ error: 'Invalid delete key' })

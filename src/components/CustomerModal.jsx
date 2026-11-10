@@ -100,7 +100,7 @@ export default function CustomerModal({ open, onClose, initial }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div data-user-busy="1" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/40" onClick={() => onClose(false)} />
       <div className="relative bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-xl shadow-xl w-full max-w-md max-h-[92dvh] overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
         <div className="flex items-center justify-between mb-3">

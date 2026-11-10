@@ -42,6 +42,8 @@ export default function MenuList() {
  const [importing, setImporting] = useState(false)
  // Admin-only: when editing a shared item, apply changes to every branch (not just override)
  const [applyToAllBranches, setApplyToAllBranches] = useState(false)
+ // Add form: checked = shared catalog; unchecked = this branch only
+ const [addForAllBranches, setAddForAllBranches] = useState(true)
  const fileInputRef = useRef(null)
  const API = ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
 
@@ -149,6 +151,7 @@ export default function MenuList() {
  setEditingId(null)
  setEditingMeta(null)
  setApplyToAllBranches(false)
+ setAddForAllBranches(true)
  setMultiRows([blankRow()])
  setShowDialog(true)
  }
@@ -195,7 +198,6 @@ export default function MenuList() {
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  let ok = 0, fail = 0
  for (const row of validRows) {
- // New items are shared across all branches by default
  const payload = {
   ...row,
   price: Number(row.price||0),
@@ -203,7 +205,7 @@ export default function MenuList() {
   sortOrder: Number(row.sortOrder||0),
   imageUrl: row.imageUrl || '',
   discount: Number(row.discount||0),
-  editShared: true,
+  ...(addForAllBranches ? { editShared: true } : { branchOnly: true }),
  }
  try {
  const res = await fetch(`${API}/api/menu`, { method:'POST', headers, body: JSON.stringify(payload) })
@@ -407,7 +409,9 @@ export default function MenuList() {
      : `By default, saving updates ${activeBranch?.name || 'this branch'} only. Check “Apply to all branches” to change the shared menu everywhere.`}
   </p>
  ) : (
-  <p className="mb-4 text-xs font-medium text-sky-800 dark:text-sky-200">New items are added to the shared menu and appear in every branch.</p>
+  <p className="mb-4 text-xs font-medium text-sky-800 dark:text-sky-200">
+   Choose whether new items are shared to all branches or only {activeBranch?.name || 'this branch'}.
+  </p>
  )}
 
  {editingId ? (
@@ -460,6 +464,15 @@ export default function MenuList() {
  ))}
  </div>
  <button type="button" onClick={() => setMultiRows([...multiRows, blankRow()])} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 font-medium hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all w-full justify-center"><Plus size={18} /> Add Another Item</button>
+ <label className="inline-flex items-center gap-2 text-sm font-medium text-sky-800 dark:text-sky-200">
+  <input type="checkbox" className="w-4 h-4 text-orange-500 rounded focus:ring-orange-500" checked={addForAllBranches} onChange={e => setAddForAllBranches(e.target.checked)} />
+  Apply to all branches (shared catalog)
+ </label>
+ <p className="text-xs text-slate-500">
+  {addForAllBranches
+    ? 'New items appear in every branch.'
+    : `New items are created for ${activeBranch?.name || 'this branch'} only.`}
+ </p>
  <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="ui-btn ui-btn-primary disabled:opacity-50">Add All Items</button></div>
  </form>
  )}

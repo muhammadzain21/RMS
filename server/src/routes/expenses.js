@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import Expense from '../models/Expense.js'
-import Settings from '../models/Settings.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { blockIfClosedFromBody, blockIfClosedFromModel } from '../middleware/dayClosed.js'
 import { logAudit } from '../middleware/auditLog.js'
-import { mergeBranchFilter } from '../utils/branchScope.js'
+import { mergeBranchFilter, resolveBranchId } from '../utils/branchScope.js'
+import { getOrCreateSettings, getSettingsLean } from '../utils/settingsScope.js'
 
 const router = Router()
 router.use(authRequired)
@@ -72,10 +72,12 @@ function normalizeBody(body, req) {
   return out
 }
 
-// Expense heads list (from settings)
-router.get('/heads', async (_req, res, next) => {
+// Expense heads list (from branch settings)
+router.get('/heads', async (req, res, next) => {
   try {
-    const s = await Settings.findOne().lean()
+    let branchId = ''
+    try { branchId = resolveBranchId(req) || '' } catch { branchId = '' }
+    const s = await getSettingsLean(branchId)
     const heads = Array.isArray(s?.expenseHeads) && s.expenseHeads.length ? s.expenseHeads : DEFAULT_HEADS
     res.json({ heads })
   } catch (e) { next(e) }
@@ -83,16 +85,18 @@ router.get('/heads', async (_req, res, next) => {
 
 router.put('/heads', requireRole('Admin', 'Manager'), async (req, res, next) => {
   try {
+    let branchId = ''
+    try { branchId = resolveBranchId(req) || '' } catch { branchId = '' }
+    if (!branchId && (req.user?.role === 'Admin' || req.user?.role === 'SuperAdmin' || req.user?.isHq)) {
+      return res.status(400).json({ error: 'Select a branch in the header to edit that branch’s expense heads' })
+    }
     const incoming = Array.isArray(req.body?.heads) ? req.body.heads : []
     const heads = [...new Set(incoming.map(h => String(h || '').trim()).filter(Boolean))]
     const nextHeads = heads.length ? heads : DEFAULT_HEADS
-    let doc = await Settings.findOne()
-    if (!doc) doc = await Settings.create({ expenseHeads: nextHeads })
-    else {
-      doc.expenseHeads = nextHeads
-      doc.markModified('expenseHeads')
-      await doc.save()
-    }
+    const doc = await getOrCreateSettings(branchId)
+    doc.expenseHeads = nextHeads
+    doc.markModified('expenseHeads')
+    await doc.save()
     res.json({ heads: doc.expenseHeads || DEFAULT_HEADS })
   } catch (e) { next(e) }
 })

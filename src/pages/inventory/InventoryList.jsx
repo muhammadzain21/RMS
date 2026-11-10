@@ -2,8 +2,8 @@ import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { addDays, format } from 'date-fns'
 import { useMemo, useState, useEffect, useRef } from 'react'
-import UpdateStockDialog from '../../components/UpdateStockDialog.jsx'
 import IngredientModal from '../../components/IngredientModal.jsx'
+import BranchPurchaseModal from '../../components/BranchPurchaseModal.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
@@ -19,7 +19,7 @@ export default function InventoryList() {
  const { confirm, ConfirmDialog } = useConfirm()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const fileInputRef = useRef(null)
- const [updateOpen, setUpdateOpen] = useState(false)
+ const [purchaseOpen, setPurchaseOpen] = useState(false)
  const [ingModalOpen, setIngModalOpen] = useState(false)
  const [editingItem, setEditingItem] = useState(null)
  const [page, setPage] = useState(1)
@@ -292,8 +292,8 @@ export default function InventoryList() {
  }
 
  return (
- <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Inventory
- </h1><div className="flex flex-wrap gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button type="button" disabled={importing} onClick={() => fileInputRef.current?.click()} className="ui-btn ui-btn-secondary disabled:opacity-50" title="Upload the same CSV/Excel format as export">{importing ? 'Importing…' : 'Import CSV / Excel'}</button><input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; importInventoryFile(f) }} /><button onClick={refreshIngredients} className="ui-btn ui-btn-secondary">Refresh</button><button onClick={() => { setUpdateOpen(true) }} className="ui-btn ui-btn-secondary">Update Stock</button><button onClick={() => setIngModalOpen(true)} className="ui-btn ui-btn-primary">Add Ingredient</button></div></div><div className="grid grid-cols-2 md:grid-cols-5 gap-4"><StatCard title="Total Items" value={totalItems} variant="blue" icon="" /><StatCard title="Low Stock" value={lowStockCount} variant="amber" icon="" /><StatCard title="Expiry Soon" value={expirySoonCount} variant="orange" icon="" /><StatCard title="Out of Stock" value={outOfStockCount} variant="red" icon="" /><StatCard title="Total Value" value={`PKR ${totalInventoryValue.toLocaleString()}`} variant="emerald" icon="" /></div>
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> Branch Inventory
+ </h1><div className="flex flex-wrap gap-2"><button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button><button type="button" onClick={exportPDF} className={btnPdf}>PDF</button><button type="button" onClick={exportCSV} className={btnCsv}>CSV</button><button type="button" disabled={importing} onClick={() => fileInputRef.current?.click()} className="ui-btn ui-btn-secondary disabled:opacity-50" title="Upload the same CSV/Excel format as export">{importing ? 'Importing…' : 'Import CSV / Excel'}</button><input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; importInventoryFile(f) }} /><button onClick={refreshIngredients} className="ui-btn ui-btn-secondary">Refresh</button><button onClick={() => setPurchaseOpen(true)} className="ui-btn ui-btn-primary">Add Inventory</button></div></div><div className="grid grid-cols-2 md:grid-cols-5 gap-4"><StatCard title="Total Items" value={totalItems} variant="blue" icon="" /><StatCard title="Low Stock" value={lowStockCount} variant="amber" icon="" /><StatCard title="Expiry Soon" value={expirySoonCount} variant="orange" icon="" /><StatCard title="Out of Stock" value={outOfStockCount} variant="red" icon="" /><StatCard title="Total Value" value={`PKR ${totalInventoryValue.toLocaleString()}`} variant="emerald" icon="" /></div>
  {/* Search */}
  <div className="relative">
  <input
@@ -358,15 +358,15 @@ export default function InventoryList() {
  </tbody></table></div>
 
  {/* Pagination controls */}
- <Pagination page={page} pages={pages} total={filteredItems.length} limit={limit} onLimitChange={n=>{ setLimit(n); setJump(1) }} onPageChange={setPage} /><IngredientModal open={ingModalOpen} initial={editingItem} onClose={(ok)=>{ setIngModalOpen(false); setEditingItem(null); if (ok) refreshIngredients() }} /><UpdateStockDialog
- open={updateOpen}
+ <Pagination page={page} pages={pages} total={filteredItems.length} limit={limit} onLimitChange={n=>{ setLimit(n); setJump(1) }} onPageChange={setPage} /><IngredientModal open={ingModalOpen} initial={editingItem} onClose={(ok)=>{ setIngModalOpen(false); setEditingItem(null); if (ok) refreshIngredients() }} /><BranchPurchaseModal
+ open={purchaseOpen}
  items={state.ingredients || []}
  suppliers={state.suppliers || []}
- API={API}
- token={token}
  businessDate={businessDate}
- onClose={() => setUpdateOpen(false)}
- onUpdated={refreshIngredients}
+ onClose={(ok) => {
+  setPurchaseOpen(false)
+  if (ok) refreshIngredients()
+ }}
  />
  {state.ingredients.filter(i => Number(i.qty) <= 5 && Number(i.qty) > 0).length > 0 && (
  <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/30 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800"><div className="flex items-center gap-2 text-amber-800 dark:text-amber-200"><span className="text-xl"></span><span className="font-semibold">Low Stock Alert:</span><span className="text-amber-700 dark:text-amber-300">{state.ingredients.filter(i => Number(i.qty) <= 5 && Number(i.qty) > 0).map(i => i.name).join(', ')}</span></div></div>

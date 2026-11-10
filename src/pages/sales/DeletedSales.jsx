@@ -42,7 +42,7 @@ export default function DeletedSales() {
  }, [token, fromDate, toDate, dispatch])
 
  useEffect(() => { refreshDeleted() }, [refreshDeleted])
- useLiveRefresh(refreshDeleted, { intervalMs: 8000 })
+ useLiveRefresh(refreshDeleted)
 
  const customerText = (c) => {
  if (!c) return '-'

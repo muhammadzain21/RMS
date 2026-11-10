@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
@@ -14,11 +15,14 @@ import { parseSpreadsheetFile, exportCategoriesSpreadsheet, rowsToCategoryImport
 
 export default function Categories() {
  const { state, dispatch } = useData()
- const { token } = useAuth()
+ const { token, user: currentUser } = useAuth()
+ const { activeBranch, activeBranchId } = useBranch()
  const { confirm, ConfirmDialog } = useConfirm()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
  const [form, setForm] = useState({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0 })
  const [editingId, setEditingId] = useState(null)
+ const [editingMeta, setEditingMeta] = useState(null)
  const [loading, setLoading] = useState(false)
  const [showDialog, setShowDialog] = useState(false)
  const [multiRows, setMultiRows] = useState([])
@@ -28,6 +32,8 @@ export default function Categories() {
  const [search, setSearch] = useState('')
  const [categoryTilesPerRow, setCategoryTilesPerRow] = useState(4)
  const [importing, setImporting] = useState(false)
+ const [applyToAllBranches, setApplyToAllBranches] = useState(false)
+ const [addForAllBranches, setAddForAllBranches] = useState(true)
  const fileInputRef = useRef(null)
 
  const refreshCategories = async () => {
@@ -42,13 +48,12 @@ export default function Categories() {
  } catch {}
  }
 
- // Ensure fresh categories list on mount
+ // Refresh when branch changes (same pattern as Menu)
  useEffect(() => {
  const refresh = async () => {
  try {
  await refreshCategories()
  const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
- // Load tiles per row setting
  const sres = await fetch(`${API}/api/settings`, { headers })
  if (sres.ok) {
  const s = await sres.json()
@@ -57,7 +62,7 @@ export default function Categories() {
  } catch {}
  }
  refresh()
- }, [])
+ }, [token, activeBranchId])
  const items = state.categories || []
  const filteredItems = useMemo(() => {
  const q = search.trim().toLowerCase()
@@ -72,12 +77,19 @@ export default function Categories() {
  const blankRow = () => ({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0 })
  const reset = () => {
  setEditingId(null)
+ setEditingMeta(null)
  setForm({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0 })
  setMultiRows([])
  setShowDialog(false)
  }
  const onEdit = (row) => {
  setEditingId(row.id)
+ setEditingMeta({
+  isShared: !row.isBranchOnly,
+  isBranchOnly: !!row.isBranchOnly,
+  hasOverride: !!row.hasOverride,
+ })
+ setApplyToAllBranches(false)
  setForm({
  name: row.name || '',
  showOnPos: !!row.showOnPos,
@@ -88,8 +100,30 @@ export default function Categories() {
  })
  setShowDialog(true)
  }
+
+ const resetOverride = async (row) => {
+  const ok = await confirm({
+   title: 'Reset branch override',
+   message: `Clear ${activeBranch?.name || 'this branch'}’s overrides for "${row.name}" and restore shared values?`,
+  })
+  if (!ok) return
+  try {
+   setLoading(true)
+   const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const res = await fetch(`${API}/api/categories/${row.id}/override`, { method: 'DELETE', headers })
+   if (!res.ok) throw new Error('Failed')
+   toast.success('Branch override cleared')
+   await refreshCategories()
+  } catch {
+   toast.error('Failed to reset override')
+  } finally {
+   setLoading(false)
+  }
+ }
  const onAdd = () => {
  setEditingId(null)
+ setEditingMeta(null)
+ setAddForAllBranches(true)
  setMultiRows([blankRow()])
  setShowDialog(true)
  }
@@ -98,6 +132,7 @@ export default function Categories() {
  e.preventDefault()
  if (editingId) {
  const payload = { ...form }
+ if (editingMeta?.isShared && applyToAllBranches && isAdminUser) payload.editShared = true
  if (!payload.name?.trim()) { toast.error('Name is required'); return }
  try {
  setLoading(true)
@@ -106,7 +141,14 @@ export default function Categories() {
  try {
  const res = await fetch(`${API}/api/categories/${editingId}`, { method: 'PATCH', headers, body: JSON.stringify(payload) })
  if (!res.ok) throw new Error('Failed to update')
- toast.success('Category updated')
+ const updated = await res.json().catch(() => null)
+ if (updated) dispatch({ type: 'UPDATE_CATEGORY', payload: { id: editingId, data: { ...updated, id: updated.id || updated._id } } })
+ toast.success(
+  payload.editShared
+   ? 'Shared category updated (all branches)'
+   : (updated?.hasOverride ? `Saved for ${activeBranch?.name || 'this branch'} only` : 'Category updated')
+ )
+ await refreshCategories()
  } catch {
  toast.error('Updated locally. Backend update failed.')
  }
@@ -124,12 +166,15 @@ export default function Categories() {
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  let ok = 0, fail = 0
  for (const row of validRows) {
- const payload = { ...row }
+ const payload = {
+  ...row,
+  ...(addForAllBranches ? {} : { branchOnly: true }),
+ }
  try {
  const res = await fetch(`${API}/api/categories`, { method: 'POST', headers, body: JSON.stringify(payload) })
  if (res.ok) {
  const created = await res.json()
- dispatch({ type: 'ADD_CATEGORY', payload: { ...payload, id: created._id || created.id } })
+ dispatch({ type: 'ADD_CATEGORY', payload: { ...created, id: created._id || created.id } })
  ok++
  } else { fail++ }
  } catch { fail++ }
@@ -261,17 +306,24 @@ export default function Categories() {
  }
 
  const onDelete = async (id) => {
- const confirmed = await confirm({ title: 'Delete Category', message: 'Delete this category?' })
+ const row = (state.categories || []).find(c => String(c.id) === String(id))
+ const confirmed = await confirm({
+  title: row?.isBranchOnly || row?.isShared === false ? 'Delete Category' : 'Hide Category',
+  message: row?.isBranchOnly
+   ? 'Delete this branch-only category?'
+   : `Hide this shared category for ${activeBranch?.name || 'this branch'}? (Use admin hard-delete to remove from all branches.)`,
+ })
  if (!confirmed) return
- dispatch({ type: 'DELETE_CATEGORY', payload: { id } })
  try {
  setLoading(true)
  const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const res = await fetch(`${API}/api/categories/${id}`, { method: 'DELETE', headers })
- if (!res.ok) throw new Error('Failed')
- toast.success('Category deleted')
- } catch {
- toast.error('Deleted locally. Backend delete failed.')
+ const j = await res.json().catch(() => ({}))
+ if (!res.ok) throw new Error(j.error || 'Failed')
+ toast.success(j.hidden ? `Hidden for ${activeBranch?.name || 'this branch'}` : 'Category deleted')
+ await refreshCategories()
+ } catch (e) {
+ toast.error(e.message || 'Delete failed')
  } finally {
  setLoading(false)
  }
@@ -288,7 +340,7 @@ export default function Categories() {
  className="w-16 px-2 py-1.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white text-sm text-center focus:ring-2 focus:ring-purple-500"
  /></div></div>
  <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
- Shared across all branches — the same categories appear on every branch POS.
+  Categories are shared across branches. Edit while on a branch to change name/discount/availability for <span className="font-bold">{activeBranch?.name || 'that branch'}</span> only (use Reset to clear a branch override).
  </p>
 
  <div className="flex items-center gap-3">
@@ -298,6 +350,12 @@ export default function Categories() {
  {showDialog && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowDialog(false) }}><div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6"><div className="flex items-center justify-between mb-5"><h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{editingId ? 'Edit Category' : 'Add Categories'}</h3><button onClick={() => setShowDialog(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X size={20} /></button></div>
  {editingId ? (
+ <>
+ <p className="mb-4 text-xs font-medium text-amber-800 dark:text-amber-200">
+  {editingMeta?.isBranchOnly
+    ? `Branch-only category for ${activeBranch?.name || 'this branch'}.`
+    : `By default, saving updates ${activeBranch?.name || 'this branch'} only. Check “Apply to all branches” to change the shared catalog everywhere.`}
+ </p>
  <form onSubmit={onSubmit} className="space-y-4"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1.5">Name</label><input placeholder="Category Name" className="w-full px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 transition-all" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} /></div><div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1.5">Sort Order</label><input type="number" placeholder="0" className="w-full px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 transition-all" value={form.sortOrder} onChange={e=>setForm(v=>({...v,sortOrder:e.target.value}))} /></div><div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1.5">Discount (%)</label><input type="number" min="0" max="100" placeholder="0" className="w-full px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 transition-all" value={form.discount} onChange={e=>setForm(v=>({...v,discount:e.target.value}))} /></div><div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1.5">Display on POS</label><label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all w-full"><input type="checkbox" checked={!!form.showOnPos} onChange={e=>setForm(v=>({...v,showOnPos:e.target.checked}))} className="w-5 h-5 text-purple-500 rounded focus:ring-purple-500" /><span className="font-medium">Show on POS</span></label></div><div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1.5">Active</label><label className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all w-full"><input type="checkbox" checked={!!form.active} onChange={e=>setForm(v=>({...v,active:e.target.checked}))} className="w-5 h-5 text-purple-500 rounded focus:ring-purple-500" /><span className="font-medium">Active</span></label></div>
  <div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1.5">Image</label><div className="flex items-center gap-2"><div className="relative flex-1"><input type="file" accept="image/*" className="hidden" id="cat-image-upload" onChange={e => {
  const file = e.target.files?.[0]
@@ -312,8 +370,15 @@ export default function Categories() {
  {form.imageUrl && (
  <div className="mt-2"><img src={form.imageUrl} alt="Category preview" className="h-20 w-auto rounded-lg border-2 border-purple-200 dark:border-purple-700 shadow-sm" /></div>
  )}
+ {isAdminUser && editingMeta?.isShared && (
+  <label className="inline-flex items-center gap-2 text-sm font-medium text-sky-800 dark:text-sky-200">
+   <input type="checkbox" className="w-4 h-4 text-purple-500 rounded focus:ring-purple-500" checked={applyToAllBranches} onChange={e => setApplyToAllBranches(e.target.checked)} />
+   Apply to all branches (shared catalog)
+  </label>
+ )}
  <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="ui-btn ui-btn-primary disabled:opacity-50">Update</button></div>
  </form>
+ </>
  ) : (
  <form onSubmit={onSubmit} className="space-y-4">
  <div className="space-y-3">
@@ -337,13 +402,22 @@ export default function Categories() {
  ))}
  </div>
  <button type="button" onClick={() => setMultiRows([...multiRows, blankRow()])} className="flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 font-medium hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all w-full justify-center"><Plus size={18} /> Add Another Category</button>
+ <label className="inline-flex items-center gap-2 text-sm font-medium text-sky-800 dark:text-sky-200">
+  <input type="checkbox" className="w-4 h-4 text-purple-500 rounded focus:ring-purple-500" checked={addForAllBranches} onChange={e => setAddForAllBranches(e.target.checked)} />
+  Apply to all branches (shared catalog)
+ </label>
+ <p className="text-xs text-slate-500">
+  {addForAllBranches
+    ? 'New categories appear in every branch.'
+    : `New categories are created for ${activeBranch?.name || 'this branch'} only.`}
+ </p>
  <div className="flex gap-3 justify-end pt-2"><button type="button" onClick={() => setShowDialog(false)} className="px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Cancel</button><button type="submit" disabled={loading} className="ui-btn ui-btn-primary disabled:opacity-50">Add All Categories</button></div>
  </form>
  )}
  </div></div>
 )}
 
- <div className="border-2 border-purple-200 dark:border-purple-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Image</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Display on POS</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Active</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Discount</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="border-2 border-purple-200 dark:border-purple-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Image</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Display on POS</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Active</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Discount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Scope</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedItems.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-600 dark:text-gray-400">{Number(r.sortOrder||0)}</td><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td><td className="p-3">
  {r.imageUrl ? (
@@ -351,10 +425,10 @@ export default function Categories() {
  ) : (
  <span className="text-gray-400 text-xs">—</span>
  )}
- </td><td className="p-3">{r.showOnPos ? <span className="text-green-600 dark:text-green-400"> Yes</span> : <span className="text-gray-400"> No</span>}</td><td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td><td className="p-3">{Number(r.discount||0) > 0 ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200">{Number(r.discount)}%</span> : <span className="text-gray-400 text-xs">—</span>}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Edit</button><button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
+ </td><td className="p-3">{r.showOnPos ? <span className="text-green-600 dark:text-green-400"> Yes</span> : <span className="text-gray-400"> No</span>}</td><td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td><td className="p-3">{Number(r.discount||0) > 0 ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200">{Number(r.discount)}%</span> : <span className="text-gray-400 text-xs">—</span>}</td><td className="p-3">{r.isBranchOnly ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800">Branch only</span> : r.hasOverride ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Branch override</span> : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">Shared</span>}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2 flex-wrap"><button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Edit</button>{r.hasOverride && (<button disabled={loading} onClick={()=>resetOverride(r)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-50">Reset</button>)}<button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
  ))}
  {!filteredItems.length && (
- <tr><td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No categories found</div></td></tr>
+ <tr><td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No categories found</div></td></tr>
  )}
  </tbody></table></div>
 

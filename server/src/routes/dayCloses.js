@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import DayClose from '../models/DayClose.js'
 import CashOpening from '../models/CashOpening.js'
-import Settings from '../models/Settings.js'
 import Recall from '../models/Recall.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
+import { resolveBranchId } from '../utils/branchScope.js'
 import { takeSnapshot } from './inventorySnapshots.js'
 
 function ymdFromCreatedAt(createdAt) {
@@ -53,7 +53,10 @@ router.use(authRequired)
 // Same secret-key guard as sale deletion (settings.salesDeleteKey)
 async function requireDeleteKey(req, res) {
   const provided = req.headers['x-delete-key'] || req.query.key || (req.body && req.body.key) || ''
-  const s = await Settings.findOne({}, {}, { sort: { updatedAt: -1, createdAt: -1 } }).lean()
+  let branchId = ''
+  try { branchId = resolveBranchId(req) || '' } catch { branchId = '' }
+  const { getSettingsLean } = await import('../utils/settingsScope.js')
+  const s = await getSettingsLean(branchId)
   const expected = String(s?.salesDeleteKey || '')
   if (!expected) { res.status(403).json({ error: 'Delete key not set. Set it in Settings.' }); return false }
   if (String(provided || '') !== expected) { res.status(403).json({ error: 'Invalid delete key' }); return false }

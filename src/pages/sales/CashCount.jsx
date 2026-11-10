@@ -66,7 +66,7 @@ export default function CashCount() {
  useEffect(() => {
  refreshCashCounts()
  }, [refreshCashCounts])
- useLiveRefresh(() => refreshCashCounts(), { intervalMs: 8000 })
+ useLiveRefresh(() => refreshCashCounts())
 
  // Reset page when filters change
  useEffect(() => {

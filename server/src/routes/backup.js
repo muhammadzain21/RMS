@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import { authRequired, requireRole } from '../middleware/auth.js'
+import { assertBranchAccess, resolveBranchId } from '../utils/branchScope.js'
+import { logAudit } from '../middleware/auditLog.js'
 import Settings from '../models/Settings.js'
 import StaffSettings from '../models/StaffSettings.js'
 import MenuItem from '../models/MenuItem.js'
@@ -33,11 +35,54 @@ import Counter from '../models/Counter.js'
 import User from '../models/User.js'
 import DeletedSale from '../models/DeletedSale.js'
 import Role from '../models/Role.js'
+import Demand from '../models/Demand.js'
+import CallCenterOrder from '../models/CallCenterOrder.js'
+import BranchMenuOverride from '../models/BranchMenuOverride.js'
+import BranchCategoryOverride from '../models/BranchCategoryOverride.js'
+import SyncCursor from '../models/SyncCursor.js'
 import { BiometricEvent } from '../biometric/models/BiometricEvent.js'
 import { BiometricMapping } from '../biometric/models/BiometricMapping.js'
 import { BiometricSyncState } from '../biometric/models/BiometricSyncState.js'
+import BiometricConfig from '../models/BiometricConfig.js'
 
 const router = Router()
+
+/**
+ * Branch-scoped purge targets. Uses deleteMany({ branchId }) — never drops whole collections.
+ * Shared catalogs (empty branchId menu/categories/users/roles/warehouse) are not wiped here.
+ */
+const BRANCH_PURGE_TARGETS = [
+  { key: 'sales', label: 'Sales', Model: Sale },
+  { key: 'deletedSales', label: 'Deleted Sales', Model: DeletedSale },
+  { key: 'kots', label: 'KOTs', Model: Kot },
+  { key: 'recalls', label: 'Recalls', Model: Recall },
+  { key: 'voids', label: 'Voids', Model: Void },
+  { key: 'helds', label: 'Held Orders', Model: Held },
+  { key: 'returns', label: 'Returns', Model: Return },
+  { key: 'expenses', label: 'Expenses', Model: Expense },
+  { key: 'cashOpenings', label: 'Cash Openings', Model: CashOpening },
+  { key: 'payInOuts', label: 'Pay In/Out', Model: PayInOut },
+  { key: 'dayCloses', label: 'Day Closes', Model: DayClose },
+  { key: 'advanceBookings', label: 'Advance Bookings', Model: AdvanceBooking },
+  { key: 'ingredients', label: 'Branch Inventory', Model: Ingredient },
+  { key: 'supplies', label: 'Branch Purchases', Model: Supply },
+  { key: 'demands', label: 'Demands', Model: Demand },
+  { key: 'staff', label: 'Staff', Model: Staff },
+  { key: 'attendance', label: 'Attendance', Model: Attendance },
+  { key: 'riders', label: 'Riders', Model: Rider },
+  { key: 'callCenterOrders', label: 'Call Center Orders', Model: CallCenterOrder },
+  { key: 'menuOverrides', label: 'Menu Branch Overrides', Model: BranchMenuOverride },
+  { key: 'categoryOverrides', label: 'Category Branch Overrides', Model: BranchCategoryOverride },
+  { key: 'menuBranchOnly', label: 'Branch-only Menu Items', Model: MenuItem },
+  { key: 'categoriesBranchOnly', label: 'Branch-only Categories', Model: Category },
+  { key: 'settings', label: 'Branch Settings', Model: Settings },
+  { key: 'biometricConfig', label: 'Biometric Config', Model: BiometricConfig },
+  { key: 'syncCursors', label: 'Sync Cursors', Model: SyncCursor },
+]
+
+function branchFilter(branchId) {
+  return { branchId: String(branchId) }
+}
 
 // Utility to fetch all data
 async function dumpAll() {
@@ -207,6 +252,81 @@ router.post('/reset', authRequired, requireRole('Admin','admin'), async (req, re
     console.log('[Reset] Transactional data cleared, Menu/Categories/Users preserved')
     res.json({ ok: true })
   } catch (e) { next(e) }
+})
+
+/** List branch-purgeable collections with counts for the active branch */
+router.get('/branch-targets', authRequired, requireRole('Admin', 'admin'), async (req, res, next) => {
+  try {
+    let branchId = ''
+    try { branchId = resolveBranchId(req, { required: true }) } catch (e) {
+      return res.status(e.status || 400).json({ error: e.message || 'Select a branch in the header' })
+    }
+    assertBranchAccess(req, branchId)
+    const filter = branchFilter(branchId)
+    const targets = []
+    for (const t of BRANCH_PURGE_TARGETS) {
+      let count = 0
+      try { count = await t.Model.countDocuments(filter) } catch { count = 0 }
+      targets.push({ key: t.key, label: t.label, count })
+    }
+    res.json({ branchId, targets })
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
+})
+
+/**
+ * Delete selected (or all) branch-scoped records for ONE branch.
+ * Body: { collections?: string[], all?: boolean }
+ */
+router.post('/purge-branch', authRequired, requireRole('Admin', 'admin'), async (req, res, next) => {
+  try {
+    let branchId = ''
+    try { branchId = resolveBranchId(req, { required: true }) } catch (e) {
+      return res.status(e.status || 400).json({ error: e.message || 'Select a branch in the header' })
+    }
+    assertBranchAccess(req, branchId)
+
+    const body = req.body || {}
+    const all = !!body.all
+    const requested = Array.isArray(body.collections)
+      ? body.collections.map(k => String(k || '').trim()).filter(Boolean)
+      : []
+    const keys = all ? BRANCH_PURGE_TARGETS.map(t => t.key) : requested
+    if (!keys.length) return res.status(400).json({ error: 'Select at least one collection' })
+
+    const byKey = new Map(BRANCH_PURGE_TARGETS.map(t => [t.key, t]))
+    const filter = branchFilter(branchId)
+    const results = []
+    let totalDeleted = 0
+
+    for (const key of keys) {
+      const t = byKey.get(key)
+      if (!t) {
+        results.push({ key, error: 'Unknown collection' })
+        continue
+      }
+      try {
+        const r = await t.Model.deleteMany(filter)
+        const deleted = Number(r?.deletedCount || 0)
+        totalDeleted += deleted
+        results.push({ key, label: t.label, deleted })
+      } catch (err) {
+        results.push({ key, label: t.label, error: err.message || 'Failed' })
+      }
+    }
+
+    await logAudit(req, 'backup', `Purged branch data (${branchId})`, {
+      branchId,
+      totalDeleted,
+      collections: keys,
+    })
+    res.json({ ok: true, branchId, totalDeleted, results })
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
 })
 
 // POST /api/backup/purge - admin only; wipe ALL data including Menu, Categories, etc. Users preserved by default

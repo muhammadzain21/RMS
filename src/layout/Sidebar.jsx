@@ -49,7 +49,7 @@ export function getVisibleSections(user, enabledPaths) {
  const allowedPaths = new Set(user.permissions.filter(p => p.visible && p.path !== '/my').map(p => p.path))
  const roleName = String(user?.role || '')
  if (roleName === 'Manager') {
-  for (const p of ['/warehouse/stock', '/warehouse/suppliers', '/warehouse/transfers', '/warehouse/transfer-history']) {
+  for (const p of ['/warehouse/stock', '/warehouse/suppliers', '/warehouse/purchase-history', '/warehouse/purchases', '/warehouse/demands', '/warehouse/transfers', '/warehouse/transfer-history', '/warehouse/finance']) {
    if (!allowedPaths.has(p)) {
     const perm = user.permissions.find(x => x.path === p)
     if (!perm || perm.visible !== false) allowedPaths.add(p)
@@ -207,6 +207,7 @@ const NavItem = ({ item, onClick }) => {
  <NavLink
  key={item.to}
  to={item.to}
+ end={item.end}
  onClick={() => setMobileOpen(false)}
  className={({ isActive }) =>
  `${SB_ITEM_BASE} ${isActive ? SB_ITEM_ACTIVE : SB_ITEM_INACTIVE}`

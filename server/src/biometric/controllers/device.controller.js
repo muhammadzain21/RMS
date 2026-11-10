@@ -20,8 +20,13 @@ function getName(row) {
   return String(v ?? '').trim()
 }
 
-export async function listDeviceUsers(_req, res) {
-  await reloadBiometricConfig()
+export async function listDeviceUsers(req, res) {
+  let branchId = ''
+  try {
+    const { resolveBranchId } = await import('../../utils/branchScope.js')
+    branchId = resolveBranchId(req) || ''
+  } catch { branchId = '' }
+  await reloadBiometricConfig(branchId)
   if (!env.BIOMETRIC_ENABLED) return res.status(400).json({ message: 'Biometric is disabled' })
   if (!env.BIOMETRIC_IP) return res.status(400).json({ message: 'BIOMETRIC_IP is not set' })
 

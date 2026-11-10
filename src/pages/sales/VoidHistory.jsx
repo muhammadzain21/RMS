@@ -70,7 +70,7 @@ export default function VoidHistory() {
  const totalPages = Math.max(1, Math.ceil(total / limit)) || 1
 
  useEffect(() => { loadServer() }, [loadServer])
- useLiveRefresh(() => loadServer({ quiet: true }), { intervalMs: 8000 })
+ useLiveRefresh(() => loadServer({ quiet: true }))
 
  const staffWaiterName = (id) => (state.staff || []).find(s => s.id === id)?.name || '-'
 

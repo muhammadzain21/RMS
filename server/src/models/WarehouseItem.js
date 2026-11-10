@@ -12,6 +12,8 @@ const WarehouseItemSchema = new mongoose.Schema({
   costPrice: { type: Number, default: 0 },
   // Optional transfer / list price shown to branches
   transferPrice: { type: Number, default: 0 },
+  // Optional expiry (yyyy-MM-dd) for perishable warehouse stock
+  expiry: { type: String, default: '', index: true },
   supplierId: { type: String, default: '' },
   notes: { type: String, default: '' },
   active: { type: Boolean, default: true },

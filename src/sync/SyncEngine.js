@@ -1,19 +1,29 @@
 /**
- * Cloud ↔ local sync engine.
+ * Cloud ↔ local sync engine (background).
  *
- * Configure:
- *   localStorage.cloud_sync_url = 'https://pos.yourdomain.com'
- *   (optional) localStorage.cloud_sync_token = '<hq jwt>'
+ * Branch PC: localStorage.cloud_sync_url = VPS origin
+ * VPS / HQ: leave cloud_sync_url empty
  *
- * When API_BASE is the local branch server and cloud_sync_url points at Hostinger,
- * this engine push/pulls every few seconds for the active branch.
+ * Runs while the app is in use. Writes should call requestSync() so
+ * call-center status and inventory land without waiting for the timer.
  */
 
 const INTERVAL_MS = 5000
 const COLLECTIONS = [
   'sales', 'kots', 'recalls', 'expenses', 'staff', 'attendance',
-  'callCenterOrders', 'warehouseTransfers', 'ingredients',
+  'callCenterOrders', 'warehouseTransfers', 'ingredients', 'demands',
 ]
+
+const CC_STATUS_RANK = {
+  pending: 1,
+  accepted: 2,
+  kot_created: 3,
+  preparing: 4,
+  ready: 5,
+  completed: 6,
+  cancelled: 7,
+  expired: 7,
+}
 
 function localApi() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -22,7 +32,6 @@ function localApi() {
 function normalizeCloudUrl(raw) {
   let u = String(raw || '').trim().replace(/\/+$/, '')
   if (!u) return ''
-  // Preflight fails if http:// redirects to https:// — always prefer https for public hosts
   try {
     const parsed = new URL(u.includes('://') ? u : `https://${u}`)
     const host = parsed.hostname || ''
@@ -56,7 +65,7 @@ function authHeaders(token) {
   const h = { 'Content-Type': 'application/json' }
   if (token) h.Authorization = `Bearer ${token}`
   try {
-    const branchId = window.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || ''
+    const branchId = resolveSyncBranchId()
     if (branchId) h['X-Branch-Id'] = branchId
   } catch {}
   return h
@@ -73,6 +82,32 @@ function deviceId() {
   } catch {
     return 'default'
   }
+}
+
+/** Prefer header branch; if All, use home / last stored so sync still runs. */
+export function resolveSyncBranchId() {
+  try {
+    const active = String(window.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || '').trim()
+    if (active) return active
+    const home = String(localStorage.getItem('sync_home_branch_id') || '').trim()
+    if (home) return home
+    // last non-empty branch the user selected
+    const last = String(localStorage.getItem('sync_last_branch_id') || '').trim()
+    return last
+  } catch {
+    return ''
+  }
+}
+
+export function rememberSyncBranch(branchId) {
+  const id = String(branchId || '').trim()
+  if (!id) return
+  try {
+    localStorage.setItem('sync_last_branch_id', id)
+    if (!localStorage.getItem('sync_home_branch_id')) {
+      localStorage.setItem('sync_home_branch_id', id)
+    }
+  } catch {}
 }
 
 async function fetchJson(url, opts) {
@@ -92,52 +127,28 @@ async function fetchJson(url, opts) {
   return j
 }
 
-/** Pull from cloud into local API (apply via local sync push endpoint mirrored as upserts) */
-async function pullThenApply({ cloud, local, token, cloudToken, branchId }) {
-  const sinceKey = `sync_since_${branchId}`
-  let since = '1970-01-01T00:00:00.000Z'
-  try { since = localStorage.getItem(sinceKey) || since } catch {}
-
-  const pulled = await fetchJson(
-    `${cloud}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}`,
-    { headers: authHeaders(cloudToken || token) }
-  )
-
-  const data = pulled.data || {}
-  // Apply shared + branch docs onto local server via sync/push (local acts as writer)
-  await fetchJson(`${local}/api/sync/push`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({ branchId, deviceId: deviceId(), docs: data }),
-  })
-
-  if (pulled.serverTime) {
-    try { localStorage.setItem(sinceKey, pulled.serverTime) } catch {}
+function pickDocs(data) {
+  const docs = {}
+  for (const name of COLLECTIONS) {
+    if (Array.isArray(data?.[name]) && data[name].length) docs[name] = data[name]
   }
-  return pulled
+  return docs
 }
 
-/** Push local branch changes up to cloud */
+/** Push local changes to cloud first (call-center status must leave before pull). */
 async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
   const sinceKey = `sync_push_since_${branchId}`
   let since = '1970-01-01T00:00:00.000Z'
   try { since = localStorage.getItem(sinceKey) || since } catch {}
 
-  // Ask local for docs changed since last push (reuse pull against local)
   const localPull = await fetchJson(
     `${local}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}`,
     { headers: authHeaders(token) }
   )
 
-  const docs = {}
-  for (const name of COLLECTIONS) {
-    if (Array.isArray(localPull.data?.[name]) && localPull.data[name].length) {
-      docs[name] = localPull.data[name]
-    }
-  }
-
+  const docs = pickDocs(localPull.data)
   if (!Object.keys(docs).length) {
-    return { ok: true, empty: true }
+    return { ok: true, empty: true, serverTime: localPull.serverTime }
   }
 
   const pushed = await fetchJson(`${cloud}/api/sync/push`, {
@@ -152,10 +163,37 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
   return pushed
 }
 
+/** Pull cloud into local (apply via local sync push upsert). */
+async function pullThenApply({ cloud, local, token, cloudToken, branchId }) {
+  const sinceKey = `sync_since_${branchId}`
+  let since = '1970-01-01T00:00:00.000Z'
+  try { since = localStorage.getItem(sinceKey) || since } catch {}
+
+  const pulled = await fetchJson(
+    `${cloud}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}`,
+    { headers: authHeaders(cloudToken || token) }
+  )
+
+  const data = pulled.data || {}
+  await fetchJson(`${local}/api/sync/push`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ branchId, deviceId: deviceId(), docs: data }),
+  })
+
+  if (pulled.serverTime) {
+    try { localStorage.setItem(sinceKey, pulled.serverTime) } catch {}
+  }
+  return pulled
+}
+
 let timer = null
 let running = false
 let lastError = ''
 let lastOkAt = null
+let getTokenFn = null
+let pendingSync = false
+let debounceTimer = null
 
 export function getSyncStatus() {
   return {
@@ -165,6 +203,7 @@ export function getSyncStatus() {
     lastOkAt,
     cloud: cloudApi(),
     local: localApi(),
+    branchId: resolveSyncBranchId(),
   }
 }
 
@@ -175,22 +214,25 @@ export async function syncOnce(token) {
     lastError = ''
     return { skipped: true, reason: 'cloud_sync_url not set or same as local' }
   }
-  const branchId = (typeof window !== 'undefined' && (window.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id'))) || ''
+  const branchId = resolveSyncBranchId()
   if (!branchId) return { skipped: true, reason: 'no active branch' }
 
   let cloudToken = ''
   try { cloudToken = localStorage.getItem('cloud_sync_token') || '' } catch {}
 
-  if (running) return { skipped: true, reason: 'busy' }
+  if (running) {
+    pendingSync = true
+    return { skipped: true, reason: 'busy' }
+  }
   running = true
   try {
-    await pullThenApply({ cloud, local, token, cloudToken, branchId })
+    // Push first so kitchen/payment status cannot be overwritten by older cloud rows
     await pushLocal({ cloud, local, token, cloudToken, branchId })
+    await pullThenApply({ cloud, local, token, cloudToken, branchId })
     lastOkAt = new Date().toISOString()
     lastError = ''
     try {
       window.dispatchEvent(new CustomEvent('epicspire:sync', { detail: { ok: true, at: lastOkAt } }))
-      // Refresh UI from local API after cloud↔local apply (multi-branch / offline-ready)
       window.dispatchEvent(new CustomEvent('live_refresh', { detail: { source: 'sync', at: lastOkAt } }))
       window.dispatchEvent(new CustomEvent('data_rehydrated', { detail: { branchId, source: 'sync' } }))
     } catch {}
@@ -203,26 +245,59 @@ export async function syncOnce(token) {
     return { ok: false, error: lastError }
   } finally {
     running = false
+    if (pendingSync) {
+      pendingSync = false
+      setTimeout(() => {
+        try {
+          const t = typeof getTokenFn === 'function' ? getTokenFn() : getTokenFn
+          if (t) Promise.resolve(syncOnce(t)).catch(() => {})
+        } catch {}
+      }, 400)
+    }
   }
+}
+
+/**
+ * Fire-and-forget background sync after a local write (inventory, CC accept, sale…).
+ * Debounced so rapid saves coalesce into one tick.
+ */
+export function requestSync(reason = 'write') {
+  if (!cloudApi()) return
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null
+    try {
+      const token = typeof getTokenFn === 'function' ? getTokenFn() : getTokenFn
+      if (!token) return
+      Promise.resolve(syncOnce(token)).catch(() => {})
+      try {
+        window.dispatchEvent(new CustomEvent('epicspire:sync_requested', { detail: { reason } }))
+      } catch {}
+    } catch {}
+  }, 600)
 }
 
 let branchListener = null
 
 export function startSyncEngine(getToken) {
   stopSyncEngine()
+  getTokenFn = getToken
   const tick = () => {
     try {
-      const token = typeof getToken === 'function' ? getToken() : getToken
+      const token = typeof getTokenFn === 'function' ? getTokenFn() : getTokenFn
       if (!token) return
       if (!cloudApi()) return
       Promise.resolve(syncOnce(token)).catch(() => {})
     } catch {}
   }
   timer = setInterval(tick, INTERVAL_MS)
-  // first run shortly after start
   setTimeout(tick, 1500)
   try {
-    branchListener = () => setTimeout(tick, 400)
+    branchListener = (ev) => {
+      const id = ev?.detail
+      if (id) rememberSyncBranch(id)
+      setTimeout(tick, 400)
+    }
     window.addEventListener('active_branch_changed', branchListener)
   } catch {}
 }
@@ -230,8 +305,12 @@ export function startSyncEngine(getToken) {
 export function stopSyncEngine() {
   if (timer) clearInterval(timer)
   timer = null
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = null
   try {
     if (branchListener) window.removeEventListener('active_branch_changed', branchListener)
   } catch {}
   branchListener = null
 }
+
+export { CC_STATUS_RANK }

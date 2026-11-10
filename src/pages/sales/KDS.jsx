@@ -148,7 +148,7 @@ export default function KDS() {
     loadKots()
   }, [loadKots])
 
-  useLiveRefresh(() => loadKots(true), { intervalMs: autoRefresh ? 8000 : 0 })
+  useLiveRefresh(() => loadKots(true), { intervalMs: autoRefresh ? 15000 : 0 })
 
   const updateStatus = async (id, status) => {
     try {

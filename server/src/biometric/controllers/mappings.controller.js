@@ -22,7 +22,12 @@ export async function list(req, res) {
 }
 
 export async function upsert(req, res) {
-  await reloadBiometricConfig()
+  let branchId = ''
+  try {
+    const { resolveBranchId } = await import('../../utils/branchScope.js')
+    branchId = resolveBranchId(req) || ''
+  } catch { branchId = '' }
+  await reloadBiometricConfig(branchId)
   const data = upsertSchema.parse(req.body)
   // Always bind mappings to the Device ID currently saved in Biometric Settings
   const deviceId = String(env.BIOMETRIC_DEVICE_ID || data.deviceId || 'ZK-01')

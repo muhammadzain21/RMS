@@ -76,7 +76,7 @@ export default function CallCenterOrders() {
   }
 
   useEffect(() => { load() }, [token, statusFilter])
-  useLiveRefresh(() => load({ quiet: true }), { intervalMs: 8000 })
+  useLiveRefresh(() => load({ quiet: true }), { intervalMs: 15000 })
   useEffect(() => {
     if (branchId) return
     const preferred = activeBranchId && branches.some(b => String(b._id) === String(activeBranchId))

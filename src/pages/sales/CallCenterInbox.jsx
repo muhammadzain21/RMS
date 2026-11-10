@@ -92,7 +92,7 @@ export default function CallCenterInbox() {
   }, [token, tab])
 
   useEffect(() => { load() }, [load])
-  useLiveRefresh(() => load({ quiet: true }), { intervalMs: 8000 })
+  useLiveRefresh(() => load({ quiet: true }), { intervalMs: 15000 })
   useEffect(() => { setPage(1) }, [tab, from, to, search])
 
   const filtered = useMemo(() => {

@@ -99,7 +99,7 @@ export default function SalesHistory() {
  return () => { cancelled = true }
  }, [token, fromDate, toDate, dispatch])
 
- // Multi-branch live refresh (poll + branch/sync events; pauses when offline/hidden)
+ // Event-driven refresh (branch / sync / visibility) — no quiet poll on this form-heavy list
  useLiveRefresh(async () => {
   try {
    const API = ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
@@ -114,7 +114,7 @@ export default function SalesHistory() {
    const mapId = (x) => ({ ...x, id: x.id || x._id })
    dispatch({ type: 'HYDRATE', payload: { sales: (rows || []).map(mapId) } })
   } catch {}
- }, { intervalMs: 8000 })
+ })
 
  // lock edits for closed dates
  const closedDates = useMemo(() => new Set((state.dayCloses||[]).map(d => d.date)), [state.dayCloses])

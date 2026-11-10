@@ -5,6 +5,7 @@ import DatePicker from '../components/DatePicker.jsx'
 import Pagination from '../components/Pagination.jsx'
 import { useConfirm } from '../components/useConfirm.jsx'
 import { useAuth } from '../state/AuthContext.jsx'
+import { useBranch } from '../state/BranchContext.jsx'
 import { useData } from '../state/DataContext.jsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -42,6 +43,7 @@ function docDate(doc) {
 export default function DataManager() {
   const { state } = useData()
   const { token } = useAuth()
+  const { activeBranch, activeBranchId, isAllBranches } = useBranch()
   const { confirm, ConfirmDialog } = useConfirm()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const headers = useMemo(() => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }), [token])
@@ -56,8 +58,13 @@ export default function DataManager() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [q, setQ] = useState('')
+  const [branchOnly, setBranchOnly] = useState(true)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(20)
+
+  const appendBranchFilter = (params) => {
+    if (branchOnly && activeBranchId && !isAllBranches) params.set('branchOnly', '1')
+  }
 
   const pages = Math.max(1, Math.ceil(total / limit))
 
@@ -87,6 +94,7 @@ export default function DataManager() {
       if (from) params.set('from', from)
       if (to) params.set('to', to)
       if (q.trim()) params.set('q', q.trim())
+      appendBranchFilter(params)
       params.set('page', String(pageNum))
       params.set('limit', String(limit))
       const res = await fetch(`${API}/api/data-manager/docs?${params.toString()}`, { headers, cache: 'no-store' })
@@ -103,7 +111,7 @@ export default function DataManager() {
   }
 
   useEffect(() => { loadCollections() }, [token])
-  useEffect(() => { if (collection) { setPage(1); loadDocs(1) } }, [collection])
+  useEffect(() => { if (collection) { setPage(1); loadDocs(1) } }, [collection, branchOnly, activeBranchId])
 
   const onApply = () => { setPage(1); loadDocs(1) }
   const onReset = () => { setFrom(''); setTo(''); setQ(''); setPage(1); setTimeout(() => loadDocs(1), 0) }
@@ -132,18 +140,21 @@ export default function DataManager() {
   }
 
   const onDeleteFiltered = async () => {
-    const hasFilter = from || to || q.trim()
+    const hasFilter = from || to || q.trim() || (branchOnly && activeBranchId && !isAllBranches)
+    const scopeNote = (branchOnly && activeBranchId && !isAllBranches)
+      ? ` for branch ${activeBranch?.name || activeBranchId}`
+      : ' (GLOBAL — all branches)'
     const label = hasFilter ? `${total.toLocaleString()} filtered document(s)` : `ALL ${total.toLocaleString()} document(s)`
     const ok = await confirm({
       title: hasFilter ? 'Delete Filtered Documents' : 'Delete ENTIRE Collection',
-      message: `Permanently delete ${label} from "${collection}"?\n\nThis cannot be undone.`,
+      message: `Permanently delete ${label} from "${collection}"${scopeNote}?\n\nThis cannot be undone.`,
       confirmText: 'Delete',
       confirmStyle: 'danger',
     })
     if (!ok) return
     const ok2 = await confirm({
       title: 'Are you absolutely sure?',
-      message: `This will permanently remove ${label} from "${collection}". Continue?`,
+      message: `This will permanently remove ${label} from "${collection}"${scopeNote}. Continue?`,
       confirmText: 'Yes, Delete',
       confirmStyle: 'danger',
     })
@@ -153,6 +164,7 @@ export default function DataManager() {
       if (from) params.set('from', from)
       if (to) params.set('to', to)
       if (q.trim()) params.set('q', q.trim())
+      appendBranchFilter(params)
       const res = await fetch(`${API}/api/data-manager/docs/${collection}?${params.toString()}`, { method: 'DELETE', headers })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -196,6 +208,7 @@ export default function DataManager() {
     if (from) params.set('from', from)
     if (to) params.set('to', to)
     if (q.trim()) params.set('q', q.trim())
+    appendBranchFilter(params)
     params.set('page', '1')
     params.set('limit', String(cap))
     const res = await fetch(`${API}/api/data-manager/docs?${params.toString()}`, { headers, cache: 'no-store' })
@@ -334,6 +347,16 @@ export default function DataManager() {
           </div>
           <div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v => setFrom(v)} max={to || today} /></div>
           <div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v => setTo(v)} min={from || ''} max={today} /></div>
+          <label className="flex-shrink-0 inline-flex items-center gap-2 self-end px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-sm font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded"
+              checked={branchOnly && !isAllBranches}
+              disabled={isAllBranches || !activeBranchId}
+              onChange={e => setBranchOnly(e.target.checked)}
+            />
+            This branch only{activeBranch?.name ? ` (${activeBranch.name})` : ''}
+          </label>
           <div className="flex flex-col gap-1 flex-1 min-w-0 basis-full sm:basis-auto">
             <label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label>
             <input

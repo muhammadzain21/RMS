@@ -305,6 +305,27 @@ export default function Consumption() {
  return Number((Number(p) - Number(r.closingQty || 0)).toFixed(3))
  }
 
+ // Only rows with an entered physical count and a non-zero variance
+ const varianceRows = useMemo(() => {
+ return filteredConsumptionRows
+ .map(r => ({ ...r, variance: varianceOf(r) }))
+ .filter(r => r.variance !== null && Number(r.variance) !== 0)
+ .sort((a, b) => Math.abs(Number(b.variance)) - Math.abs(Number(a.variance)))
+ }, [filteredConsumptionRows, physicalMap])
+
+ const varianceShortageCount = useMemo(
+ () => varianceRows.filter(r => Number(r.variance) < 0).length,
+ [varianceRows]
+ )
+ const varianceOverCount = useMemo(
+ () => varianceRows.filter(r => Number(r.variance) > 0).length,
+ [varianceRows]
+ )
+
+ const varTotalPages = Math.max(1, Math.ceil(varianceRows.length / consPageSize))
+ const varStart = (consPage - 1) * consPageSize
+ const pagedVariance = (tab === 'variance' ? varianceRows : []).slice(varStart, varStart + consPageSize)
+
  const savePhysical = async () => {
  try {
  setSavingPhysical(true)
@@ -479,8 +500,9 @@ export default function Consumption() {
 </div>
 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3"><Stat title="Sales Count (lines)" value={sales.reduce((a,b)=>a + (b.items?.length||0), 0)} icon="" variant="blue" /><Stat title="Items Sold (qty)" value={totalItems} icon="" variant="emerald" /><Stat title="Unique Items Sold" value={itemRows.length} icon="" variant="purple" /><Stat title="Sales Revenue" value={'PKR ' + Math.round(salesRevenue).toLocaleString()} icon="" variant="emerald" /><Stat title="Consumed Cost" value={'PKR ' + Math.round(totalConsumedCost).toLocaleString()} icon="" variant="blue" /></div>
 <div className="flex flex-wrap gap-2">
-<button onClick={() => setTab('items')} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab === 'items' ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>Items Sold <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold ${tab === 'items' ? 'bg-white/25 text-white' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'}`}>{filteredItemRows.length}</span></button>
-<button onClick={() => setTab('cons')} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab === 'cons' ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>Ingredient Consumption vs Inventory <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold ${tab === 'cons' ? 'bg-white/25 text-white' : 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'}`}>{filteredConsumptionRows.length}</span></button>
+<button onClick={() => { setTab('items'); setItemsPage(1) }} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab === 'items' ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>Items Sold <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold ${tab === 'items' ? 'bg-white/25 text-white' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'}`}>{filteredItemRows.length}</span></button>
+<button onClick={() => { setTab('cons'); setConsPage(1) }} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab === 'cons' ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>Ingredient Consumption vs Inventory <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold ${tab === 'cons' ? 'bg-white/25 text-white' : 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'}`}>{filteredConsumptionRows.length}</span></button>
+<button onClick={() => { setTab('variance'); setConsPage(1) }} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab === 'variance' ? 'bg-gradient-to-br from-rose-500 to-orange-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>Variance <span className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold ${tab === 'variance' ? 'bg-white/25 text-white' : varianceRows.length ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>{varianceRows.length}</span></button>
 </div>
 {tab === 'items' && (
 <section className="space-y-3">
@@ -522,6 +544,49 @@ export default function Consumption() {
 <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700">
  Note: Consumption is computed from menu item recipes and applied modifiers for the selected date. Closing Stock is the current live inventory. Opening Stock = Closing Stock + Consumed. Variance = Physical Stock - Closing Stock (red = shortage). Consumed Cost = Consumed x Purchase Price per unit.
  </p></section>
+)}
+{tab === 'variance' && (
+<section className="space-y-3">
+<div className="flex flex-wrap items-center gap-2 px-1">
+<span className="w-1.5 h-5 rounded-full bg-gradient-to-b from-rose-500 to-orange-500"></span>
+<h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Variance (Physical ≠ Closing)</h2>
+<span className="text-xs px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 font-semibold">{varianceRows.length} with variance</span>
+{varianceShortageCount > 0 && (
+<span className="text-xs px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-semibold">{varianceShortageCount} short</span>
+)}
+{varianceOverCount > 0 && (
+<span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold">{varianceOverCount} over</span>
+)}
+</div>
+<p className="text-xs text-gray-500 dark:text-gray-400 px-1">Shows only ingredients where physical stock was entered and differs from closing stock. Sorted by largest absolute variance first.</p>
+<div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm bg-white dark:bg-gray-900"><table className="min-w-full text-sm"><thead><tr className="bg-gradient-to-r from-rose-50 to-orange-50 dark:from-gray-800 dark:to-gray-900 border-b-2 border-rose-100 dark:border-gray-700"><th className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-rose-700 dark:text-rose-300">Ingredient</th><th className="text-left px-4 py-3 font-bold text-xs uppercase tracking-wider text-rose-700 dark:text-rose-300">Unit</th><th className="text-right px-4 py-3 font-bold text-xs uppercase tracking-wider text-rose-600 dark:text-rose-400">Consumed</th><th className="text-right px-4 py-3 font-bold text-xs uppercase tracking-wider text-rose-700 dark:text-rose-300">Opening</th><th className="text-right px-4 py-3 font-bold text-xs uppercase tracking-wider text-rose-700 dark:text-rose-300">Closing</th><th className="text-right px-4 py-3 font-bold text-xs uppercase tracking-wider text-sky-600 dark:text-sky-400">Physical</th><th className="text-right px-4 py-3 font-bold text-xs uppercase tracking-wider text-rose-700 dark:text-rose-300">Variance</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+ {pagedVariance.map((r, idx) => (
+ <tr key={`var-${r.name}-${idx}`} className="odd:bg-white even:bg-gray-50/60 dark:odd:bg-gray-900 dark:even:bg-gray-800/40 hover:bg-rose-50/60 dark:hover:bg-rose-900/20 transition-colors">
+ <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.name}</td>
+ <td className="px-4 py-2.5">{r.unit ? <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">{r.unit}</span> : <span className="text-gray-300 dark:text-gray-600">-</span>}</td>
+ <td className="px-4 py-2.5 text-right font-semibold text-rose-600 dark:text-rose-400">{r.consumed}</td>
+ <td className="px-4 py-2.5 text-right text-gray-700 dark:text-gray-300">{r.openingQty}</td>
+ <td className="px-4 py-2.5 text-right font-semibold text-gray-900 dark:text-gray-100">{r.closingQty}</td>
+ <td className="px-4 py-2.5 text-right"><input type="number" step="any" inputMode="decimal" value={physicalMap[r.name] ?? ''} onChange={e=>{ setPhysicalMap(prev=>({ ...prev, [r.name]: e.target.value })); setConsPage(1) }} placeholder="-" className="w-24 px-2 py-1 border border-sky-300 dark:border-sky-700 rounded-lg bg-white dark:bg-gray-800 text-right text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-sky-400 outline-none" /></td>
+ <td className="px-4 py-2.5 text-right"><span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${Number(r.variance) < 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>{Number(r.variance) > 0 ? '+' : ''}{r.variance}</span></td>
+ </tr>
+ ))}
+ {pagedVariance.length === 0 && (
+ <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">No variance yet — enter physical counts on the Consumption tab, then return here</td></tr>
+ )}
+</tbody></table></div>
+{varTotalPages > 1 && (
+ <div className="flex items-center justify-end gap-2 text-sm">
+ <button type="button" disabled={consPage <= 1} onClick={() => setConsPage(p => Math.max(1, p - 1))} className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Prev</button>
+ <span className="text-gray-500">Page {Math.min(consPage, varTotalPages)} / {varTotalPages}</span>
+ <button type="button" disabled={consPage >= varTotalPages} onClick={() => setConsPage(p => Math.min(varTotalPages, p + 1))} className="px-3 py-1.5 rounded-lg border disabled:opacity-40">Next</button>
+ </div>
+)}
+<div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-rose-50 to-orange-50 dark:from-rose-900/20 dark:to-orange-900/20 border border-rose-200 dark:border-rose-800 rounded-xl shadow-sm">
+<span className="text-sm text-gray-700 dark:text-gray-200">Variance = Physical − Closing (red = shortage, green = over)</span>
+<button onClick={savePhysical} disabled={savingPhysical} className="px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white text-sm font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-60">{savingPhysical ? 'Saving...' : 'Save Physical Counts'}</button>
+</div>
+</section>
 )}
 </div>
  )

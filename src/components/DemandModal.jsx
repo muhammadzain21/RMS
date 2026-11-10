@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 import { useData } from '../state/DataContext.jsx'
 import { useAuth } from '../state/AuthContext.jsx'
+import { useBranch } from '../state/BranchContext.jsx'
 import DatePicker from './DatePicker.jsx'
 
 function makeEmptyRow() {
@@ -11,6 +12,7 @@ function makeEmptyRow() {
 export default function DemandModal({ open, onClose, initial }) {
   const { state, dispatch, businessDate } = useData()
   const { token } = useAuth()
+  const { activeBranchId, requireBranch } = useBranch()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const ingredients = state.ingredients || []
 
@@ -78,8 +80,10 @@ export default function DemandModal({ open, onClose, initial }) {
     setRows(prev => [...prev, ...Array.from({ length: 10 }, makeEmptyRow)])
   }
 
-  const save = async (e) => {
-    e.preventDefault()
+  const save = async (e, sendToWarehouse = false) => {
+    e?.preventDefault?.()
+    if (!requireBranch('Select a branch in the header before saving a demand')) return
+
     const items = rows
       .filter(r => r.name.trim() && Number(r.orderQty) > 0)
       .map(r => ({
@@ -101,24 +105,43 @@ export default function DemandModal({ open, onClose, initial }) {
     }
 
     try {
-      const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-      const payload = { date, items, note }
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activeBranchId ? { 'X-Branch-Id': activeBranchId } : {}),
+      }
+      const payload = {
+        date,
+        items,
+        note,
+        target: 'warehouse',
+        status: sendToWarehouse ? 'sent' : (initial?.status || 'pending'),
+        branchId: activeBranchId,
+      }
 
       if (initial?.id) {
         const res = await fetch(`${API}/api/demands/${initial.id}`, { method: 'PATCH', headers, body: JSON.stringify(payload) })
         if (res.ok) {
           dispatch({ type: 'UPDATE_DEMAND', payload: { id: initial.id, data: payload } })
-        } else throw new Error('Update failed')
+          toast.success(sendToWarehouse ? 'Demand sent to warehouse' : 'Demand saved')
+        } else {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.error || 'Update failed')
+        }
       } else {
         const res = await fetch(`${API}/api/demands`, { method: 'POST', headers, body: JSON.stringify(payload) })
         if (res.ok) {
           const created = await res.json()
           dispatch({ type: 'ADD_DEMAND', payload: { ...payload, id: created.id || created._id } })
-        } else throw new Error('Create failed')
+          toast.success(sendToWarehouse ? 'Demand sent to warehouse / head office' : 'Demand saved as draft')
+        } else {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.error || 'Create failed')
+        }
       }
       onClose()
-    } catch {
-      toast.error('Failed to save demand')
+    } catch (err) {
+      toast.error(err?.message || 'Failed to save demand')
     }
   }
 
@@ -132,7 +155,7 @@ export default function DemandModal({ open, onClose, initial }) {
           <button onClick={onClose} className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 text-xl leading-none">×</button>
         </div>
 
-        <form onSubmit={save} className="flex flex-col flex-1 min-h-0">
+        <form onSubmit={(e) => save(e, false)} className="flex flex-col flex-1 min-h-0">
           {/* Date + Note */}
           <div className="px-5 py-3 grid grid-cols-1 md:grid-cols-3 gap-4 border-b dark:border-gray-700">
             <div>
@@ -255,9 +278,12 @@ export default function DemandModal({ open, onClose, initial }) {
           </div>
 
           {/* Footer */}
-          <div className="px-5 py-3 border-t dark:border-gray-700 flex justify-end gap-2">
+          <div className="px-5 py-3 border-t dark:border-gray-700 flex flex-wrap justify-end gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded border hover:bg-gray-50 dark:hover:bg-gray-800 dark:border-gray-600 dark:text-white">Cancel</button>
-            <button className="px-4 py-2 rounded ui-btn ui-btn-primary font-medium">Save Demand</button>
+            <button type="submit" className="px-4 py-2 rounded border font-medium dark:border-gray-600 dark:text-white">Save draft</button>
+            <button type="button" onClick={(e) => save(e, true)} className="px-4 py-2 rounded ui-btn ui-btn-primary font-medium">
+              Send to warehouse
+            </button>
           </div>
         </form>
       </div>

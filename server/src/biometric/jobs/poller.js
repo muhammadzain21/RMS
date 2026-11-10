@@ -70,14 +70,19 @@ export function isPollerPaused() { return pollerPaused }
 export function resetPollerState() { consecutiveFailures = 0; pollerPaused = false; failureCount = 0; nextRunAt = 0 }
 
 export async function startBiometricPoller() {
-  await reloadBiometricConfig()
-  if (!env.BIOMETRIC_ENABLED) {
-    console.log('[biometric] Biometric disabled in settings; poller not started')
-    return
-  }
-  if (!env.BIOMETRIC_IP) {
-    console.warn('[biometric] BIOMETRIC_IP is empty; poller not started')
-    return
+  const { listEnabledBiometricConfigs } = await import('../../utils/settingsScope.js')
+  let enabled = []
+  try { enabled = await listEnabledBiometricConfigs() } catch { enabled = [] }
+  if (!enabled.length) {
+    await reloadBiometricConfig()
+    if (!env.BIOMETRIC_ENABLED) {
+      console.log('[biometric] Biometric disabled in settings; poller not started')
+      return
+    }
+    if (!env.BIOMETRIC_IP) {
+      console.warn('[biometric] BIOMETRIC_IP is empty; poller not started')
+      return
+    }
   }
   if (intervalHandle) return
 
@@ -90,15 +95,25 @@ export async function startBiometricPoller() {
       return
     }
     if (Date.now() < nextRunAt) return
-    // Reload config from DB so IP/port changes apply without restart
-    await reloadBiometricConfig()
-    if (!env.BIOMETRIC_ENABLED) return
-    if (!env.BIOMETRIC_IP) {
-      console.warn('[biometric] BIOMETRIC_IP is empty; skipping tick')
-      return
+    // Reload each enabled branch device so multi-branch IPs stay in sync
+    let configs = []
+    try { configs = await listEnabledBiometricConfigs() } catch { configs = [] }
+    if (!configs.length) {
+      await reloadBiometricConfig()
+      if (!env.BIOMETRIC_ENABLED || !env.BIOMETRIC_IP) {
+        if (!env.BIOMETRIC_IP) console.warn('[biometric] BIOMETRIC_IP is empty; skipping tick')
+        return
+      }
+      configs = [{ branchId: '' }]
     }
     try {
-      await syncOnce('poller_tick')
+      running = true
+      lastSyncTime = Date.now()
+      for (const cfg of configs) {
+        await reloadBiometricConfig(cfg.branchId || '')
+        if (!env.BIOMETRIC_ENABLED || !env.BIOMETRIC_IP) continue
+        await _syncOnceInternal()
+      }
       failureCount = 0
       consecutiveFailures = 0
       nextRunAt = 0
@@ -137,6 +152,8 @@ export async function startBiometricPoller() {
         lastLoggedErrorKey = key
         console.error(`[biometric] sync error: ${msg} (retry in ${Math.round(backoff/1000)}s)`)
       }
+    } finally {
+      running = false
     }
   }
 

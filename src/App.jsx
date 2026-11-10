@@ -38,6 +38,7 @@ import RiderAssign from './pages/riders/RiderAssign.jsx'
 import RiderDaily from './pages/riders/RiderDaily.jsx'
 import ProfitLoss from './pages/ProfitLoss.jsx'
 import Settings from './pages/settings/Settings.jsx'
+import BackupSecurity from './pages/settings/BackupSecurity.jsx'
 import BiometricSettings from './pages/settings/BiometricSettings.jsx'
 import AuditLog from './pages/AuditLog.jsx'
 import UserList from './pages/users/UserList.jsx'
@@ -67,6 +68,9 @@ import WarehouseSuppliers from './pages/warehouse/WarehouseSuppliers.jsx'
 import WarehouseSupplierHistory from './pages/warehouse/WarehouseSupplierHistory.jsx'
 import WarehouseTransfers from './pages/warehouse/WarehouseTransfers.jsx'
 import WarehouseTransferHistory from './pages/warehouse/WarehouseTransferHistory.jsx'
+import WarehouseFinance from './pages/warehouse/WarehouseFinance.jsx'
+import WarehouseDemands from './pages/warehouse/WarehouseDemands.jsx'
+import WarehousePurchases from './pages/warehouse/WarehousePurchases.jsx'
 
 function App() {
   const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent))
@@ -127,10 +131,13 @@ function App() {
         <Route path="warehouse/stock" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseStock /></ProtectedRoute>} />
         <Route path="warehouse/suppliers" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseSuppliers /></ProtectedRoute>} />
         <Route path="warehouse/suppliers/:id/history" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseSupplierHistory /></ProtectedRoute>} />
-        <Route path="warehouse/purchases" element={<Navigate to="/warehouse/suppliers" replace />} />
+        <Route path="warehouse/purchase-history" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehousePurchases /></ProtectedRoute>} />
+        <Route path="warehouse/purchases" element={<Navigate to="/warehouse/purchase-history" replace />} />
         <Route path="warehouse/payments" element={<Navigate to="/warehouse/suppliers" replace />} />
+        <Route path="warehouse/demands" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseDemands /></ProtectedRoute>} />
         <Route path="warehouse/transfers" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseTransfers /></ProtectedRoute>} />
         <Route path="warehouse/transfer-history" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseTransferHistory /></ProtectedRoute>} />
+        <Route path="warehouse/finance" element={<ProtectedRoute roles={["Admin","Manager"]}><WarehouseFinance /></ProtectedRoute>} />
         <Route path="branches" element={<ProtectedRoute roles={["Admin"]}><BranchesAdmin /></ProtectedRoute>} />
         <Route path="hq/compare" element={<ProtectedRoute roles={["Admin","Manager"]}><HqCompare /></ProtectedRoute>} />
 
@@ -196,6 +203,7 @@ function App() {
         <Route path="users" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><UserList /></ProtectedRoute>} />
         <Route path="sidebar-permissions" element={<ProtectedRoute roles={["Admin","Manager"]}><SidebarPermissions /></ProtectedRoute>} />
         <Route path="settings" element={<ProtectedRoute roles={["Admin","Manager"]}><Settings /></ProtectedRoute>} />
+        <Route path="backup-security" element={<ProtectedRoute roles={["Admin","Manager"]}><BackupSecurity /></ProtectedRoute>} />
         <Route path="biometric-settings" element={<ProtectedRoute roles={["Admin"]}><BiometricSettings /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

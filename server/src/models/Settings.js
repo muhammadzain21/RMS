@@ -7,6 +7,8 @@ const ModifierCfgSchema = new mongoose.Schema({
 }, { _id: false })
 
 const SettingsSchema = new mongoose.Schema({
+  // Empty = legacy/global HQ template; real branches get their own doc
+  branchId: { type: String, default: '' },
   companyName: { type: String, default: 'Restaurant POS' },
   // Company details
   phone: { type: String, default: '' },
@@ -68,5 +70,10 @@ const SettingsSchema = new mongoose.Schema({
     default: ['Rent', 'Utilities', 'Wages', 'Salaries', 'Supplies', 'Transport', 'Marketing', 'Maintenance', 'Misc'],
   },
 }, { timestamps: true })
+
+SettingsSchema.index(
+  { branchId: 1 },
+  { unique: true, partialFilterExpression: { branchId: { $type: 'string', $gt: '' } } }
+)
 
 export default mongoose.model('Settings', SettingsSchema)

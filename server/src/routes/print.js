@@ -4,8 +4,9 @@ import path from 'path'
 import { promises as fs } from 'fs'
 import puppeteer from 'puppeteer'
 import ptp from 'pdf-to-printer'
-import Settings from '../models/Settings.js'
 import { authRequired } from '../middleware/auth.js'
+import { resolveBranchId } from '../utils/branchScope.js'
+import { getSettingsLean } from '../utils/settingsScope.js'
 
 const { print: printPdf, getPrinters } = ptp || {}
 const router = Router()

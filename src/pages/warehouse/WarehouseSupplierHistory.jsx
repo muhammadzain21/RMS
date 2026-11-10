@@ -51,6 +51,7 @@ export default function WarehouseSupplierHistory() {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(100)
   const [payOpen, setPayOpen] = useState(false)
+  const [payPurchaseId, setPayPurchaseId] = useState('')
   const [expandedPurchase, setExpandedPurchase] = useState(null)
 
   const load = useCallback(async () => {
@@ -357,13 +358,53 @@ export default function WarehouseSupplierHistory() {
       ),
     },
     { label: 'Total', key: 'total', render: r => <span className="font-semibold">{money(r.total)}</span> },
-    { label: 'Paid on bill', key: 'paidAmount', render: r => money(r.paidAmount) },
+    { label: 'Paid', key: 'paidAmount', render: r => money(r.paidAmount) },
+    {
+      label: 'Left',
+      key: 'balanceDue',
+      render: r => {
+        const left = Number(r.balanceDue != null ? r.balanceDue : (Number(r.total) || 0) - (Number(r.paidAmount) || 0))
+        return <span className={`font-semibold ${left > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{money(left)}</span>
+      },
+    },
+    {
+      label: 'Status',
+      key: 'status',
+      render: r => {
+        const left = Number(r.balanceDue != null ? r.balanceDue : (Number(r.total) || 0) - (Number(r.paidAmount) || 0))
+        const status = r.status || (left <= 0.0001 ? 'paid' : (Number(r.paidAmount) > 0 ? 'partial' : 'unpaid'))
+        const cls = status === 'paid'
+          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+          : status === 'partial'
+            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+            : 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'
+        return <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold capitalize ${cls}`}>{status}</span>
+      },
+    },
+    {
+      label: '',
+      key: 'pay',
+      render: r => {
+        const left = Number(r.balanceDue != null ? r.balanceDue : (Number(r.total) || 0) - (Number(r.paidAmount) || 0))
+        if (left <= 0.0001) return null
+        return (
+          <button
+            type="button"
+            onClick={() => { setPayPurchaseId(String(r._id)); setPayOpen(true) }}
+            className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-500"
+          >
+            Pay
+          </button>
+        )
+      },
+    },
     { label: 'Notes', key: 'notes', render: r => r.notes || '—' },
   ]
 
   const paymentColumns = [
     { label: 'SR No', key: 'srNo', render: (_, idx) => <span className="font-medium text-[var(--color-text-body)]">{(pageSafe - 1) * limit + idx + 1}</span> },
     { label: 'Date', key: 'date', render: r => r.date || '—' },
+    { label: 'Invoice', key: 'invoiceNo', render: r => r.invoiceNo || (r.purchaseId ? String(r.purchaseId).slice(-6) : '—') },
     {
       label: 'Method',
       key: 'method',
@@ -393,9 +434,10 @@ export default function WarehouseSupplierHistory() {
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 className="page-title">{supplier?.name || 'Supplier history'}</h1>
+            <h1 className="page-title">{supplier?.name || 'Supplier record'}</h1>
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-              {[supplier?.company, supplier?.phone].filter(Boolean).join(' · ') || 'Warehouse supplier ledger'}
+              {[supplier?.company, supplier?.phone].filter(Boolean).join(' · ') || 'This supplier only'}
+              {' · '}purchases, payments & balance (not the global purchase history)
             </p>
           </div>
         </div>
@@ -555,8 +597,10 @@ export default function WarehouseSupplierHistory() {
         open={payOpen}
         supplier={supplier}
         balanceDue={Number(ledger?.balance) || 0}
+        preselectPurchaseId={payPurchaseId}
         onClose={(saved) => {
           setPayOpen(false)
+          setPayPurchaseId('')
           if (saved) load()
         }}
       />

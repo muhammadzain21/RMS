@@ -142,7 +142,7 @@ export default function WarehouseTransferHistory() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h1 className="page-title">Transfer History</h1>
+        <h1 className="page-title">Warehouse Transfer History</h1>
         <button type="button" onClick={() => navigate('/warehouse/transfers')} className={btnPrimary}>
           + New Transfer
         </button>

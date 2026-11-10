@@ -4,7 +4,8 @@ import { BiometricMapping } from '../models/BiometricMapping.js'
 import Attendance from '../../models/Attendance.js'
 import Staff from '../../models/Staff.js'
 import StaffSettings from '../../models/StaffSettings.js'
-import Settings from '../../models/Settings.js'
+import BiometricConfig from '../../models/BiometricConfig.js'
+import { getSettingsLean } from '../../utils/settingsScope.js'
 
 function dateIsoLocal(d) {
   const y = d.getFullYear()
@@ -101,8 +102,13 @@ export async function processBiometricEvent(input) {
     return { ok: false, reason: 'invalid_payload' }
   }
 
-  // Get business date cutoff hour from Settings
-  const appSettings = await Settings.findOne().lean()
+  // Get business date cutoff from the branch that owns this device
+  let branchId = ''
+  try {
+    const bioCfg = await BiometricConfig.findOne({ deviceId: String(input.deviceId) }).lean()
+    branchId = String(bioCfg?.branchId || '')
+  } catch {}
+  const appSettings = await getSettingsLean(branchId)
   const cutoffHour = appSettings?.businessDayCutoffHour ?? 4
   
   // Use business date (shifts crossing midnight belong to previous day)

@@ -5,7 +5,7 @@ import { useAuth } from '../state/AuthContext.jsx'
 import DatePicker from '../components/DatePicker.jsx'
 
 export default function IngredientModal({ open, onClose, initial }) {
- const { state, dispatch, businessDate } = useData()
+ const { state, dispatch } = useData()
  const { token } = useAuth()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const suppliers = state.suppliers || []
@@ -69,39 +69,12 @@ export default function IngredientModal({ open, onClose, initial }) {
  throw new Error('Update failed')
  }
  } else {
+ // Prefer Add Inventory (purchase invoice) for new stock; this path keeps catalog-only create available.
  const res = await fetch(`${API}/api/ingredients`, { method: 'POST', headers, body: JSON.stringify(payload) })
  if (res.ok) {
  const created = await res.json()
  const added = { ...payload, id: created.id || created._id }
  dispatch({ type:'ADD_INGREDIENT', payload: added })
- // Auto-record a Supply entry when a supplier is selected and qty/price are provided
- try {
- const hasSupplier = !!form.supplierId
- const qty = Number(payload.qty||0)
- const price = Number(payload.price||0)
- if (hasSupplier && qty > 0 && price >= 0) {
- const sup = suppliers.find(s => s.id === form.supplierId)
- const supplyPayload = {
- date: String(businessDate||'').slice(0,10) || new Date().toLocaleDateString('en-CA'),
- supplierId: form.supplierId,
- supplier: (sup?.name || sup?.company || ''),
- items: [{ name: form.name, qty, unit: payload.unit || '', price }],
- cost: Number((qty * price).toFixed(2)),
- skipInventoryUpdate: true // ingredient already has correct qty
- }
- const sres = await fetch(`${API}/api/supplies`, { method: 'POST', headers, body: JSON.stringify(supplyPayload) })
- if (sres.ok) {
- try {
- const resList = await fetch(`${API}/api/supplies`, { headers })
- if (resList.ok) {
- const rows = await resList.json()
- const mapId = (x) => ({ ...x, id: x.id || x._id })
- dispatch({ type: 'HYDRATE', payload: { supplies: (rows||[]).map(mapId) } })
- }
- } catch {}
- }
- }
- } catch {}
  } else {
  throw new Error('Create failed')
  }
@@ -132,7 +105,7 @@ export default function IngredientModal({ open, onClose, initial }) {
  }
 
  return (
- <div className="fixed inset-0 z-50 flex items-center justify-center"><div className="absolute inset-0 bg-black/30" onClick={() => onClose(false)} /><div className="relative bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl p-5"><div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{initial?.id ? 'Edit Ingredient' : 'Add Ingredient'}</h3><button onClick={() => onClose(false)} className="px-2 py-1 rounded border"></button></div><form onSubmit={save} className="space-y-3"><div className="grid grid-cols-1 md:grid-cols-2 gap-3"><LabelInput label="Name" value={form.name} onChange={v=>setForm({...form,name:v})} required /><LabelInput label="Category" value={form.category} onChange={v=>setForm({...form,category:v})} /><LabelInput
+ <div data-user-busy="1" className="fixed inset-0 z-50 flex items-center justify-center"><div className="absolute inset-0 bg-black/30" onClick={() => onClose(false)} /><div className="relative bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl p-5"><div className="flex items-center justify-between mb-3"><h3 className="text-lg font-semibold">{initial?.id ? 'Edit Ingredient' : 'Add Ingredient'}</h3><button onClick={() => onClose(false)} className="px-2 py-1 rounded border"></button></div><form onSubmit={save} className="space-y-3"><div className="grid grid-cols-1 md:grid-cols-2 gap-3"><LabelInput label="Name" value={form.name} onChange={v=>setForm({...form,name:v})} required /><LabelInput label="Category" value={form.category} onChange={v=>setForm({...form,category:v})} /><LabelInput
  label={"Quantity" + (form.unit ? ` (${form.unit})` : '')}
  type="number"
  step="0.001"

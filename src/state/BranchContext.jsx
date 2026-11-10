@@ -49,6 +49,17 @@ export function BranchProvider({ children }) {
       window.ACTIVE_BRANCH_ID = v
       window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: v }))
     }
+    // Keep a non-empty branch for background cloud sync when header is later set to All
+    if (v) {
+      try {
+        localStorage.setItem('sync_last_branch_id', v)
+        if (!localStorage.getItem('sync_home_branch_id') && user?.homeBranchId) {
+          localStorage.setItem('sync_home_branch_id', String(user.homeBranchId))
+        } else if (!localStorage.getItem('sync_home_branch_id')) {
+          localStorage.setItem('sync_home_branch_id', v)
+        }
+      } catch {}
+    }
   }
 
   useEffect(() => {

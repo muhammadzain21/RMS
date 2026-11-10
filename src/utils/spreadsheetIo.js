@@ -216,3 +216,68 @@ export function rowsToInventoryImportPayload(rows = []) {
   }
   return { items }
 }
+
+/** Same columns as WarehouseStock CSV export (Value ignored on import). */
+export const WAREHOUSE_EXPORT_HEADERS = [
+  'Item',
+  'Category',
+  'Qty',
+  'Unit',
+  'Cost',
+  'Transfer',
+  'Threshold',
+  'Supplier',
+  'Value',
+]
+
+export function exportWarehouseSpreadsheet(format, items = [], supplierNameOf = () => '') {
+  const headers = WAREHOUSE_EXPORT_HEADERS
+  const rows = (items || []).map((it) => {
+    const qty = Number(it.qty || 0)
+    const cost = Number(it.costPrice || 0)
+    return [
+      it.name || '',
+      it.category || '',
+      qty,
+      it.unit || '',
+      cost,
+      Number(it.transferPrice || 0),
+      Number(it.lowStock || 0),
+      supplierNameOf(it) || '',
+      qty * cost,
+    ]
+  })
+  const stamp = exportDateStamp()
+  if (format === 'xlsx') {
+    downloadXlsxFile(`warehouse_stock_${stamp}.xlsx`, 'Warehouse', headers, rows)
+  } else {
+    downloadCsvFile(`warehouse_stock_${stamp}.csv`, headers, rows)
+  }
+}
+
+/**
+ * Parse warehouse inventory export/import rows.
+ * Value is display-only. Supplier matched by name on the server.
+ */
+export function rowsToWarehouseImportPayload(rows = []) {
+  const items = []
+  for (const raw of rows) {
+    const name = String(cell(raw, ['Item', 'Name', 'Item Name', 'Product', 'SKU Name'])).trim()
+    if (!name) continue
+    const cost = Number(cell(raw, ['Cost', 'Cost Price', 'costPrice', 'Price', 'Unit Cost']) || 0) || 0
+    const transfer = Number(cell(raw, ['Transfer', 'Transfer Price', 'transferPrice', 'Branch Price']) || 0) || 0
+    items.push({
+      name,
+      category: String(cell(raw, ['Category', 'Cat', 'Group']) || '').trim(),
+      qty: Number(cell(raw, ['Qty', 'Quantity', 'Stock', 'qty']) || 0) || 0,
+      unit: String(cell(raw, ['Unit', 'UOM', 'unit']) || '').trim(),
+      costPrice: cost,
+      transferPrice: transfer || cost,
+      lowStock: Number(cell(raw, ['Threshold', 'Low Stock', 'lowStock', 'Reorder']) || 0) || 0,
+      sku: String(cell(raw, ['SKU', 'Code', 'sku']) || '').trim(),
+      supplierName: String(cell(raw, ['Supplier', 'Supplier Name', 'Vendor']) || '').trim(),
+      notes: String(cell(raw, ['Notes', 'Note', 'Remarks']) || '').trim(),
+    })
+  }
+  return { items }
+}

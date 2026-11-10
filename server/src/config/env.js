@@ -33,19 +33,20 @@ function applyConfig(cfg) {
 // Load from DB once at startup (best-effort)
 ;(async () => {
   try {
-    const BiometricConfig = (await import('../models/BiometricConfig.js')).default
-    const cfg = await BiometricConfig.findOne({}, {}, { sort: { updatedAt: -1, createdAt: -1 } }).lean()
-    if (cfg) applyConfig(cfg)
+    const { getOrCreateBiometricConfig } = await import('../utils/settingsScope.js')
+    const cfg = await getOrCreateBiometricConfig('')
+    if (cfg) applyConfig(cfg.toObject ? cfg.toObject() : cfg)
   } catch (e) {
     console.log('[env] BiometricConfig not yet available, using defaults:', e?.message || '')
   }
 })()
 
-export async function reloadBiometricConfig() {
+/** Reload env biometric from a branch config (or legacy/global when branchId empty). */
+export async function reloadBiometricConfig(branchId = '') {
   try {
-    const BiometricConfig = (await import('../models/BiometricConfig.js')).default
-    const cfg = await BiometricConfig.findOne({}, {}, { sort: { updatedAt: -1, createdAt: -1 } }).lean()
-    if (cfg) applyConfig(cfg)
+    const { getOrCreateBiometricConfig } = await import('../utils/settingsScope.js')
+    const cfg = await getOrCreateBiometricConfig(branchId)
+    if (cfg) applyConfig(cfg.toObject ? cfg.toObject() : cfg)
   } catch {
     // Keep current env values if DB is unreachable
   }

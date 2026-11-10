@@ -24,8 +24,11 @@ const SEARCH_FIELDS = [
 
 function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
-function buildQuery({ from, to, q }) {
+function buildQuery({ from, to, q, branchId }) {
   const ands = []
+  if (branchId) {
+    ands.push({ branchId: String(branchId) })
+  }
   if (from || to) {
     const fromStr = String(from || '0000-01-01')
     const toStr = String(to || '9999-12-31') + '\uffff'
@@ -78,7 +81,10 @@ router.get('/docs', async (req, res, next) => {
     const existing = (await db.listCollections({ name: colName }).toArray()).length
     if (!existing) return res.status(404).json({ error: 'Collection not found' })
 
-    const query = buildQuery(req.query)
+    const query = buildQuery({
+      ...req.query,
+      branchId: req.query.branchId || (String(req.query.branchOnly) === '1' ? (req.headers['x-branch-id'] || '') : '') || '',
+    })
     const p = Math.max(1, parseInt(req.query.page, 10) || 1)
     const lim = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 50))
     const col = db.collection(colName)
@@ -112,7 +118,10 @@ router.delete('/docs/:collection', async (req, res, next) => {
     const { collection } = req.params
     const existing = (await db.listCollections({ name: collection }).toArray()).length
     if (!existing) return res.status(404).json({ error: 'Collection not found' })
-    const query = buildQuery(req.query)
+    const query = buildQuery({
+      ...req.query,
+      branchId: req.query.branchId || (String(req.query.branchOnly) === '1' ? (req.headers['x-branch-id'] || '') : '') || '',
+    })
     const result = await db.collection(collection).deleteMany(query)
     await logAudit(req, 'settings', `Bulk deleted ${result.deletedCount} docs from ${collection}`, { collection, deleted: result.deletedCount, filter: req.query })
     res.json({ ok: true, deleted: result.deletedCount })

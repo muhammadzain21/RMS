@@ -38,10 +38,14 @@ function toPublic(item, override = null, branchId = '') {
     category: (o?.category !== undefined && o?.category !== null && String(o.category).trim()) ? String(o.category) : (base.category || ''),
     sortOrder: o?.sortOrder !== undefined && o?.sortOrder !== null ? Number(o.sortOrder) : Number(base.sortOrder || 0),
     imageUrl: (o?.imageUrl !== undefined && o?.imageUrl !== null) ? String(o.imageUrl) : (base.imageUrl || ''),
+    recipe: (o && Object.prototype.hasOwnProperty.call(o, 'recipe') && o.recipe != null)
+      ? o.recipe
+      : (base.recipe || {}),
     branchId: base.branchId || '',
     isShared: shared,
     isBranchOnly: !shared,
     hasOverride: !!o,
+    hasRecipeOverride: !!(o && Object.prototype.hasOwnProperty.call(o, 'recipe') && o.recipe != null),
     basePrice: Number(base.price || 0),
     basePriceFoodpanda: Number(base.priceFoodpanda || 0),
     baseActive: base.active !== false,
@@ -377,13 +381,8 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
     if (!branchId) return res.status(400).json({ error: 'branchId required for branch override — select a branch in the header' })
 
     const overrideFields = {}
-    for (const key of ['price', 'priceFoodpanda', 'discount', 'active', 'name', 'category', 'sortOrder', 'imageUrl']) {
+    for (const key of ['price', 'priceFoodpanda', 'discount', 'active', 'name', 'category', 'sortOrder', 'imageUrl', 'recipe']) {
       if (payload[key] !== undefined) overrideFields[key] = payload[key]
-    }
-    // Recipe always updates shared item (recipes are shared across branches)
-    if (payload.recipe !== undefined) {
-      item.recipe = payload.recipe
-      await item.save()
     }
 
     let override = await BranchMenuOverride.findOne({ branchId: String(branchId), menuItemId: item._id })
@@ -394,8 +393,6 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
         { upsert: true, new: true }
       )
       await logAudit(req, 'menu', `Branch override menu ${req.params.id}`, { id: req.params.id, branchId, patch: overrideFields })
-    } else if (payload.recipe !== undefined) {
-      await logAudit(req, 'menu', `Updated shared recipe ${req.params.id}`, { id: req.params.id })
     }
     res.json(toPublic(item, override, branchId))
   } catch (e) {

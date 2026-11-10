@@ -127,7 +127,7 @@ export default function CashOpening() {
  } catch {}
  }, [API, token, from, to, page, limit, search, dispatch])
 
- useLiveRefresh(refreshOpenings, { intervalMs: 8000 })
+ useLiveRefresh(refreshOpenings)
 
  const onOpen = async (e) => {
  e.preventDefault()

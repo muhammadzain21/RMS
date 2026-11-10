@@ -116,7 +116,7 @@ export default function DayClose() {
   }
  }, [token, date, API, state.recalls])
  useEffect(() => { loadRecalls() }, [loadRecalls])
- useLiveRefresh(loadRecalls, { intervalMs: 8000 })
+ useLiveRefresh(loadRecalls)
 
  const pendingRecalls = useMemo(() => {
   // Any unpaid recall blocks day close — including older dates left open
@@ -295,7 +295,7 @@ export default function DayClose() {
  }, [API, token, from, to, page, limit, search])
 
  useEffect(() => { loadDayCloses() }, [loadDayCloses])
- useLiveRefresh(() => loadDayCloses({ quiet: true }), { intervalMs: 8000 })
+ useLiveRefresh(() => loadDayCloses({ quiet: true }))
 
  const rows = useMemo(() => {
  return [...serverRows]

@@ -90,7 +90,7 @@ export default function PayInOut() {
  useEffect(() => {
  refreshPayIO()
  }, [refreshPayIO])
- useLiveRefresh(() => refreshPayIO(), { intervalMs: 8000 })
+ useLiveRefresh(() => refreshPayIO())
 
  // Reset page when filters change (but not page itself)
  useEffect(() => {

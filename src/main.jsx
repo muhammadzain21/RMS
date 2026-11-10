@@ -97,20 +97,39 @@ setupNativeChrome()
         const toUrl = (u) => typeof u === 'string' ? u : (u && 'url' in u ? u.url : '')
         let url = toUrl(input)
         const nextInit = init ? { ...init } : {}
+        const method = String(nextInit.method || (input && input.method) || 'GET').toUpperCase()
         // Auto-attach active branch for multi-branch writes/reads
         try {
           const branchId = g.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || ''
           // Shared catalogs that ignore branch scope (menu still gets branch for overrides when header is set)
-          const skipBranch = /\/api\/(auth|health|client-config|warehouse|call-center-orders|customers|categories)(\/|$|\?)/i.test(String(url || ''))
+          const skipBranch = /\/api\/(auth|health|client-config|warehouse|call-center-orders|customers)(\/|$|\?)/i.test(String(url || ''))
           if (branchId && !skipBranch && typeof url === 'string' && url.includes('/api/')) {
             const headers = new Headers(nextInit.headers || (input && input.headers) || {})
             if (!headers.has('X-Branch-Id')) headers.set('X-Branch-Id', branchId)
             nextInit.headers = headers
           }
         } catch {}
-        if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return orig(input, nextInit)
+
+        const maybeKickSync = (finalUrl) => {
+          try {
+            if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return
+            if (!/\/api\//i.test(String(finalUrl || url || ''))) return
+            // Skip sync endpoints themselves and auth
+            if (/\/api\/(sync|auth|health|client-config)(\/|$|\?)/i.test(String(finalUrl || url || ''))) return
+            import('./sync/SyncEngine.js').then(m => m.requestSync?.(method)).catch(() => {})
+          } catch {}
+        }
+
+        const wrap = (p) => {
+          Promise.resolve(p).then(res => {
+            if (res && res.ok) maybeKickSync(typeof url === 'string' ? url : '')
+          }).catch(() => {})
+          return p
+        }
+
+        if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return wrap(orig(input, nextInit))
         const base = strip(g.API_BASE)
-        if (!base) return orig(input, nextInit)
+        if (!base) return wrap(orig(input, nextInit))
         const candidates = [...(g.__API_BASE_CANDIDATES || [])]
         const e = strip(envBase)
         if (e && !candidates.includes(e)) candidates.push(e)
@@ -118,10 +137,10 @@ setupNativeChrome()
           const cc = strip(c)
           if (!cc || cc === base) continue
           if (url === cc || url.startsWith(cc + '/')) {
-            return orig(base + url.slice(cc.length), nextInit)
+            return wrap(orig(base + url.slice(cc.length), nextInit))
           }
         }
-        return orig(input, nextInit)
+        return wrap(orig(input, nextInit))
       }catch{}
       return orig(input, init)
     }

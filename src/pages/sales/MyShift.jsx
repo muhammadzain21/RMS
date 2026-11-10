@@ -130,7 +130,7 @@ export default function MyShift() {
   }, [token, date])
 
   useEffect(() => { load() }, [load])
-  useLiveRefresh(() => load({ quiet: true }), { intervalMs: 8000 })
+  useLiveRefresh(() => load({ quiet: true }))
 
   const summary = data?.summary || {}
   const tables = data?.tables || {}

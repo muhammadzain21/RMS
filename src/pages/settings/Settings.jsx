@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
 import { toast } from 'react-hot-toast'
-import { useConfirm } from '../../components/useConfirm.jsx'
 import { getSyncStatus, syncOnce, startSyncEngine, normalizeCloudUrl } from '../../sync/SyncEngine.js'
 
 // Helper components defined outside Settings to prevent remounting on state changes
@@ -38,10 +38,12 @@ const InputGroup = ({ label, children, helpText }) => (
  </div>
 )
 
-const PrimaryButton = ({ onClick, children, icon }) => (
+const PrimaryButton = ({ onClick, children, icon, disabled = false }) => (
  <button
+ type="button"
  onClick={onClick}
- className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm hover:shadow-md"
+ disabled={disabled}
+ className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
  >
  {icon && <span>{icon}</span>}
  {children}
@@ -58,22 +60,14 @@ const SecondaryButton = ({ onClick, children, icon }) => (
  </button>
 )
 
-const DangerButton = ({ onClick, children }) => (
- <button
- onClick={onClick}
- className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 font-medium rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
- >
- {children}
- </button>
-)
-
 export default function Settings() {
  const { state, dispatch } = useData()
  const { token } = useAuth()
- const { confirm, ConfirmDialog } = useConfirm()
+ const { activeBranch, activeBranchId, isAllBranches, requireBranch } = useBranch()
  const s = state.settings || {}
  const [tab, setTab] = useState('company')
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const branchLabel = activeBranch?.name || activeBranch?.code || ''
 
  const [company, setCompany] = useState({
  companyName: s.companyName || '',
@@ -89,13 +83,6 @@ export default function Settings() {
  showPersonalPayment: Boolean(s.showPersonalPayment),
  kotPrinterName: s.kotPrinterName || '',
  billPrinterName: s.billPrinterName || '',
- })
-
- const [backupCfg, setBackupCfg] = useState({
- autoBackupEnabled: Boolean(s.autoBackupEnabled),
- autoBackupIntervalMinutes: Number(s.autoBackupIntervalMinutes || 60),
- backupFolderPath: String(s.backupFolderPath || ''),
- salesDeleteKey: String(s.salesDeleteKey || ''),
  })
 
  const [cloudSync, setCloudSync] = useState(() => {
@@ -172,8 +159,7 @@ export default function Settings() {
  ...(s.sellPageFields || {}),
  }))
 
- useEffect(() => {
- const ns = state.settings || {}
+ const applySettingsToForm = (ns = {}) => {
  setCompany({
  companyName: ns.companyName || '',
  phone: ns.phone || '',
@@ -189,17 +175,35 @@ export default function Settings() {
  kotPrinterName: ns.kotPrinterName || '',
  billPrinterName: ns.billPrinterName || '',
  })
- setBackupCfg({
- autoBackupEnabled: Boolean(ns.autoBackupEnabled),
- autoBackupIntervalMinutes: Number(ns.autoBackupIntervalMinutes || 60),
- backupFolderPath: String(ns.backupFolderPath || ''),
- salesDeleteKey: String(ns.salesDeleteKey || ''),
- })
  setSellFields({
  ...defaultSellFields(),
  ...(ns.sellPageFields || {}),
  })
+ }
+
+ // Keep form in sync when DataContext settings change
+ useEffect(() => {
+ applySettingsToForm(state.settings || {})
  }, [state.settings])
+
+ // Explicit refetch when header branch changes (avoids stale form if hydrate merges same-looking values)
+ useEffect(() => {
+ let cancelled = false
+ const load = async () => {
+  if (!token) return
+  try {
+   const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const res = await fetch(`${API}/api/settings`, { headers, cache: 'no-store' })
+   if (!res.ok || cancelled) return
+   const saved = await res.json()
+   if (cancelled) return
+   dispatch({ type: 'HYDRATE', payload: { settings: saved } })
+   applySettingsToForm(saved || {})
+  } catch {}
+ }
+ load()
+ return () => { cancelled = true }
+ }, [token, activeBranchId])
 
  const [printers, setPrinters] = useState([])
  useEffect(() => {
@@ -224,19 +228,21 @@ export default function Settings() {
  }, [tab, API, token])
 
  const saveCompany = async () => {
+ if (!requireBranch('Select a branch in the header to edit that branch’s settings')) return
  try {
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const res = await fetch(`${API}/api/settings`, { method: 'PATCH', headers, body: JSON.stringify(company) })
- if (!res.ok) throw new Error('Failed')
- const saved = await res.json()
+ const saved = await res.json().catch(() => ({}))
+ if (!res.ok) throw new Error(saved.error || 'Failed')
  dispatch({ type: 'HYDRATE', payload: { settings: saved } })
- toast.success('Restaurant settings saved successfully')
+ toast.success(`Restaurant settings saved${branchLabel ? ` (${branchLabel})` : ''}`)
  } catch (e) {
- toast.error('Failed to save restaurant settings')
+ toast.error(e.message || 'Failed to save restaurant settings')
  }
  }
 
  const saveSystem = async () => {
+ if (!requireBranch('Select a branch in the header to edit that branch’s settings')) return
  try {
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const payload = {
@@ -244,16 +250,17 @@ export default function Settings() {
  businessDayCutoffHour: Math.min(23, Math.max(0, Number(system.businessDayCutoffHour ?? 4)))
  }
  const res = await fetch(`${API}/api/settings`, { method: 'PATCH', headers, body: JSON.stringify(payload) })
- if (!res.ok) throw new Error('Failed')
- const saved = await res.json()
+ const saved = await res.json().catch(() => ({}))
+ if (!res.ok) throw new Error(saved.error || 'Failed')
  dispatch({ type: 'HYDRATE', payload: { settings: saved } })
- toast.success('System settings saved successfully')
+ toast.success(`System settings saved${branchLabel ? ` (${branchLabel})` : ''}`)
  } catch (e) {
- toast.error('Failed to save system settings')
+ toast.error(e.message || 'Failed to save system settings')
  }
  }
 
  const saveRestrictions = async () => {
+ if (!requireBranch('Select a branch in the header to edit that branch’s settings')) return
  try {
  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const res = await fetch(`${API}/api/settings`, {
@@ -261,12 +268,12 @@ export default function Settings() {
  headers,
  body: JSON.stringify({ sellPageFields: sellFields }),
  })
- if (!res.ok) throw new Error('Failed')
- const saved = await res.json()
+ const saved = await res.json().catch(() => ({}))
+ if (!res.ok) throw new Error(saved.error || 'Failed')
  dispatch({ type: 'HYDRATE', payload: { settings: saved } })
- toast.success('Sell page restrictions saved')
- } catch {
- toast.error('Failed to save restrictions')
+ toast.success(`Sell page restrictions saved${branchLabel ? ` (${branchLabel})` : ''}`)
+ } catch (e) {
+ toast.error(e.message || 'Failed to save restrictions')
  }
  }
 
@@ -277,100 +284,18 @@ export default function Settings() {
  reader.readAsDataURL(file)
  }
 
- const headers = useMemo(() => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }), [token])
-
- const exportBackup = async () => {
- try {
- const res = await fetch(`${API}/api/backup/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
- if (!res.ok) throw new Error('Export failed')
- const text = await res.text()
- if (window?.backup && backupCfg.backupFolderPath) {
- const file = `rms-backup-${new Date().toISOString().replace(/[:]/g, '-').slice(0, 19)}.json`
- const out = await window.backup.saveToFolder(backupCfg.backupFolderPath, file, text)
- if (!out?.ok) throw new Error(out?.error || 'Failed to save file')
- toast.success(`Backup saved to: ${out.path}`)
- } else {
- const blob = new Blob([text], { type: 'application/json' })
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = `rms-backup-${new Date().toISOString().slice(0, 10)}.json`
- document.body.appendChild(a)
- a.click()
- a.remove()
- URL.revokeObjectURL(url)
- }
- } catch (e) {
- toast.error('Failed to export backup. Please ensure you are logged in.')
- }
- }
-
- const importBackup = async (file) => {
- if (!file) return
- try {
- const text = await file.text()
- const res = await fetch(`${API}/api/backup/import`, { method: 'POST', headers, body: text })
- if (!res.ok) throw new Error('Import failed')
- toast.success('Backup imported. App will reload to apply data.')
- setTimeout(() => window.location.reload(), 400)
- } catch (e) {
- toast.error('Failed to import backup. Ensure you are admin and logged in.')
- }
- }
-
- const deleteAllData = async (includeUsers = false) => {
- const msg = includeUsers
- ? 'This will DELETE ALL DATA including users. Continue?'
- : 'This will DELETE ALL DATA (users will be kept). Continue?'
- const confirmed = await confirm({ title: 'Delete All Data', message: msg, confirmStyle: 'danger' })
- if (!confirmed) return
- try {
- const res = await fetch(`${API}/api/backup/purge${includeUsers ? '?includeUsers=true' : ''}`, { method: 'POST', headers })
- if (!res.ok) throw new Error('Purge failed')
- toast.success('All data deleted. App will reload.')
- setTimeout(() => window.location.reload(), 400)
- } catch (e) {
- toast.error('Failed to delete all data. Ensure you are admin and logged in.')
- }
- }
-
- const timerRef = useRef(null)
- useEffect(() => {
- if (tab !== 'backup') return
- if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
- if (backupCfg.autoBackupEnabled) {
- const mins = Math.max(1, Number(backupCfg.autoBackupIntervalMinutes || 60))
- const ms = mins * 60 * 1000
- timerRef.current = setInterval(() => { exportBackup() }, ms)
- }
- return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
- }, [tab, backupCfg.autoBackupEnabled, backupCfg.autoBackupIntervalMinutes])
-
- const saveBackupSettings = async () => {
- try {
- const savePayload = {
- autoBackupEnabled: backupCfg.autoBackupEnabled,
- autoBackupIntervalMinutes: Math.round(Math.max(1, Number(backupCfg.autoBackupIntervalMinutes || 60))),
- backupFolderPath: backupCfg.backupFolderPath,
- salesDeleteKey: backupCfg.salesDeleteKey,
- }
- const res = await fetch(`${API}/api/settings`, { method: 'PATCH', headers, body: JSON.stringify(savePayload) })
- if (!res.ok) throw new Error('Failed')
- const saved = await res.json()
- dispatch({ type: 'HYDRATE', payload: { settings: saved } })
- toast.success('Backup settings saved successfully')
- } catch {
- toast.error('Failed to save backup settings')
- }
- }
-
  return (
- <div className="max-w-6xl mx-auto space-y-4">
+ <div className="space-y-4 w-full">
  {/* Header */}
- <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><span className="text-2xl text-white font-bold">S</span></div><div><h1 className="text-2xl font-bold text-gray-900">Settings</h1><p className="text-sm text-gray-500">Manage your restaurant and system preferences</p></div></div>
+ <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg"><span className="text-2xl text-white font-bold">S</span></div><div><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1><p className="text-sm text-gray-500">Per-branch restaurant and system preferences{branchLabel ? ` · editing ${branchLabel}` : ''}</p></div></div>
+ {isAllBranches ? (
+  <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+   Select a branch in the header (<b>Working as</b>) to view and save that branch’s settings. Cloud Sync below is machine-local and does not need a branch.
+  </div>
+ ) : null}
 
  {/* Tabs */}
- <div className="border-b border-gray-200 dark:border-gray-700"><div className="flex flex-wrap gap-1"><TabButton id="company" label="Restaurant" icon="" activeTab={tab} onClick={setTab} /><TabButton id="system" label="System" icon="" activeTab={tab} onClick={setTab} /><TabButton id="restriction" label="Restriction" icon="" activeTab={tab} onClick={setTab} /><TabButton id="cloud" label="Cloud Sync" icon="" activeTab={tab} onClick={setTab} /><TabButton id="backup" label="Backup & Security" icon="" activeTab={tab} onClick={setTab} /></div></div>
+ <div className="border-b border-gray-200 dark:border-gray-700"><div className="flex flex-wrap gap-1"><TabButton id="company" label="Restaurant" icon="" activeTab={tab} onClick={setTab} /><TabButton id="system" label="System" icon="" activeTab={tab} onClick={setTab} /><TabButton id="restriction" label="Restriction" icon="" activeTab={tab} onClick={setTab} /><TabButton id="cloud" label="Cloud Sync" icon="" activeTab={tab} onClick={setTab} /></div></div>
 
  {/* Company Settings */}
  {tab === 'company' && (
@@ -418,7 +343,7 @@ export default function Settings() {
  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors"
  ></button></div>
  )}
- </div></div></CardBody></Card><div className="flex justify-end"><PrimaryButton onClick={saveCompany} icon="">Save Restaurant Settings</PrimaryButton></div></div>
+ </div></div></CardBody></Card><div className="flex justify-end"><PrimaryButton onClick={saveCompany} icon="" disabled={isAllBranches}>Save Restaurant Settings</PrimaryButton></div></div>
  )}
 
  {/* System Settings */}
@@ -504,7 +429,7 @@ export default function Settings() {
  icon=""
  >
  Refresh Printers
- </SecondaryButton></div></CardBody></Card><div className="flex justify-end"><PrimaryButton onClick={saveSystem} icon="">Save System Settings</PrimaryButton></div></div>
+ </SecondaryButton></div></CardBody></Card><div className="flex justify-end"><PrimaryButton onClick={saveSystem} icon="" disabled={isAllBranches}>Save System Settings</PrimaryButton></div></div>
  )}
 
  {/* Restriction — Sell page bill fields */}
@@ -547,7 +472,7 @@ export default function Settings() {
  </CardBody>
  </Card>
  <div className="flex justify-end">
- <PrimaryButton onClick={saveRestrictions} icon="">Save Restrictions</PrimaryButton>
+ <PrimaryButton onClick={saveRestrictions} icon="" disabled={isAllBranches}>Save Restrictions</PrimaryButton>
  </div>
  </div>
  )}
@@ -606,100 +531,6 @@ export default function Settings() {
  </div>
  )}
 
- {tab === 'backup' && (
- <div className="space-y-4">
- {/* Manual Backup */}
- <Card><CardHeader
- title="Manual Backup & Restore"
- subtitle="Create backups manually or restore from existing backup files"
- icon=""
- /><CardBody><div className="flex flex-wrap gap-3"><PrimaryButton onClick={exportBackup} icon="">Download Backup</PrimaryButton>
-
- {window?.backup ? (
- <SecondaryButton
- onClick={async () => {
- try {
- const fullPath = await window.backup.openFile()
- if (!fullPath) return
- const text = await window.backup.readFile(fullPath)
- const res = await fetch(`${API}/api/backup/import`, { method: 'POST', headers, body: text })
- if (!res.ok) throw new Error('Import failed')
- toast.success('Backup restored. App will reload.')
- setTimeout(() => window.location.reload(), 400)
- } catch (e) {
- toast.error('Failed to restore backup')
- }
- }}
- icon=""
- >
- Restore from File
- </SecondaryButton>
- ) : (
- <label className="inline-flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors cursor-pointer"><span></span>
- Restore from File
- <input type="file" accept="application/json" className="hidden" onChange={e => importBackup(e.target.files?.[0])} /></label>
- )}
-
- <DangerButton onClick={() => deleteAllData(false)}>Delete All Data</DangerButton></div></CardBody></Card>
-
- {/* Auto Backup */}
- <Card><CardHeader
- title="Automatic Backup"
- subtitle="Configure automatic backups at regular intervals"
- icon=""
- /><CardBody><div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-4"><input
- type="checkbox"
- id="autoBackup"
- checked={backupCfg.autoBackupEnabled}
- onChange={e => setBackupCfg(v => ({ ...v, autoBackupEnabled: e.target.checked }))}
- className="mt-1 w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
- /><div><label htmlFor="autoBackup" className="font-medium text-gray-900 dark:text-white cursor-pointer">
- Enable Automatic Backups
- </label><p className="text-sm text-gray-600 dark:text-gray-400">
- Automatically create backups at the specified interval
- </p></div></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-5"><InputGroup label="Backup Interval (minutes)" helpText="Minimum 1 minute"><input
- type="number"
- min="1"
- step="1"
- className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
- value={backupCfg.autoBackupIntervalMinutes}
- onChange={e => setBackupCfg(v => ({ ...v, autoBackupIntervalMinutes: Math.max(1, Number(e.target.value) || 1) }))}
- /></InputGroup><InputGroup label="Backup Folder Path" helpText="Where backup files will be saved"><div className="flex gap-2"><input
- className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
- value={backupCfg.backupFolderPath}
- onChange={e => setBackupCfg(v => ({ ...v, backupFolderPath: e.target.value }))}
- placeholder="E:\\backups"
- />
- {window?.backup && (
- <button
- onClick={async () => {
- const p = await window.backup.selectFolder()
- if (p) setBackupCfg(v => ({ ...v, backupFolderPath: p }))
- }}
- className="px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
- >
- Browse
- </button>
- )}
- </div></InputGroup></div><div className="flex justify-end pt-2"><SecondaryButton onClick={saveBackupSettings} icon="">Save Backup Settings</SecondaryButton></div></CardBody></Card>
-
- {/* Security */}
- <Card><CardHeader
- title="Security Settings"
- subtitle="Configure security options for data protection"
- icon=""
- /><CardBody><InputGroup
- label="Sale Delete Key"
- helpText="Secret key required when deleting sales in Sales History. Keep this secure and share only with authorized staff."
- ><input
- type="password"
- className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
- placeholder="Enter a secure delete key"
- value={backupCfg.salesDeleteKey}
- onChange={e => setBackupCfg(v => ({ ...v, salesDeleteKey: e.target.value }))}
- /></InputGroup><div className="flex justify-end pt-2"><SecondaryButton onClick={saveBackupSettings} icon="">Save Security Settings</SecondaryButton></div></CardBody></Card></div>
- )}
- {ConfirmDialog}
  </div>
  )
 }

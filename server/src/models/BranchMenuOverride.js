@@ -15,6 +15,8 @@ const BranchMenuOverrideSchema = new mongoose.Schema({
   category: { type: String },
   sortOrder: { type: Number },
   imageUrl: { type: String },
+  // Branch-specific recipe (ingredient name → amount). When set, overrides shared recipe for this branch.
+  recipe: { type: mongoose.Schema.Types.Mixed },
 }, { timestamps: true })
 
 BranchMenuOverrideSchema.index({ branchId: 1, menuItemId: 1 }, { unique: true })

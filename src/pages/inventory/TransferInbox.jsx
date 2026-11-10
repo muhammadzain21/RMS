@@ -58,7 +58,7 @@ export default function TransferInbox() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <PageHero
-        title="Stock transfers in"
+        title="Branch Transfers"
         subtitle={activeBranch ? `${activeBranch.name} — one click adds warehouse transfer into inventory` : 'Select a branch'}
         icon={PackagePlus}
         actions={
