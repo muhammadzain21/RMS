@@ -209,6 +209,16 @@ async function start() {
     await mongoose.connect(MONGO_URI, { autoIndex: true, dbName: DB_NAME })
     console.log('MongoDB connected:', MONGO_URI, 'db:', DB_NAME)
 
+    // Tables used to be globally unique by name; now scoped per branchId+name
+    try {
+      await mongoose.connection.collection('tables').dropIndex('name_1')
+      console.log('Dropped legacy unique index tables.name_1')
+    } catch (e) {
+      if (e?.codeName !== 'IndexNotFound' && e?.code !== 27) {
+        console.warn('tables index drop:', e?.message || e)
+      }
+    }
+
     // Seed the hidden SuperAdmin account (owner of the feature-access portal)
     try {
       const saUser = process.env.SUPERADMIN_USERNAME || 'superadmin'

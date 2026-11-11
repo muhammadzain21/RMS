@@ -100,25 +100,37 @@ export default function BackupSecurity() {
     let cancelled = false
     const load = async () => {
       if (!token) return
+      if (isAllBranches || !activeBranchId) {
+        applyBackupFromSettings({})
+        return
+      }
       try {
         const res = await fetch(`${API}/api/settings`, {
-          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            'X-Branch-Id': String(activeBranchId),
+          },
           cache: 'no-store',
         })
         if (!res.ok || cancelled) return
         const saved = await res.json()
         if (cancelled) return
-        dispatch({ type: 'HYDRATE', payload: { settings: saved } })
-        applyBackupFromSettings(saved || {})
+        const next = { ...(saved || {}), branchId: saved?.branchId || activeBranchId }
+        dispatch({ type: 'HYDRATE', payload: { settings: next } })
+        applyBackupFromSettings(next)
       } catch {}
     }
     load()
     return () => { cancelled = true }
-  }, [token, activeBranchId])
+  }, [token, activeBranchId, isAllBranches, API, dispatch])
 
   const headers = useMemo(
-    () => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }),
-    [token]
+    () => ({
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(activeBranchId ? { 'X-Branch-Id': String(activeBranchId) } : {}),
+    }),
+    [token, activeBranchId]
   )
 
   const exportBackup = async () => {

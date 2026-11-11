@@ -1,5 +1,6 @@
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
 import { addDays, format } from 'date-fns'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import IngredientModal from '../../components/IngredientModal.jsx'
@@ -16,6 +17,7 @@ import { parseSpreadsheetFile, rowsToInventoryImportPayload, INVENTORY_EXPORT_HE
 export default function InventoryList() {
  const { state, dispatch, businessDate } = useData()
  const { token } = useAuth()
+ const { activeBranchId } = useBranch()
  const { confirm, ConfirmDialog } = useConfirm()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const fileInputRef = useRef(null)
@@ -54,7 +56,7 @@ export default function InventoryList() {
  } catch {}
  }
 
- useEffect(() => { refreshIngredients(); refreshSuppliers() }, [])
+ useEffect(() => { refreshIngredients(); refreshSuppliers() }, [activeBranchId, token]) // eslint-disable-line react-hooks/exhaustive-deps
 
  const columns = [
  { label: 'Sr No', render: (row, idx) =><span className="text-gray-500">{idx + 1}</span> },
@@ -126,14 +128,17 @@ export default function InventoryList() {
  const items = state.ingredients || []
  const totalItems = items.length
  const lowStockCount = items.filter(i => Number(i.qty) <= Number(i.lowStock || 5) && Number(i.qty) > 0).length
+ const inStockCount = items.filter(i => Number(i.qty) > Number(i.lowStock || 5)).length
  const outOfStockCount = items.filter(i => Number(i.qty) === 0).length
  const expirySoonCount = items.filter(i => i.expiry && new Date(i.expiry) <= addDays(new Date(), 7) && new Date(i.expiry) >= new Date()).length
  const totalInventoryValue = items.reduce((sum, i) => sum + (Number(i.qty || 0) * Number(i.price || 0)), 0)
 
- // Tabs: all | low | expiring | out
+ // Tabs: all | in | low | expiring | out
  const [tab, setTab] = useState('all')
+ useEffect(() => { setPage(1) }, [tab])
  const filteredItems = useMemo(() => {
  let result = items
+ if (tab === 'in') result = result.filter(i => Number(i.qty) > Number(i.lowStock || 5))
  if (tab === 'low') result = result.filter(i => Number(i.qty) <= Number(i.lowStock || 5) && Number(i.qty) > 0)
  if (tab === 'expiring') result = result.filter(i => i.expiry && new Date(i.expiry) <= addDays(new Date(), 7) && Number(i.qty) > 0)
  if (tab === 'out') result = result.filter(i => Number(i.qty) === 0)
@@ -180,7 +185,7 @@ export default function InventoryList() {
    supplierName(i),
  ])
 
- const tabLabel = { all: 'All Items', low: 'Low Stock', expiring: 'Expiring Soon', out: 'Out of Stock' }[tab] || tab
+ const tabLabel = { all: 'All Items', in: 'In Stock', low: 'Low Stock', expiring: 'Expiring Soon', out: 'Out of Stock' }[tab] || tab
 
  const openPrintPreview = async () => {
  try {
@@ -313,7 +318,14 @@ export default function InventoryList() {
  </div>
 
  {/* Tabs */}
- <div className="flex flex-wrap gap-2 p-2 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700"><button onClick={()=>setTab('all')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='all' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}> All Items ({totalItems})</button><button onClick={()=>setTab('low')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='low' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}> Low Stock ({lowStockCount})</button><button onClick={()=>setTab('expiring')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='expiring' ? 'ui-btn ui-btn-primary shadow-lg scale-105' : 'ui-btn ui-btn-secondary'}`}> Expiring Soon ({expirySoonCount})</button><button onClick={()=>setTab('out')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='out' ? 'ui-btn ui-btn-pdf shadow-lg scale-105' : 'ui-btn ui-btn-secondary'}`}> Out of Stock ({outOfStockCount})</button></div><div className="border-2 border-blue-200 dark:border-blue-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sr No</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Qty</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Stock Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Threshold</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Expiry</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price/Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Value</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Supplier</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="flex flex-wrap gap-2 p-2 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700">
+ <button onClick={()=>setTab('all')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='all' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}>All Items ({totalItems})</button>
+ <button onClick={()=>setTab('in')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='in' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}>In Stock ({inStockCount})</button>
+ <button onClick={()=>setTab('low')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='low' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}>Low Stock ({lowStockCount})</button>
+ <button onClick={()=>setTab('expiring')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='expiring' ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'}`}>Expiring Soon ({expirySoonCount})</button>
+ <button onClick={()=>setTab('out')} className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${tab==='out' ? 'ui-btn ui-btn-pdf' : 'ui-btn ui-btn-secondary'}`}>Out of Stock ({outOfStockCount})</button>
+ </div>
+<div className="border-2 border-blue-200 dark:border-blue-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sr No</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Qty</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Stock Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Threshold</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Expiry</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price/Unit</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Value</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Supplier</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedItems.map((row, idx) => (
  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-500">{idx + 1}</td><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{row.name}</td><td className="p-3"><span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">{row.category}</span></td><td className="p-3">
  {(() => {

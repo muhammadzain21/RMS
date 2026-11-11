@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
@@ -15,6 +17,7 @@ import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../.
 export default function Tables() {
  const { state, dispatch } = useData()
  const { token } = useAuth()
+ const { activeBranchId } = useBranch()
  const { confirm, ConfirmDialog } = useConfirm()
  const [newTable, setNewTable] = useState('')
  const [newFloor, setNewFloor] = useState('')
@@ -58,34 +61,32 @@ export default function Tables() {
  } catch {}
  }
 
- useEffect(() => {
- const load = async () => {
+ const loadTables = useCallback(async () => {
  try {
  const headers = token ? { Authorization: `Bearer ${token}` } : {}
- const res = await fetch(`${API}/api/tables`, { headers })
- if (!res.ok) return
-        setTables(await res.json() || [])
- } catch {}
- }
- load()
+ const res = await fetch(`${API}/api/tables`, { headers, cache: 'no-store' })
+ if (!res.ok) { setTables([]); return }
+ setTables(await res.json() || [])
+ } catch { setTables([]) }
  }, [API, token])
 
- useEffect(() => {
- const loadSummary = async () => {
+ const loadSummary = useCallback(async () => {
  try {
  const headers = token ? { Authorization: `Bearer ${token}` } : {}
  const params = new URLSearchParams()
  if (selectedDate && !fromDate && !toDate) params.set('date', selectedDate)
  if (fromDate) params.set('from', fromDate)
  if (toDate) params.set('to', toDate)
-        const res = await fetch(`${API}/api/tables/summary?${params}`, { headers })
+ const res = await fetch(`${API}/api/tables/summary?${params}`, { headers, cache: 'no-store' })
  if (!res.ok) { setSummary([]); return }
  const data = await res.json()
  setSummary(data?.tables || [])
  } catch { setSummary([]) }
- }
- loadSummary()
  }, [API, token, selectedDate, fromDate, toDate])
+
+ useEffect(() => { loadTables() }, [loadTables, activeBranchId])
+ useEffect(() => { loadSummary() }, [loadSummary, activeBranchId])
+ useLiveRefresh(() => { loadTables(); loadSummary() })
 
  const rows = useMemo(() => {
     const dineInSales = (state.sales || []).filter(s => s.orderType === 'Dine-in')

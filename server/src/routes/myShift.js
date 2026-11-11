@@ -299,6 +299,7 @@ router.get('/', async (req, res, next) => {
     const cardSalesRows = (sales || []).filter(x => pm(x) === 'card')
     const bankSalesRows = (sales || []).filter(x => pm(x) === 'bank' || pm(x) === 'online')
     const foodpandaSalesRows = (sales || []).filter(isFoodpanda)
+    const staffSalesRows = (sales || []).filter(x => pm(x) === 'staff' || pm(x) === 'complimentary' || pm(x) === 'personal')
 
     const sumRows = (rows) => rows.reduce((s, x) => s + saleAmt(x), 0)
     const salesTotal = (sales || []).reduce((s, x) => s + saleAmt(x), 0)
@@ -306,20 +307,17 @@ router.get('/', async (req, res, next) => {
     const salesCard = sumRows(cardSalesRows)
     const salesBank = sumRows(bankSalesRows)
     const salesFoodpanda = sumRows(foodpandaSalesRows)
+    const salesStaff = sumRows(staffSalesRows)
 
-    const payIn = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'IN').reduce((s, p) => s + money(p.amount), 0)
-    const payOut = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'OUT').reduce((s, p) => s + money(p.amount), 0)
-    const expenseTotal = (expenses || []).reduce((s, e) => s + money(e.amount), 0)
-    const cashExpenseTotal = (expenses || [])
-      .filter(e => {
-        const account = String(e.accountHead || 'cash').toLowerCase()
-        const method = String(e.paymentMethod || 'cash').toLowerCase()
-        return account === 'cash' || method === 'cash'
-      })
-      .reduce((s, e) => s + money(e.amount), 0)
+    const payInRows = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'IN')
+    const payOutRows = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'OUT')
+    const payIn = payInRows.reduce((s, p) => s + money(p.amount), 0)
+    const payOut = payOutRows.reduce((s, p) => s + money(p.amount), 0)
+    // My Day "Expenses" = Pay Out from Pay In/Out page (not Expenses module)
+    const expensesFromPayOut = payOut
     const supplierPayTotal = (warehousePayments || []).reduce((s, p) => s + money(p.amount), 0)
     const openingCash = money(myOpening?.openingCash)
-    const expectedDrawer = openingCash + salesCash + payIn - payOut - cashExpenseTotal
+    const expectedDrawer = openingCash + salesCash + payIn - payOut
 
     const mapSale = (s) => ({
       id: String(s._id || ''),
@@ -330,6 +328,18 @@ router.get('/', async (req, res, next) => {
       paymentMethod: s.paymentMethod || 'cash',
       total: saleAmt(s),
       items: Array.isArray(s.items) ? s.items.length : 0,
+      staffName: s.staffName || s.waiter || '',
+      staffId: s.staffId || s.waiterId || '',
+    })
+
+    const mapPay = (p) => ({
+      id: String(p._id || ''),
+      at: p.createdAt,
+      type: String(p.type || '').toUpperCase(),
+      amount: money(p.amount),
+      category: p.category || '',
+      note: p.note || '',
+      userName: p.userName || '',
     })
 
     res.json({
@@ -352,10 +362,11 @@ router.get('/', async (req, res, next) => {
         salesCard,
         salesBank,
         salesFoodpanda,
+        salesStaff,
         payIn,
         payOut,
-        expenses: cashExpenseTotal,
-        expensesAll: expenseTotal,
+        expenses: expensesFromPayOut,
+        expensesAll: expensesFromPayOut,
         supplierPayments: supplierPayTotal,
         voids: voidsDay.length,
         kots: kotsDay.length,
@@ -375,23 +386,12 @@ router.get('/', async (req, res, next) => {
         cardSales: cardSalesRows.map(mapSale),
         bankSales: bankSalesRows.map(mapSale),
         foodpandaSales: foodpandaSalesRows.map(mapSale),
-        payInOut: (payMoves || []).map(p => ({
-          id: String(p._id || ''),
-          at: p.createdAt,
-          type: String(p.type || '').toUpperCase(),
-          amount: money(p.amount),
-          category: p.category || '',
-          note: p.note || '',
-        })),
-        expenses: (expenses || []).map(e => ({
-          id: String(e._id || ''),
-          at: e.createdAt,
-          amount: money(e.amount),
-          head: e.expenseHead || e.category || '',
-          description: e.description || '',
-          paymentMethod: e.paymentMethod || 'cash',
-          accountHead: e.accountHead || 'cash',
-        })),
+        staffSales: staffSalesRows.map(mapSale),
+        payIn: payInRows.map(mapPay),
+        payOut: payOutRows.map(mapPay),
+        // Alias: expenses on My Day = pay-out entries
+        expenses: payOutRows.map(mapPay),
+        payInOut: (payMoves || []).map(mapPay),
         supplierPayments: (warehousePayments || []).map(p => ({
           id: String(p._id || ''),
           at: p.createdAt,

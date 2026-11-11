@@ -37,7 +37,7 @@ export default function WarehouseStock() {
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [tab, setTab] = useState('all') // all | low | out | expiring | expired
+  const [tab, setTab] = useState('all') // all | in | low | out | expiring | expired
 
   const load = async () => {
     setLoading(true)
@@ -73,6 +73,11 @@ export default function WarehouseStock() {
     const thr = Number(it.lowStock) || 0
     return thr > 0 ? (qty > 0 && qty <= thr) : (qty > 0 && qty <= 5)
   })
+  const inStock = items.filter(it => {
+    const qty = Number(it.qty) || 0
+    const thr = Number(it.lowStock) > 0 ? Number(it.lowStock) : 5
+    return qty > thr
+  })
   const expiring = items.filter(it => {
     if (!it.expiry || !(Number(it.qty) > 0)) return false
     const d = new Date(it.expiry)
@@ -85,7 +90,8 @@ export default function WarehouseStock() {
 
   const filtered = useMemo(() => {
     let list = items
-    if (tab === 'low') list = low
+    if (tab === 'in') list = inStock
+    else if (tab === 'low') list = low
     else if (tab === 'out') list = outOfStock
     else if (tab === 'expiring') list = expiring
     else if (tab === 'expired') list = expired
@@ -96,7 +102,7 @@ export default function WarehouseStock() {
       || String(it.category || '').toLowerCase().includes(q)
       || String(supplierNameOf(it) || '').toLowerCase().includes(q)
     )
-  }, [items, search, tab, suppliers]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items, search, tab, suppliers, inStock, low, outOfStock, expiring, expired]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = filtered.length
   const totalPages = Math.ceil(total / limit) || 1
@@ -281,9 +287,12 @@ export default function WarehouseStock() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <button type="button" onClick={() => setTab('all')} className="text-left">
           <StatCard title="All SKUs" value={String(items.length)} icon={Package} iconColor="bg-blue-500" />
+        </button>
+        <button type="button" onClick={() => setTab('in')} className="text-left">
+          <StatCard title="In stock" value={String(inStock.length)} icon={Package} iconColor="bg-emerald-500" />
         </button>
         <button type="button" onClick={() => setTab('out')} className="text-left">
           <StatCard title="Out of stock" value={String(outOfStock.length)} icon={Ban} iconColor="bg-rose-500" />
@@ -295,13 +304,14 @@ export default function WarehouseStock() {
           <StatCard title="Expiring soon" value={String(expiring.length)} icon={CalendarClock} iconColor="bg-orange-500" />
         </button>
         <button type="button" onClick={() => setTab('all')} className="text-left">
-          <StatCard title="Stock value" value={stockValue.toLocaleString()} icon={Wallet} iconColor="bg-emerald-500" />
+          <StatCard title="Stock value" value={stockValue.toLocaleString()} icon={Wallet} iconColor="bg-slate-700" />
         </button>
       </div>
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900/40">
         {[
           { id: 'all', label: `All (${items.length})` },
+          { id: 'in', label: `In stock (${inStock.length})` },
           { id: 'out', label: `Out of stock (${outOfStock.length})` },
           { id: 'low', label: `Low stock (${low.length})` },
           { id: 'expiring', label: `Expiring (${expiring.length})` },

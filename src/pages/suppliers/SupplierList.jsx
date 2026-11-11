@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
+import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import SupplierModal from '../../components/SupplierModal.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
@@ -17,6 +19,7 @@ export default function SupplierList() {
  const { state } = useData()
  const navigate = useNavigate()
  const { token } = useAuth()
+ const { activeBranchId } = useBranch()
  const { confirm, ConfirmDialog } = useConfirm()
  const [search, setSearch] = useState('')
  const [modalOpen, setModalOpen] = useState(false)
@@ -44,24 +47,30 @@ export default function SupplierList() {
  reloadSuppliers(1, val)
  }
 
- useEffect(() => {
- reloadSuppliers()
- }, [])
-
  const reloadSuppliers = useCallback(async (pageNum = page, searchQuery = search) => {
  setLoading(true)
  try {
  const headers = token ? { Authorization: `Bearer ${token}` } : {}
  const params = new URLSearchParams({ page: String(pageNum), limit: String(limit) })
  if (searchQuery) params.set('q', searchQuery)
- const res = await fetch(`${API}/api/suppliers?${params.toString()}`, { headers })
- const data = await res.json()
+ const res = await fetch(`${API}/api/suppliers?${params.toString()}`, { headers, cache: 'no-store' })
+ const data = await res.json().catch(() => ({}))
  const mapId = (x) => ({ ...x, id: x.id || x._id })
- setRows((data.rows || []).map(mapId)) // Update local state only
+ setRows((data.rows || []).map(mapId))
  setTotal(data.total || 0)
- } catch {}
+ } catch {
+ setRows([])
+ setTotal(0)
+ }
  setLoading(false)
  }, [API, token, page, limit, search])
+
+ useEffect(() => {
+ setPage(1)
+ reloadSuppliers(1, search)
+ }, [activeBranchId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+ useLiveRefresh(() => reloadSuppliers(page, search))
  const onDelete = async (id) => {
  const confirmed = await confirm({ title: 'Delete Supplier', message: 'Delete this supplier?' })
  if (!confirmed) return

@@ -10,9 +10,11 @@ const TableSchema = new mongoose.Schema({
   totalAmount: { type: Number, default: 0 },
   notes: { type: String, default: '' },
   imageUrl: { type: String, default: '' },
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+  // Per-branch dine-in tables (same name allowed on different branches)
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
-TableSchema.index({ name: 1 }, { unique: true })
+TableSchema.index({ branchId: 1, name: 1 })
 
 export default mongoose.model('Table', TableSchema)

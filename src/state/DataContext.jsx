@@ -538,7 +538,7 @@ export function DataProvider({ children }) {
         getJson('/api/staff?limit=500', []),
         getJson('/api/riders', []),
         getJson('/api/customers', []),
-        getJson('/api/suppliers', []),
+        getJson('/api/suppliers?limit=1000', []),
         getJson('/api/ingredients', []),
         getJson('/api/supplies', []),
         getJson('/api/sales?from=0000-00-00&to=9999-12-31', []),
@@ -565,23 +565,31 @@ export function DataProvider({ children }) {
         if (v && Array.isArray(v.data)) return v.data.map(mapId)
         return shared ? prevList : []
       }
-      const tablesFromApi = Array.isArray(tablesList) && tablesList.length > 0
-        ? tablesList.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
+      // Prefer branch-scoped /api/tables (including empty). Only fall back to settings if request failed.
+      const tablesFromApi = Array.isArray(tablesList)
+        ? tablesList.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '', id: t?.id || t?._id })).filter(t => t.name)
         : null
-      const normalizedTablesAuth = (tablesFromApi && tablesFromApi.length)
+      const normalizedTablesAuth = tablesFromApi != null
         ? tablesFromApi
         : (Array.isArray(settings?.tables)
           ? settings.tables.map(t => typeof t === 'string' ? { name: t } : ({ name: t?.name || t?.label || String(t), floor: t?.floor || '', imageUrl: t?.imageUrl || '' })).filter(t => t.name)
           : [])
-      const mergedSettingsAuth = {
-        ...prev.settings,
-        ...(settings || {}),
-        taxRate: Number(settings?.taxRate ?? prev.settings.taxRate ?? 0),
-        businessDayCutoffHour: Number(settings?.businessDayCutoffHour ?? prev.settings.businessDayCutoffHour ?? 4),
-        autoBackupEnabled: Boolean(settings?.autoBackupEnabled ?? prev.settings.autoBackupEnabled),
-        autoBackupIntervalMinutes: Number(settings?.autoBackupIntervalMinutes ?? prev.settings.autoBackupIntervalMinutes ?? 60),
-        tables: normalizedTablesAuth,
-      }
+      // Replace settings on branch change — do not keep previous branch fields
+      const mergedSettingsAuth = settings
+        ? {
+          ...settings,
+          taxRate: Number(settings.taxRate ?? 0),
+          businessDayCutoffHour: Number(settings.businessDayCutoffHour ?? 4),
+          autoBackupEnabled: Boolean(settings.autoBackupEnabled),
+          autoBackupIntervalMinutes: Number(settings.autoBackupIntervalMinutes ?? 60),
+          tables: normalizedTablesAuth,
+          branchId: settings.branchId || activeBranchId || '',
+        }
+        : {
+          ...prev.settings,
+          tables: normalizedTablesAuth,
+          branchId: activeBranchId || prev.settings?.branchId || '',
+        }
       dispatch({ type: 'HYDRATE', payload: {
         settings: mergedSettingsAuth,
         staffSettings: {
@@ -597,7 +605,7 @@ export function DataProvider({ children }) {
         staff: mapList(staff === undefined ? undefined : (staff?.data || staff), []),
         riders: mapList(riders, []),
         customers: mapList(customers, prev.customers, { shared: true }),
-        suppliers: mapList(suppliers, prev.suppliers, { shared: true }),
+        suppliers: mapList(suppliers, []),
         ingredients: mapList(ingredients, []),
         supplies: mapList(supplies, []),
         sales: mapList(sales, []),

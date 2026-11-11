@@ -69,6 +69,9 @@ const SettingsSchema = new mongoose.Schema({
     type: [String],
     default: ['Rent', 'Utilities', 'Wages', 'Salaries', 'Supplies', 'Transport', 'Marketing', 'Maintenance', 'Misc'],
   },
+  // One-time copy of legacy unscoped tables/suppliers into this branch
+  tablesCatalogSeeded: { type: Boolean, default: false },
+  suppliersCatalogSeeded: { type: Boolean, default: false },
 }, { timestamps: true })
 
 SettingsSchema.index(

@@ -7,7 +7,7 @@ import PageHero from '../../components/ui/PageHero.jsx'
 
 export default function BiometricSettings() {
   const { token } = useAuth()
-  const { activeBranch, isAllBranches, requireBranch } = useBranch()
+  const { activeBranch, activeBranchId, isAllBranches, requireBranch } = useBranch()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const branchLabel = activeBranch?.name || activeBranch?.code || ''
 
@@ -24,10 +24,30 @@ export default function BiometricSettings() {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
 
+  const branchHeaders = (extra = {}) => ({
+    ...extra,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(activeBranchId ? { 'X-Branch-Id': String(activeBranchId) } : {}),
+  })
+
   const fetchConfig = async () => {
     try {
-      const headers = token ? { Authorization: `Bearer ${token}` } : {}
-      const res = await fetch(`${API}/api/biometric-config`, { headers })
+      if (isAllBranches || !activeBranchId) {
+        setForm({
+          enabled: false,
+          ip: '',
+          port: 4370,
+          deviceId: 'ZK-01',
+          commPassword: 0,
+          pollIntervalMs: 120000,
+          duplicateWindowSec: 60,
+        })
+        return
+      }
+      const res = await fetch(`${API}/api/biometric-config`, {
+        headers: branchHeaders(),
+        cache: 'no-store',
+      })
       if (res.ok) {
         const data = await res.json()
         setForm({
@@ -50,7 +70,7 @@ export default function BiometricSettings() {
   useEffect(() => {
     setLoading(true)
     fetchConfig()
-  }, [token, activeBranch?.id, activeBranch?._id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, activeBranchId, isAllBranches]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
@@ -58,13 +78,9 @@ export default function BiometricSettings() {
     if (!requireBranch('Select a branch in the header to edit that branch’s biometric settings')) return
     try {
       setSaving(true)
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      }
       const res = await fetch(`${API}/api/biometric-config`, {
         method: 'PATCH',
-        headers,
+        headers: branchHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(form),
       })
       const data = await res.json().catch(() => ({}))
@@ -81,10 +97,9 @@ export default function BiometricSettings() {
     if (!requireBranch('Select a branch in the header to test that branch’s biometric device')) return
     try {
       setTesting(true)
-      const headers = token ? { Authorization: `Bearer ${token}` } : {}
       const res = await fetch(`${API}/api/biometric/test-connection`, {
         method: 'POST',
-        headers,
+        headers: branchHeaders(),
       })
       const data = await res.json()
       if (data.ok) toast.success(data.message)

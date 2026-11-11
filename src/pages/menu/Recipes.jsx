@@ -26,14 +26,17 @@ function blankRecipeBlock() {
   }
 }
 
+function normName(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
 function buildRecipePayload(rows, ingredients) {
-  const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')
   const byCanon = new Map()
   for (const r of rows || []) {
     const rawName = String(r.ingredientName || '').trim()
     const amt = Number(r.amount || 0)
     if (!rawName || Number.isNaN(amt) || amt < 0) continue
-    const inv = ingredients.find(i => norm(i.name) === norm(rawName))
+    const inv = ingredients.find(i => normName(i.name) === normName(rawName))
     const canon = inv?.name || rawName
     byCanon.set(canon, Number((byCanon.get(canon) || 0) + amt))
   }
@@ -42,10 +45,44 @@ function buildRecipePayload(rows, ingredients) {
   return recipe
 }
 
+/** Goods cost = sum(recipe amount × ingredient purchase price per unit). */
+function recipeGoodsCost(recipe, ingredients) {
+  let cost = 0
+  let missing = 0
+  for (const [name, amt] of Object.entries(recipe || {})) {
+    const qty = Number(amt) || 0
+    if (qty <= 0) continue
+    const inv = ingredients.find(i => normName(i.name) === normName(name))
+    const unitPrice = Number(inv?.price) || 0
+    if (!inv || unitPrice <= 0) missing += 1
+    cost += qty * unitPrice
+  }
+  return { cost, missing }
+}
+
+function marginPct(sellPrice, goodsCost) {
+  const sell = Number(sellPrice) || 0
+  if (sell <= 0) return null
+  return ((sell - (Number(goodsCost) || 0)) / sell) * 100
+}
+
+function fmtMoney(n) {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function fmtPct(n) {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return `${n.toFixed(1)}%`
+}
+
+/** Same Scope badges as Menu page (Shared / Branch override / Branch only). */
 function ScopeBadge({ m }) {
   if (m?.isBranchOnly) {
     return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">Branch only</span>
   }
+  // Recipe-specific override counts as branch override even if other fields are still shared
   if (m?.hasRecipeOverride || m?.hasOverride) {
     return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Branch override</span>
   }
@@ -79,27 +116,37 @@ export default function Recipes() {
   const [applyToAllBranches, setApplyToAllBranches] = useState(true)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(100)
+  const [listTab, setListTab] = useState('with') // with | without | all
 
   const menuWithRecipes = useMemo(
     () => allMenu.filter(m => m.recipe && Object.keys(m.recipe).length > 0),
     [allMenu],
   )
+  const menuWithoutRecipes = useMemo(
+    () => allMenu.filter(m => !m.recipe || Object.keys(m.recipe).length === 0),
+    [allMenu],
+  )
 
   const filteredList = useMemo(() => {
-    if (!listSearch) return menuWithRecipes
+    const base = listTab === 'without'
+      ? menuWithoutRecipes
+      : listTab === 'all'
+        ? allMenu
+        : menuWithRecipes
+    if (!listSearch.trim()) return base
     const q = listSearch.toLowerCase()
-    return menuWithRecipes.filter(m =>
+    return base.filter(m =>
       String(m.name || '').toLowerCase().includes(q)
       || String(m.category || '').toLowerCase().includes(q)
       || Object.keys(m.recipe || {}).some(ing => ing.toLowerCase().includes(q)),
     )
-  }, [menuWithRecipes, listSearch])
+  }, [listTab, allMenu, menuWithRecipes, menuWithoutRecipes, listSearch])
 
   const totalPages = Math.max(1, Math.ceil(filteredList.length / limit))
   const pagedList = filteredList.slice((page - 1) * limit, page * limit)
 
   useUserBusy(showRecipeDialog || !!viewItem)
-  useEffect(() => { setPage(1) }, [listSearch])
+  useEffect(() => { setPage(1) }, [listSearch, listTab])
 
   const startNew = () => {
     setEditingSingle(false)
@@ -150,13 +197,12 @@ export default function Recipes() {
         if (!q) return true
         return String(m.name || '').toLowerCase().includes(q) || String(m.category || '').toLowerCase().includes(q)
       })
-      .slice(0, 20)
   }
 
   const filteredIngredientsFor = (query) => {
     const q = String(query || '').trim().toLowerCase()
-    if (!q) return ingredients.slice(0, 20)
-    return ingredients.filter(i => String(i.name || '').toLowerCase().includes(q)).slice(0, 20)
+    if (!q) return ingredients
+    return ingredients.filter(i => String(i.name || '').toLowerCase().includes(q))
   }
 
   const onSave = async () => {
@@ -255,13 +301,26 @@ export default function Recipes() {
     return `${keys.slice(0, 3).map(k => `${k} (${recipe[k]})`).join(', ')} +${keys.length - 3} more`
   }
 
-  const recipeReportRows = () => filteredList.map(m => [
-    m.name || '',
-    m.category || '',
-    m.isBranchOnly ? 'Branch only' : (m.hasRecipeOverride || m.hasOverride) ? 'Branch override' : 'Shared',
-    getRecipeSummary(m.recipe),
-    Object.keys(m.recipe || {}).length,
-  ])
+  const recipeEconomics = (m) => {
+    const sell = Number(m.price) || 0
+    const { cost, missing } = recipeGoodsCost(m.recipe, ingredients)
+    const margin = marginPct(sell, cost)
+    return { sell, cost, margin, missing }
+  }
+
+  const recipeReportRows = () => filteredList.map(m => {
+    const { sell, cost, margin } = recipeEconomics(m)
+    return [
+      m.name || '',
+      m.category || '',
+      m.isBranchOnly ? 'Branch only' : (m.hasRecipeOverride || m.hasOverride) ? 'Branch override' : 'Shared',
+      getRecipeSummary(m.recipe),
+      Object.keys(m.recipe || {}).length,
+      fmtMoney(sell),
+      fmtMoney(cost),
+      fmtPct(margin),
+    ]
+  })
 
   const openPrintPreview = async () => {
     try {
@@ -272,15 +331,24 @@ export default function Recipes() {
         ]) +
         reportSec(`Recipes (${filteredList.length})`) +
         reportTable({
-          headers: ['Menu Item', 'Category', 'Scope', 'Ingredients', { t: 'Count', align: 'r' }],
+          headers: [
+            'Menu Item', 'Category', 'Scope', 'Ingredients', { t: 'Count', align: 'r' },
+            { t: 'Sell price', align: 'r' }, { t: 'Goods cost', align: 'r' }, { t: 'Margin %', align: 'r' },
+          ],
           numbered: true,
-          rows: filteredList.map(m => [
-            m.name,
-            m.category || '—',
-            m.isBranchOnly ? 'Branch only' : (m.hasRecipeOverride || m.hasOverride) ? 'Branch override' : 'Shared',
-            getRecipeSummary(m.recipe),
-            { v: Object.keys(m.recipe || {}).length, align: 'r' },
-          ]),
+          rows: filteredList.map(m => {
+            const { sell, cost, margin } = recipeEconomics(m)
+            return [
+              m.name,
+              m.category || '—',
+              m.isBranchOnly ? 'Branch only' : (m.hasRecipeOverride || m.hasOverride) ? 'Branch override' : 'Shared',
+              getRecipeSummary(m.recipe),
+              { v: Object.keys(m.recipe || {}).length, align: 'r' },
+              { v: fmtMoney(sell), align: 'r' },
+              { v: fmtMoney(cost), align: 'r' },
+              { v: fmtPct(margin), align: 'r' },
+            ]
+          }),
           emptyText: 'No recipes match filters',
         })
       const html = wrapReportDoc({
@@ -308,7 +376,7 @@ export default function Recipes() {
       doc.setFontSize(10)
       doc.text(`${filteredList.length} recipes`, 40, 46)
       doc.autoTable({
-        head: [['Menu Item', 'Category', 'Scope', 'Ingredients', 'Count']],
+        head: [['Menu Item', 'Category', 'Scope', 'Ingredients', 'Count', 'Sell price', 'Goods cost', 'Margin %']],
         body: recipeReportRows(),
         startY: 54,
         styles: { fontSize: 7, cellPadding: 3 },
@@ -327,7 +395,7 @@ export default function Recipes() {
     try {
       downloadCsvFile(
         `recipes_${format(new Date(), 'yyyy-MM-dd')}.csv`,
-        ['Menu Item', 'Category', 'Scope', 'Ingredients', 'Count'],
+        ['Menu Item', 'Category', 'Scope', 'Ingredients', 'Count', 'Sell price', 'Goods cost', 'Margin %'],
         recipeReportRows(),
       )
       toast.success('CSV exported successfully')
@@ -396,7 +464,7 @@ export default function Recipes() {
                         autoComplete="off"
                       />
                       {block.menuDropOpen && !editingSingle && (
-                        <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
+                        <div className="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
                           {menuMatches.map(m => {
                             const hasRecipe = m.recipe && Object.keys(m.recipe).length > 0
                             return (
@@ -459,7 +527,7 @@ export default function Recipes() {
                                     autoComplete="off"
                                   />
                                   {r.showDrop && (
-                                    <div className="absolute z-50 mt-1 left-3 right-3 max-h-48 overflow-y-auto rounded-lg border bg-white dark:bg-gray-800 shadow-lg">
+                                    <div className="absolute z-50 mt-1 left-3 right-3 max-h-72 overflow-y-auto rounded-lg border bg-white dark:bg-gray-800 shadow-lg">
                                       {ingMatches.map(i => (
                                         <button
                                           key={i.id}
@@ -472,7 +540,7 @@ export default function Recipes() {
                                           className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-slate-700 flex justify-between gap-2"
                                         >
                                           <span>{i.name}</span>
-                                          <span className="text-xs text-slate-500">{i.qty} {i.unit}</span>
+                                          <span className="text-xs text-slate-500">{i.qty} {i.unit} · {fmtMoney(i.price)}/u</span>
                                         </button>
                                       ))}
                                       {!ingMatches.length && <div className="px-3 py-2 text-sm text-slate-500">No inventory matches</div>}
@@ -583,42 +651,98 @@ export default function Recipes() {
           </div>
         </div>
 
-        <input
-          placeholder="Search recipes..."
-          value={listSearch}
-          onChange={e => setListSearch(e.target.value)}
-          className="w-full sm:w-72 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 text-sm"
-        />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex flex-wrap gap-2 p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50">
+            {[
+              { id: 'with', label: `With recipe (${menuWithRecipes.length})` },
+              { id: 'without', label: `Without recipe (${menuWithoutRecipes.length})` },
+              { id: 'all', label: `All menu (${allMenu.length})` },
+            ].map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setListTab(t.id)}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  listTab === t.id ? 'ui-btn ui-btn-primary' : 'ui-btn ui-btn-secondary'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <input
+            placeholder={listTab === 'without' ? 'Search menu items…' : 'Search recipes…'}
+            value={listSearch}
+            onChange={e => setListSearch(e.target.value)}
+            className="w-full sm:w-72 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+        </div>
 
         <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm">
-          <table className="min-w-full text-sm">
+          <table className="min-w-[1100px] w-full text-sm">
             <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
               <tr>
                 <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Menu Item</th>
                 <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Category</th>
-                <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Scope</th>
                 <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Ingredients</th>
                 <th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Count</th>
+                <th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300">Sell price</th>
+                <th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300" title="(Sell − Goods cost) ÷ Sell">Margin %</th>
+                <th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300" title="Sum of recipe amounts × inventory purchase price">Goods cost</th>
+                <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Scope</th>
                 <th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th>
               </tr>
             </thead>
             <tbody>
               {pagedList.map(m => {
                 const recipeKeys = Object.keys(m.recipe || {})
+                const hasRecipe = recipeKeys.length > 0
+                const { sell, cost, margin, missing } = recipeEconomics(m)
+                const marginClass = margin == null
+                  ? 'text-gray-400'
+                  : margin >= 40
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : margin >= 20
+                      ? 'text-amber-700 dark:text-amber-300'
+                      : 'text-rose-700 dark:text-rose-300'
                 return (
                   <tr key={m.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="p-3 font-medium text-gray-900 dark:text-gray-100">{m.name}</td>
                     <td className="p-3 text-gray-600 dark:text-gray-400">{m.category || '—'}</td>
-                    <td className="p-3"><ScopeBadge m={m} /></td>
-                    <td className="p-3 text-gray-600 dark:text-gray-400 text-xs">{getRecipeSummary(m.recipe)}</td>
-                    <td className="p-3 text-center">
-                      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 text-xs font-bold">{recipeKeys.length}</span>
+                    <td className="p-3 text-gray-600 dark:text-gray-400 text-xs">
+                      {hasRecipe ? getRecipeSummary(m.recipe) : <span className="text-amber-600 font-medium">No recipe</span>}
                     </td>
                     <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => setViewItem(m)} className="px-3 py-1.5 rounded-lg bg-sky-500 text-white text-sm font-medium">View</button>
-                        <button onClick={() => startEdit(m)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium">Edit</button>
-                        <button disabled={deleting} onClick={() => onDelete(m)} className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-sm font-medium disabled:opacity-50">Delete</button>
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${
+                        hasRecipe ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800'
+                      }`}>{recipeKeys.length}</span>
+                    </td>
+                    <td className="p-3 text-right font-semibold tabular-nums whitespace-nowrap">{fmtMoney(sell)}</td>
+                    <td className={`p-3 text-right font-bold tabular-nums whitespace-nowrap ${marginClass}`}>{hasRecipe ? fmtPct(margin) : '—'}</td>
+                    <td className="p-3 text-right tabular-nums whitespace-nowrap">
+                      {hasRecipe ? (
+                        <>
+                          <div className="font-semibold">{fmtMoney(cost)}</div>
+                          {missing > 0 && (
+                            <div className="text-[10px] text-amber-600">{missing} missing price</div>
+                          )}
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      <ScopeBadge m={m} />
+                    </td>
+                    <td className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        {hasRecipe ? (
+                          <>
+                            <button onClick={() => setViewItem(m)} className="px-3 py-1.5 rounded-lg bg-sky-500 text-white text-sm font-medium">View</button>
+                            <button onClick={() => startEdit(m)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium">Edit</button>
+                            <button disabled={deleting} onClick={() => onDelete(m)} className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-sm font-medium disabled:opacity-50">Delete</button>
+                          </>
+                        ) : (
+                          <button onClick={() => startEdit(m)} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium">Add recipe</button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -626,7 +750,13 @@ export default function Recipes() {
               })}
               {!pagedList.length && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">No recipes found. Use Create Recipe to add one or many.</td>
+                  <td colSpan={9} className="p-8 text-center text-gray-500">
+                    {listTab === 'without'
+                      ? 'All menu items already have recipes.'
+                      : listTab === 'all'
+                        ? 'No menu items found.'
+                        : 'No recipes found. Use Create Recipe or switch to Without recipe.'}
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -651,6 +781,26 @@ export default function Recipes() {
                 <button onClick={() => setViewItem(null)} className="px-3 py-1.5 rounded-lg border text-sm">Close</button>
               </div>
               <div className="p-5">
+                {(() => {
+                  const { sell, cost, margin, missing } = recipeEconomics(viewItem)
+                  return (
+                    <div className="mb-4 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl border p-2 dark:border-gray-700">
+                        <div className="text-[10px] uppercase text-slate-500">Sell price</div>
+                        <div className="font-bold tabular-nums">{fmtMoney(sell)}</div>
+                      </div>
+                      <div className="rounded-xl border p-2 dark:border-gray-700">
+                        <div className="text-[10px] uppercase text-slate-500">Margin %</div>
+                        <div className="font-bold tabular-nums">{fmtPct(margin)}</div>
+                      </div>
+                      <div className="rounded-xl border p-2 dark:border-gray-700">
+                        <div className="text-[10px] uppercase text-slate-500">Goods cost</div>
+                        <div className="font-bold tabular-nums">{fmtMoney(cost)}</div>
+                        {missing > 0 && <div className="text-[10px] text-amber-600">{missing} missing price</div>}
+                      </div>
+                    </div>
+                  )
+                })()}
                 {Object.keys(viewItem.recipe || {}).length > 0 ? (
                   <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-800">
@@ -658,16 +808,22 @@ export default function Recipes() {
                         <th className="text-left p-2">Ingredient</th>
                         <th className="text-left p-2">Unit</th>
                         <th className="text-right p-2">Amount</th>
+                        <th className="text-right p-2">Unit price</th>
+                        <th className="text-right p-2">Line cost</th>
                       </tr>
                     </thead>
                     <tbody>
                       {Object.entries(viewItem.recipe).map(([name, amt]) => {
-                        const inv = ingredients.find(i => i.name === name)
+                        const inv = ingredients.find(i => normName(i.name) === normName(name))
+                        const unitPrice = Number(inv?.price) || 0
+                        const lineCost = (Number(amt) || 0) * unitPrice
                         return (
                           <tr key={name} className="border-t">
                             <td className="p-2 font-medium">{name}</td>
                             <td className="p-2">{inv?.unit || '—'}</td>
                             <td className="p-2 text-right font-semibold text-blue-600">{amt}</td>
+                            <td className="p-2 text-right tabular-nums">{fmtMoney(unitPrice)}</td>
+                            <td className="p-2 text-right font-semibold tabular-nums">{fmtMoney(lineCost)}</td>
                           </tr>
                         )
                       })}

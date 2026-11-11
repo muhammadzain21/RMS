@@ -181,29 +181,40 @@ export default function Settings() {
  })
  }
 
- // Keep form in sync when DataContext settings change
+ // Keep form in sync when DataContext settings change for the active branch
  useEffect(() => {
- applySettingsToForm(state.settings || {})
- }, [state.settings])
+  const ns = state.settings || {}
+  // Ignore stale hydrate from a previous branch
+  if (activeBranchId && ns.branchId && String(ns.branchId) !== String(activeBranchId)) return
+  applySettingsToForm(ns)
+ }, [state.settings, activeBranchId])
 
- // Explicit refetch when header branch changes (avoids stale form if hydrate merges same-looking values)
+ // Explicit refetch when header branch changes
  useEffect(() => {
  let cancelled = false
  const load = async () => {
   if (!token) return
+  if (isAllBranches || !activeBranchId) {
+   applySettingsToForm({})
+   return
+  }
   try {
-   const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+   const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    'X-Branch-Id': String(activeBranchId),
+   }
    const res = await fetch(`${API}/api/settings`, { headers, cache: 'no-store' })
    if (!res.ok || cancelled) return
    const saved = await res.json()
    if (cancelled) return
-   dispatch({ type: 'HYDRATE', payload: { settings: saved } })
-   applySettingsToForm(saved || {})
+   const next = { ...(saved || {}), branchId: saved?.branchId || activeBranchId }
+   dispatch({ type: 'HYDRATE', payload: { settings: next } })
+   applySettingsToForm(next)
   } catch {}
  }
  load()
  return () => { cancelled = true }
- }, [token, activeBranchId])
+ }, [token, activeBranchId, isAllBranches, API, dispatch])
 
  const [printers, setPrinters] = useState([])
  useEffect(() => {
@@ -227,14 +238,19 @@ export default function Settings() {
  return () => { done = true }
  }, [tab, API, token])
 
+ const settingsHeaders = () => ({
+  'Content-Type': 'application/json',
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  ...(activeBranchId ? { 'X-Branch-Id': String(activeBranchId) } : {}),
+ })
+
  const saveCompany = async () => {
  if (!requireBranch('Select a branch in the header to edit that branch’s settings')) return
  try {
- const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
- const res = await fetch(`${API}/api/settings`, { method: 'PATCH', headers, body: JSON.stringify(company) })
+ const res = await fetch(`${API}/api/settings`, { method: 'PATCH', headers: settingsHeaders(), body: JSON.stringify(company) })
  const saved = await res.json().catch(() => ({}))
  if (!res.ok) throw new Error(saved.error || 'Failed')
- dispatch({ type: 'HYDRATE', payload: { settings: saved } })
+ dispatch({ type: 'HYDRATE', payload: { settings: { ...saved, branchId: saved.branchId || activeBranchId } } })
  toast.success(`Restaurant settings saved${branchLabel ? ` (${branchLabel})` : ''}`)
  } catch (e) {
  toast.error(e.message || 'Failed to save restaurant settings')
@@ -244,15 +260,14 @@ export default function Settings() {
  const saveSystem = async () => {
  if (!requireBranch('Select a branch in the header to edit that branch’s settings')) return
  try {
- const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const payload = {
  ...system,
  businessDayCutoffHour: Math.min(23, Math.max(0, Number(system.businessDayCutoffHour ?? 4)))
  }
- const res = await fetch(`${API}/api/settings`, { method: 'PATCH', headers, body: JSON.stringify(payload) })
+ const res = await fetch(`${API}/api/settings`, { method: 'PATCH', headers: settingsHeaders(), body: JSON.stringify(payload) })
  const saved = await res.json().catch(() => ({}))
  if (!res.ok) throw new Error(saved.error || 'Failed')
- dispatch({ type: 'HYDRATE', payload: { settings: saved } })
+ dispatch({ type: 'HYDRATE', payload: { settings: { ...saved, branchId: saved.branchId || activeBranchId } } })
  toast.success(`System settings saved${branchLabel ? ` (${branchLabel})` : ''}`)
  } catch (e) {
  toast.error(e.message || 'Failed to save system settings')
@@ -262,15 +277,14 @@ export default function Settings() {
  const saveRestrictions = async () => {
  if (!requireBranch('Select a branch in the header to edit that branch’s settings')) return
  try {
- const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
  const res = await fetch(`${API}/api/settings`, {
  method: 'PATCH',
- headers,
+ headers: settingsHeaders(),
  body: JSON.stringify({ sellPageFields: sellFields }),
  })
  const saved = await res.json().catch(() => ({}))
  if (!res.ok) throw new Error(saved.error || 'Failed')
- dispatch({ type: 'HYDRATE', payload: { settings: saved } })
+ dispatch({ type: 'HYDRATE', payload: { settings: { ...saved, branchId: saved.branchId || activeBranchId } } })
  toast.success(`Sell page restrictions saved${branchLabel ? ` (${branchLabel})` : ''}`)
  } catch (e) {
  toast.error(e.message || 'Failed to save restrictions')

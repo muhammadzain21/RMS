@@ -12,6 +12,8 @@ import CallCenterOrder from '../models/CallCenterOrder.js'
 import WarehouseTransfer from '../models/WarehouseTransfer.js'
 import Ingredient from '../models/Ingredient.js'
 import Demand from '../models/Demand.js'
+import Table from '../models/Table.js'
+import Supplier from '../models/Supplier.js'
 import Customer from '../models/Customer.js'
 import MenuItem from '../models/MenuItem.js'
 import Category from '../models/Category.js'
@@ -37,6 +39,8 @@ const BRANCH_MODELS = {
   warehouseTransfers: WarehouseTransfer,
   ingredients: Ingredient,
   demands: Demand,
+  tables: Table,
+  suppliers: Supplier,
   menuOverrides: BranchMenuOverride,
   categoryOverrides: BranchCategoryOverride,
 }
@@ -72,6 +76,10 @@ router.get('/pull', async (req, res, next) => {
         q.$or = [{ toBranchId: String(branchId) }]
         delete q.branchId
         q.updatedAt = { $gt: since }
+      }
+      // Branch suppliers only (HQ warehouse suppliers stay out of branch sync)
+      if (name === 'suppliers') {
+        q.scope = { $ne: 'warehouse' }
       }
       data[name] = await Model.find(q).sort({ updatedAt: 1 }).limit(500).lean()
     }
@@ -137,6 +145,10 @@ router.post('/push', async (req, res, next) => {
           if (!clean.branchId) clean.branchId = branchId
         } else {
           clean.branchId = clean.branchId || branchId
+        }
+        if (name === 'suppliers') {
+          if (String(clean.scope || '') === 'warehouse') continue
+          clean.scope = 'branch'
         }
 
         if (id && name === 'callCenterOrders') {
