@@ -138,10 +138,16 @@ export default function Settings() {
   try {
    const r = await syncOnce(token)
    refreshCloudSyncStatus()
-   if (r?.skipped) toast(r.reason === 'cloud_sync_url not set or same as local'
-     ? 'Set a VPS URL different from this PC’s local API'
-     : (r.reason || 'Sync skipped'), { icon: 'ℹ️' })
-   else if (r?.ok) toast.success('Synced with cloud')
+   if (r?.skipped) {
+     const msg = r.reason === 'cloud_sync_url not set or same as local'
+       ? 'Set a VPS URL different from this PC’s local API (branch = localhost + cloud URL)'
+       : r.reason === 'browser offline — will sync when back online'
+         ? 'You are offline — reconnect and Sync Now'
+         : r.reason === 'no active branch'
+           ? 'Select a branch in the header (or set home branch) then sync'
+           : (r.reason || 'Sync skipped')
+     toast(msg, { icon: 'ℹ️' })
+   } else if (r?.ok) toast.success('Synced with cloud')
    else toast.error(r?.error || 'Sync failed')
   } catch (e) {
    toast.error(e?.message || 'Sync failed')
@@ -612,7 +618,7 @@ export default function Settings() {
     </InputGroup>
     <InputGroup
      label="Cloud Sync Token (optional)"
-     helpText="Only if the VPS needs a separate JWT. Usually leave blank and use the same login token."
+     helpText="Required when VPS JWT_SECRET differs from this PC. Log into the VPS once, copy the token from DevTools → Application → localStorage → token (or leave blank if secrets match)."
     >
      <input
       type="password"

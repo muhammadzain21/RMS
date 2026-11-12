@@ -30,19 +30,33 @@ export default function SyncBootstrap() {
     }
   }, [token])
 
+  useEffect(() => {
+    const onOnline = () => {
+      if (!token) return
+      syncOnce(token).then(() => setSt(getSyncStatus())).catch(() => setSt(getSyncStatus()))
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [token])
+
   // Tiny status chip only when cloud sync is configured
   if (!st.cloud) return null
+
+  const offline = !!st.offline
+  const title = offline
+    ? 'Offline — will sync when internet returns'
+    : (st.lastError || (st.lastOkAt ? `Last sync ${st.lastOkAt}` : 'Cloud sync ready'))
 
   return (
     <button
       type="button"
-      title={st.lastError || (st.lastOkAt ? `Last sync ${st.lastOkAt}` : 'Cloud sync ready')}
+      title={title}
       onClick={() => token && syncOnce(token).then(() => setSt(getSyncStatus()))}
       className={`fixed bottom-3 right-3 z-40 rounded-full px-3 py-1.5 text-[11px] font-bold shadow-lg ${
-        st.lastError ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
+        offline ? 'bg-amber-500 text-white' : st.lastError ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
       }`}
     >
-      {st.busy ? 'Syncing…' : st.lastError ? 'Sync error' : 'Cloud sync'}
+      {st.busy ? 'Syncing…' : offline ? 'Offline' : st.lastError ? 'Sync error' : 'Cloud sync'}
     </button>
   )
 }

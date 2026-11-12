@@ -47,7 +47,6 @@ const BRANCH_MODELS = {
 
 const SHARED_MODELS = {
   customers: Customer,
-  // menu handled specially — shared items only (no branchId)
   categories: Category,
 }
 
@@ -57,6 +56,51 @@ function sinceDate(since) {
   return Number.isFinite(d.getTime()) ? d : new Date(0)
 }
 
+function stripImmutable(doc = {}) {
+  const clean = { ...doc }
+  delete clean._id
+  delete clean.id
+  delete clean.__v
+  return clean
+}
+
+function newerUpdatedAt(a, b) {
+  const ta = new Date(a?.updatedAt || 0).getTime()
+  const tb = new Date(b?.updatedAt || 0).getTime()
+  return tb >= ta
+}
+
+async function upsertById(Model, id, clean, { mergeFn } = {}) {
+  const existing = await Model.findById(id).lean()
+  let payload = stripImmutable(clean)
+  if (mergeFn) {
+    payload = stripImmutable(mergeFn(existing, { ...clean, _id: id }))
+  } else if (existing && !newerUpdatedAt(existing, clean)) {
+    // Incoming is older or equal — keep existing, only fill empty fields
+    const filled = { ...existing }
+    for (const [k, v] of Object.entries(payload)) {
+      if (k === 'updatedAt' || k === 'createdAt') continue
+      if (filled[k] == null || filled[k] === '') filled[k] = v
+    }
+    payload = stripImmutable(filled)
+  }
+  await Model.findByIdAndUpdate(
+    id,
+    { $set: payload },
+    { upsert: true, setDefaultsOnInsert: true, timestamps: false }
+  )
+}
+
+async function upsertShared(Model, row) {
+  const id = row._id || row.id
+  const clean = stripImmutable(row)
+  if (id) {
+    await Model.findByIdAndUpdate(id, { $set: clean }, { upsert: true, setDefaultsOnInsert: true, timestamps: false })
+    return
+  }
+  await Model.create(clean)
+}
+
 /** Pull changes for a branch (+ shared catalogs) since timestamp */
 router.get('/pull', async (req, res, next) => {
   try {
@@ -64,6 +108,7 @@ router.get('/pull', async (req, res, next) => {
     assertBranchAccess(req, branchId)
     const since = sinceDate(req.query.since)
     const deviceId = String(req.query.deviceId || 'default')
+    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 50), 2000)
 
     const data = {}
     for (const [name, Model] of Object.entries(BRANCH_MODELS)) {
@@ -71,24 +116,23 @@ router.get('/pull', async (req, res, next) => {
         branchId: String(branchId),
         updatedAt: { $gt: since },
       }
-      // Call-center + transfers: also pull by toBranchId / branchId
       if (name === 'warehouseTransfers') {
-        q.$or = [{ toBranchId: String(branchId) }]
+        q.$or = [
+          { toBranchId: String(branchId) },
+          { branchId: String(branchId) },
+        ]
         delete q.branchId
         q.updatedAt = { $gt: since }
       }
-      // Branch suppliers only (HQ warehouse suppliers stay out of branch sync)
       if (name === 'suppliers') {
         q.scope = { $ne: 'warehouse' }
       }
-      data[name] = await Model.find(q).sort({ updatedAt: 1 }).limit(500).lean()
+      data[name] = await Model.find(q).sort({ updatedAt: 1 }).limit(limit).lean()
     }
     for (const [name, Model] of Object.entries(SHARED_MODELS)) {
-      // Shared catalogs can be large — pull full delta, not a 500 cap
-      data[name] = await Model.find({ updatedAt: { $gt: since } }).sort({ updatedAt: 1 }).limit(5000).lean()
+      data[name] = await Model.find({ updatedAt: { $gt: since } }).sort({ updatedAt: 1 }).limit(Math.min(limit * 2, 5000)).lean()
     }
 
-    // Shared menu items (branchId empty) + this branch's own items
     data.menu = await MenuItem.find({
       updatedAt: { $gt: since },
       $or: [
@@ -97,7 +141,7 @@ router.get('/pull', async (req, res, next) => {
         { branchId: { $exists: false } },
         { branchId: String(branchId) },
       ],
-    }).sort({ updatedAt: 1 }).limit(5000).lean()
+    }).sort({ updatedAt: 1 }).limit(Math.min(limit * 2, 5000)).lean()
 
     const now = new Date()
     for (const name of [...Object.keys(BRANCH_MODELS), ...Object.keys(SHARED_MODELS), 'menu']) {
@@ -108,7 +152,18 @@ router.get('/pull', async (req, res, next) => {
       )
     }
 
-    res.json({ ok: true, branchId, since: since.toISOString(), serverTime: now.toISOString(), data })
+    const counts = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0]))
+    const hasMore = Object.values(counts).some((n) => n >= limit)
+
+    res.json({
+      ok: true,
+      branchId,
+      since: since.toISOString(),
+      serverTime: now.toISOString(),
+      hasMore,
+      counts,
+      data,
+    })
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message })
     next(e)
@@ -128,41 +183,46 @@ router.post('/push', async (req, res, next) => {
     const deviceId = String(req.body?.deviceId || 'default')
     const docs = req.body?.docs || {}
     const results = {}
+    const errors = []
 
     for (const [name, Model] of Object.entries(BRANCH_MODELS)) {
       const rows = Array.isArray(docs[name]) ? docs[name] : []
       let upserted = 0
       for (const row of rows) {
-        const id = row._id || row.id
-        const clean = { ...row }
-        delete clean.__v
-        delete clean.id
-        // Force branch ownership (except transfers use toBranchId)
-        if (name === 'warehouseTransfers') {
-          clean.toBranchId = clean.toBranchId || branchId
-        } else if (name === 'callCenterOrders') {
-          // Keep original branch; never overwrite with sync device branch if already set
-          if (!clean.branchId) clean.branchId = branchId
-        } else {
-          clean.branchId = clean.branchId || branchId
-        }
-        if (name === 'suppliers') {
-          if (String(clean.scope || '') === 'warehouse') continue
-          clean.scope = 'branch'
-        }
+        try {
+          const id = row._id || row.id
+          const clean = stripImmutable(row)
 
-        if (id && name === 'callCenterOrders') {
-          const existing = await Model.findById(id).lean()
-          const merged = mergeCallCenterOrder(existing, clean)
-          delete merged._id
-          delete merged.__v
-          await Model.findByIdAndUpdate(id, { $set: merged }, { upsert: true, setDefaultsOnInsert: true })
-        } else if (id) {
-          await Model.findByIdAndUpdate(id, { $set: clean }, { upsert: true, setDefaultsOnInsert: true })
-        } else {
-          await Model.create(clean)
+          if (name === 'warehouseTransfers') {
+            clean.toBranchId = clean.toBranchId || branchId
+          } else if (name === 'callCenterOrders') {
+            if (!clean.branchId) clean.branchId = branchId
+          } else {
+            clean.branchId = clean.branchId || branchId
+          }
+          if (name === 'suppliers') {
+            if (String(clean.scope || '') === 'warehouse') continue
+            clean.scope = 'branch'
+          }
+
+          if (id && name === 'callCenterOrders') {
+            await upsertById(Model, id, clean, { mergeFn: mergeCallCenterOrder })
+          } else if (id) {
+            await upsertById(Model, id, clean)
+          } else if (clean.idempotencyKey && (name === 'sales' || name === 'kots')) {
+            const existing = await Model.findOne({ idempotencyKey: clean.idempotencyKey }).lean()
+            if (existing?._id) {
+              await upsertById(Model, existing._id, clean)
+            } else {
+              await Model.create(clean)
+            }
+          } else {
+            await Model.create(clean)
+          }
+          upserted += 1
+        } catch (rowErr) {
+          errors.push({ collection: name, id: String(row?._id || row?.id || ''), error: String(rowErr?.message || rowErr) })
         }
-        upserted += 1
       }
       results[name] = upserted
       if (upserted) {
@@ -174,7 +234,41 @@ router.post('/push', async (req, res, next) => {
       }
     }
 
-    res.json({ ok: true, branchId, results, serverTime: new Date().toISOString() })
+    // Shared catalogs + menu (cloud → branch apply, or HQ push)
+    for (const [name, Model] of Object.entries(SHARED_MODELS)) {
+      const rows = Array.isArray(docs[name]) ? docs[name] : []
+      let upserted = 0
+      for (const row of rows) {
+        try {
+          await upsertShared(Model, row)
+          upserted += 1
+        } catch (rowErr) {
+          errors.push({ collection: name, id: String(row?._id || row?.id || ''), error: String(rowErr?.message || rowErr) })
+        }
+      }
+      results[name] = upserted
+    }
+
+    if (Array.isArray(docs.menu)) {
+      let upserted = 0
+      for (const row of docs.menu) {
+        try {
+          await upsertShared(MenuItem, row)
+          upserted += 1
+        } catch (rowErr) {
+          errors.push({ collection: 'menu', id: String(row?._id || row?.id || ''), error: String(rowErr?.message || rowErr) })
+        }
+      }
+      results.menu = upserted
+    }
+
+    res.json({
+      ok: true,
+      branchId,
+      results,
+      errors: errors.slice(0, 20),
+      serverTime: new Date().toISOString(),
+    })
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message })
     next(e)

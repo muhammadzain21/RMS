@@ -141,7 +141,9 @@ export default function Login() {
     window.addEventListener('beforeinstallprompt', onBip)
     window.addEventListener('appinstalled', onInstalled)
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {})
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        try { reg.update() } catch {}
+      }).catch(() => {})
     }
     return () => {
       window.removeEventListener('beforeinstallprompt', onBip)

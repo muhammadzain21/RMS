@@ -207,7 +207,7 @@ export default function MyRider() {
   const onDelivery = session?.status === 'on_delivery'
 
   return (
-    <div className="space-y-4 pb-10 max-w-lg mx-auto">
+    <div className="space-y-4 pb-10 w-full">
       <PageHero
         icon={Bike}
         title="Rider delivery"

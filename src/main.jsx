@@ -182,3 +182,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </ErrorBoundary>
   </React.StrictMode>
 )
+
+// Keep PWA installable, but refresh SW so map tiles / API are not intercepted
+try {
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && !isElectron) {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      try { reg.update() } catch {}
+    }).catch(() => {})
+  }
+} catch {}

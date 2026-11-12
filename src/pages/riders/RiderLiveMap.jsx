@@ -42,6 +42,8 @@ export default function RiderLiveMap() {
   const [riders, setRiders] = useState([])
   const [loading, setLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState('')
+  const [netError, setNetError] = useState('')
+  const lastToastAt = useRef(0)
 
   const headers = token ? { Authorization: `Bearer ${token}` } : {}
 
@@ -50,9 +52,12 @@ export default function RiderLiveMap() {
     if (!mapEl.current) return L
     if (!mapRef.current) {
       mapRef.current = L.map(mapEl.current).setView([31.5204, 74.3587], 12) // default Lahore-ish; fits Pakistan cities
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      // Carto tiles are more reliable behind some firewalls than osm.org directly
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         maxZoom: 19,
-        attribution: '&copy; OpenStreetMap',
+        subdomains: 'abcd',
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        crossOrigin: true,
       }).addTo(mapRef.current)
     }
     return L
@@ -98,17 +103,29 @@ export default function RiderLiveMap() {
   }, [ensureMap])
 
   const reload = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setNetError('Offline — live locations pause until internet returns')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch(`${API()}/api/rider-tracking/live`, { headers, cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Failed to load')
+      if (!res.ok) throw new Error(json.error || `Failed to load (${res.status})`)
       const list = Array.isArray(json.riders) ? json.riders : []
       setRiders(list)
       setUpdatedAt(new Date().toLocaleTimeString())
+      setNetError('')
       await paint(list)
     } catch (e) {
-      toast.error(e.message || 'Live map failed')
+      const msg = e?.message || 'Live map failed'
+      setNetError(msg)
+      // Avoid toast spam every 8s while polling
+      const now = Date.now()
+      if (now - lastToastAt.current > 20000) {
+        lastToastAt.current = now
+        toast.error(msg)
+      }
     } finally {
       setLoading(false)
     }
@@ -142,6 +159,12 @@ export default function RiderLiveMap() {
           </button>
         }
       />
+
+      {netError ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm font-semibold text-amber-900 dark:text-amber-100">
+          {netError}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <div className="rounded-xl border border-[var(--color-border)] overflow-hidden shadow-sm bg-[var(--color-surface)]">

@@ -55,6 +55,7 @@ import callCenterOrdersRouter from './routes/callCenterOrders.js'
 import warehouseRouter from './routes/warehouse.js'
 import hqAnalyticsRouter from './routes/hqAnalytics.js'
 import syncRouter from './routes/sync.js'
+import reportsPdfRouter from './routes/reportsPdf.js'
 import { startBiometricPoller } from './biometric/jobs/poller.js'
 import bcrypt from 'bcryptjs'
 import User from './models/User.js'
@@ -158,6 +159,7 @@ app.use('/api/call-center-orders', callCenterOrdersRouter)
 app.use('/api/warehouse', warehouseRouter)
 app.use('/api/hq', hqAnalyticsRouter)
 app.use('/api/sync', syncRouter)
+app.use('/api/reports', reportsPdfRouter)
 // Serve the built frontend so the POS is reachable in the browser
 // (localhost / LAN) while the desktop app is running.
 // Packaged Electron: resources/app/dist  |  Dev monorepo: <repo>/dist

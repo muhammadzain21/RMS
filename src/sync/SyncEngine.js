@@ -6,13 +6,23 @@
  *
  * Runs while the app is in use. Writes should call requestSync() so
  * call-center status and inventory land without waiting for the timer.
+ * Coming back online triggers an immediate catch-up sync.
  */
 
 const INTERVAL_MS = 5000
-const COLLECTIONS = [
+const MAX_DRAIN_PAGES = 12
+
+/** Branch-scoped collections pushed local → cloud and applied cloud → local */
+const BRANCH_COLLECTIONS = [
   'sales', 'kots', 'recalls', 'expenses', 'staff', 'attendance',
   'callCenterOrders', 'warehouseTransfers', 'ingredients', 'demands',
+  'tables', 'suppliers', 'menuOverrides', 'categoryOverrides',
 ]
+
+/** Shared catalogs applied cloud → local (and optionally pushed) */
+const SHARED_COLLECTIONS = ['customers', 'categories', 'menu']
+
+const ALL_APPLY_COLLECTIONS = [...BRANCH_COLLECTIONS, ...SHARED_COLLECTIONS]
 
 const CC_STATUS_RANK = {
   pending: 1,
@@ -84,6 +94,14 @@ function deviceId() {
   }
 }
 
+function isBrowserOffline() {
+  try {
+    return typeof navigator !== 'undefined' && navigator.onLine === false
+  } catch {
+    return false
+  }
+}
+
 /** Prefer header branch; if All, use home / last stored so sync still runs. */
 export function resolveSyncBranchId() {
   try {
@@ -91,7 +109,6 @@ export function resolveSyncBranchId() {
     if (active) return active
     const home = String(localStorage.getItem('sync_home_branch_id') || '').trim()
     if (home) return home
-    // last non-empty branch the user selected
     const last = String(localStorage.getItem('sync_last_branch_id') || '').trim()
     return last
   } catch {
@@ -123,68 +140,133 @@ async function fetchJson(url, opts) {
   try { j = text ? JSON.parse(text) : {} } catch {
     throw new Error(`Cloud API returned non-JSON (HTTP ${res.status})`)
   }
-  if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        j.error ||
+        `Cloud auth failed (HTTP ${res.status}). Set Cloud Sync Token in Settings if VPS JWT secret differs from this PC.`
+      )
+    }
+    throw new Error(j.error || `HTTP ${res.status}`)
+  }
   return j
 }
 
-function pickDocs(data) {
+function pickDocs(data, names) {
   const docs = {}
-  for (const name of COLLECTIONS) {
+  for (const name of names) {
     if (Array.isArray(data?.[name]) && data[name].length) docs[name] = data[name]
   }
   return docs
 }
 
-/** Push local changes to cloud first (call-center status must leave before pull). */
+function batchHasRows(docs) {
+  return Object.values(docs || {}).some((arr) => Array.isArray(arr) && arr.length > 0)
+}
+
+function maxUpdatedAt(docs) {
+  let max = 0
+  for (const rows of Object.values(docs || {})) {
+    if (!Array.isArray(rows)) continue
+    for (const row of rows) {
+      const t = new Date(row?.updatedAt || 0).getTime()
+      if (Number.isFinite(t) && t > max) max = t
+    }
+  }
+  return max ? new Date(max).toISOString() : ''
+}
+
+/** Push local changes to cloud (drain pages so overnight offline backlog clears). */
 async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
   const sinceKey = `sync_push_since_${branchId}`
   let since = '1970-01-01T00:00:00.000Z'
   try { since = localStorage.getItem(sinceKey) || since } catch {}
 
-  const localPull = await fetchJson(
-    `${local}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}`,
-    { headers: authHeaders(token) }
-  )
+  let pages = 0
+  let lastServerTime = ''
+  while (pages < MAX_DRAIN_PAGES) {
+    pages += 1
+    const localPull = await fetchJson(
+      `${local}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500`,
+      { headers: authHeaders(token) }
+    )
 
-  const docs = pickDocs(localPull.data)
-  if (!Object.keys(docs).length) {
-    return { ok: true, empty: true, serverTime: localPull.serverTime }
+    const docs = pickDocs(localPull.data, BRANCH_COLLECTIONS)
+    lastServerTime = localPull.serverTime || lastServerTime
+
+    if (!batchHasRows(docs)) {
+      if (localPull.serverTime) {
+        try { localStorage.setItem(sinceKey, localPull.serverTime) } catch {}
+      }
+      break
+    }
+
+    await fetchJson(`${cloud}/api/sync/push`, {
+      method: 'POST',
+      headers: authHeaders(cloudToken || token),
+      body: JSON.stringify({ branchId, deviceId: deviceId(), docs }),
+    })
+
+    // Advance past the newest row we actually sent (not wall clock — avoids skipping mid-batch).
+    // When more pages remain, step back 1ms so same-timestamp rows cut by the limit are not missed.
+    const advanced = maxUpdatedAt(docs) || localPull.serverTime
+    if (advanced) {
+      let next = advanced
+      if (localPull.hasMore) {
+        const t = new Date(advanced).getTime()
+        if (Number.isFinite(t) && t > 0) next = new Date(t - 1).toISOString()
+      }
+      since = next
+      try { localStorage.setItem(sinceKey, next) } catch {}
+    }
+
+    if (!localPull.hasMore) break
   }
-
-  const pushed = await fetchJson(`${cloud}/api/sync/push`, {
-    method: 'POST',
-    headers: authHeaders(cloudToken || token),
-    body: JSON.stringify({ branchId, deviceId: deviceId(), docs }),
-  })
-
-  if (localPull.serverTime) {
-    try { localStorage.setItem(sinceKey, localPull.serverTime) } catch {}
-  }
-  return pushed
+  return { ok: true, pages, serverTime: lastServerTime }
 }
 
-/** Pull cloud into local (apply via local sync push upsert). */
+/** Pull cloud into local (apply via local sync push upsert); drain pages. */
 async function pullThenApply({ cloud, local, token, cloudToken, branchId }) {
   const sinceKey = `sync_since_${branchId}`
   let since = '1970-01-01T00:00:00.000Z'
   try { since = localStorage.getItem(sinceKey) || since } catch {}
 
-  const pulled = await fetchJson(
-    `${cloud}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}`,
-    { headers: authHeaders(cloudToken || token) }
-  )
+  let pages = 0
+  let lastServerTime = ''
+  while (pages < MAX_DRAIN_PAGES) {
+    pages += 1
+    const pulled = await fetchJson(
+      `${cloud}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500`,
+      { headers: authHeaders(cloudToken || token) }
+    )
 
-  const data = pulled.data || {}
-  await fetchJson(`${local}/api/sync/push`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({ branchId, deviceId: deviceId(), docs: data }),
-  })
+    const data = pulled.data || {}
+    const docs = pickDocs(data, ALL_APPLY_COLLECTIONS)
+    lastServerTime = pulled.serverTime || lastServerTime
 
-  if (pulled.serverTime) {
-    try { localStorage.setItem(sinceKey, pulled.serverTime) } catch {}
+    if (batchHasRows(docs)) {
+      await fetchJson(`${local}/api/sync/push`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ branchId, deviceId: deviceId(), docs }),
+      })
+      const advanced = maxUpdatedAt(docs) || pulled.serverTime
+      if (advanced) {
+        let next = advanced
+        if (pulled.hasMore) {
+          const t = new Date(advanced).getTime()
+          if (Number.isFinite(t) && t > 0) next = new Date(t - 1).toISOString()
+        }
+        since = next
+        try { localStorage.setItem(sinceKey, next) } catch {}
+      }
+    } else if (pulled.serverTime) {
+      try { localStorage.setItem(sinceKey, pulled.serverTime) } catch {}
+    }
+
+    if (!pulled.hasMore || !batchHasRows(docs)) break
   }
-  return pulled
+  return { ok: true, pages, serverTime: lastServerTime }
 }
 
 let timer = null
@@ -194,6 +276,8 @@ let lastOkAt = null
 let getTokenFn = null
 let pendingSync = false
 let debounceTimer = null
+let onlineListener = null
+let branchListener = null
 
 export function getSyncStatus() {
   return {
@@ -204,6 +288,7 @@ export function getSyncStatus() {
     cloud: cloudApi(),
     local: localApi(),
     branchId: resolveSyncBranchId(),
+    offline: isBrowserOffline(),
   }
 }
 
@@ -213,6 +298,9 @@ export async function syncOnce(token) {
   if (!cloud || !local || sameHost(cloud, local)) {
     lastError = ''
     return { skipped: true, reason: 'cloud_sync_url not set or same as local' }
+  }
+  if (isBrowserOffline()) {
+    return { skipped: true, reason: 'browser offline — will sync when back online' }
   }
   const branchId = resolveSyncBranchId()
   if (!branchId) return { skipped: true, reason: 'no active branch' }
@@ -277,28 +365,37 @@ export function requestSync(reason = 'write') {
   }, 600)
 }
 
-let branchListener = null
+function kick(reason = 'timer') {
+  try {
+    const token = typeof getTokenFn === 'function' ? getTokenFn() : getTokenFn
+    if (!token) return
+    if (!cloudApi()) return
+    Promise.resolve(syncOnce(token)).catch(() => {})
+    try {
+      window.dispatchEvent(new CustomEvent('epicspire:sync_requested', { detail: { reason } }))
+    } catch {}
+  } catch {}
+}
 
 export function startSyncEngine(getToken) {
   stopSyncEngine()
   getTokenFn = getToken
-  const tick = () => {
-    try {
-      const token = typeof getTokenFn === 'function' ? getTokenFn() : getTokenFn
-      if (!token) return
-      if (!cloudApi()) return
-      Promise.resolve(syncOnce(token)).catch(() => {})
-    } catch {}
-  }
-  timer = setInterval(tick, INTERVAL_MS)
-  setTimeout(tick, 1500)
+  timer = setInterval(() => kick('timer'), INTERVAL_MS)
+  setTimeout(() => kick('start'), 1500)
   try {
     branchListener = (ev) => {
       const id = ev?.detail
       if (id) rememberSyncBranch(id)
-      setTimeout(tick, 400)
+      setTimeout(() => kick('branch'), 400)
     }
     window.addEventListener('active_branch_changed', branchListener)
+  } catch {}
+  try {
+    onlineListener = () => {
+      // Back online after offline POS — drain backlog immediately
+      setTimeout(() => kick('online'), 500)
+    }
+    window.addEventListener('online', onlineListener)
   } catch {}
 }
 
@@ -310,7 +407,11 @@ export function stopSyncEngine() {
   try {
     if (branchListener) window.removeEventListener('active_branch_changed', branchListener)
   } catch {}
+  try {
+    if (onlineListener) window.removeEventListener('online', onlineListener)
+  } catch {}
   branchListener = null
+  onlineListener = null
 }
 
-export { CC_STATUS_RANK }
+export { CC_STATUS_RANK, BRANCH_COLLECTIONS, SHARED_COLLECTIONS }

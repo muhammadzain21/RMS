@@ -38,106 +38,89 @@ function triggerBrowserPdfDownload(data, fileName, { base64 = false } = {}) {
   if (!base64) setTimeout(() => { try { URL.revokeObjectURL(a.href) } catch {} }, 2500)
 }
 
-/**
- * Preview a report document. Electron renders the HTML to an A4 PDF and opens
- * it in the PDF preview window; browsers print via a hidden iframe (the system
- * print dialog is the preview there).
- */
-export async function previewHtmlReport(html, fileName) {
-  try {
-    const api = (typeof window !== 'undefined') ? window.pdfPreview : null
-    if (api && typeof api.printHtml === 'function') {
-      const r = await api.printHtml(html, fileName)
-      if (r && r.ok !== false) return
-    }
-  } catch {}
-  try {
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
-    document.body.appendChild(iframe)
-    const doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)
-    if (!doc) { iframe.remove(); return }
-    let printed = false
-    const doPrint = () => {
-      if (printed) return
-      printed = true
-      try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch {}
-    }
-    doc.open(); doc.write(String(html || '')); doc.close()
-    // Single print only (onload + timeout previously opened the dialog twice)
-    if (iframe.contentDocument?.readyState === 'complete') {
-      setTimeout(doPrint, 250)
-    } else {
-      iframe.onload = () => setTimeout(doPrint, 50)
-      setTimeout(doPrint, 800)
-    }
-    setTimeout(() => { try { iframe.remove() } catch {} }, 60000)
-  } catch {}
+function reportApiBase() {
+  const raw = (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+  return String(raw || '').replace(/\/+$/, '')
+}
+
+function authToken() {
+  try { return sessionStorage.getItem('auth_token') || '' } catch { return '' }
 }
 
 /**
- * Download the same A4 letterhead HTML used by Print, as a PDF file.
- * Electron: Chromium printToPDF (matches print preview exactly).
- * Browser: html2pdf.js from the same HTML document.
+ * One A4 PDF for both Print and Download (server Chromium, same HTML + @page).
  */
-export async function downloadHtmlReport(html, fileName) {
+function base64ToPdfBlob(base64) {
+  const bin = atob(String(base64 || ''))
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: 'application/pdf' })
+}
+
+async function renderReportPdfBlob(html, fileName) {
   const name = sanitizeReportFileName(fileName)
+  const base = reportApiBase()
+  const token = authToken()
+  try {
+    const res = await fetch(`${base}/api/reports/pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ html, fileName: name }),
+    })
+    const ct = String(res.headers.get('content-type') || '')
+    if (res.ok && ct.includes('pdf')) return await res.blob()
+  } catch (e) {
+    console.warn('[renderReportPdfBlob] server', e)
+  }
+
+  // Same Chromium printToPDF Electron already uses for preview — keeps Print and PDF identical
   try {
     const api = (typeof window !== 'undefined') ? window.pdfPreview : null
     if (api && typeof api.downloadHtml === 'function') {
       const r = await api.downloadHtml(html, name)
-      if (r && r.ok && r.base64) {
-        triggerBrowserPdfDownload(r.base64, name, { base64: true })
-        return true
-      }
+      if (r && r.ok && r.base64) return base64ToPdfBlob(r.base64)
     }
   } catch (e) {
-    console.warn('[downloadHtmlReport] Electron path failed:', e)
+    console.warn('[renderReportPdfBlob] electron', e)
   }
 
-  // Browser: render the same HTML document to a multi-page A4 PDF
-  const iframe = document.createElement('iframe')
-  iframe.setAttribute('aria-hidden', 'true')
-  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none;'
-  document.body.appendChild(iframe)
-  try {
-    const idoc = iframe.contentDocument || iframe.contentWindow?.document
-    if (!idoc) throw new Error('iframe unavailable')
-    idoc.open()
-    idoc.write(String(html || ''))
-    idoc.close()
-    await new Promise((resolve) => {
-      const done = () => resolve()
-      if (idoc.readyState === 'complete') setTimeout(done, 200)
-      else iframe.onload = () => setTimeout(done, 200)
-      setTimeout(done, 1200)
-    })
-    // Wait for images (logo/watermark) so PDF matches print
-    try {
-      const imgs = [...(idoc.images || [])]
-      await Promise.all(imgs.map((img) => (img.complete ? Promise.resolve() : new Promise((res) => {
-        img.onload = img.onerror = () => res()
-        setTimeout(res, 1500)
-      }))))
-    } catch {}
+  throw new Error('Could not render the A4 report PDF')
+}
 
-    const html2pdf = (await import('html2pdf.js')).default
-    const opt = {
-      margin: 0,
-      filename: name,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] },
+/**
+ * Print preview = the same PDF file as Download, opened in one tab.
+ */
+export async function previewHtmlReport(html, fileName) {
+  const previewWin = window.open('', '_blank')
+  try {
+    const blob = await renderReportPdfBlob(html, fileName)
+    const url = URL.createObjectURL(blob)
+    if (previewWin) {
+      previewWin.location.href = url
+      try { previewWin.focus() } catch {}
+    } else {
+      window.open(url, '_blank')
     }
-    await html2pdf().set(opt).from(idoc.body).save()
+    setTimeout(() => { try { URL.revokeObjectURL(url) } catch {} }, 120000)
     return true
   } catch (e) {
-    console.warn('[downloadHtmlReport] browser path failed:', e)
+    try { previewWin?.close() } catch {}
+    console.warn('[previewHtmlReport]', e)
     throw e
-  } finally {
-    try { iframe.remove() } catch {}
   }
+}
+
+/**
+ * Download the same A4 PDF that Print preview shows.
+ */
+export async function downloadHtmlReport(html, fileName) {
+  const name = sanitizeReportFileName(fileName)
+  const blob = await renderReportPdfBlob(html, fileName)
+  triggerBrowserPdfDownload(blob, name)
+  return true
 }
 
 export function reportCss(accent = '#1e3a8a') {
@@ -164,6 +147,9 @@ export function reportCss(accent = '#1e3a8a') {
   .tbl thead th.c,.tbl td.c{text-align:center}
   .tbl td.r{text-align:right}
   .tbl tbody tr:nth-child(even) td{background:#f8fafc}
+  tr,.band,.meta,.title,.sect{break-inside:avoid;page-break-inside:avoid}
+  thead{display:table-header-group}
+  tfoot{display:table-footer-group}
   .sect{font-size:12px;font-weight:700;margin:12px 0 5px}
   .neg{color:#dc2626;font-weight:bold}
   .pos{color:#059669;font-weight:bold}
