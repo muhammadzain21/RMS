@@ -13,6 +13,9 @@ const BranchCategoryOverrideSchema = new mongoose.Schema({
   imageUrl: { type: String },
   sortOrder: { type: Number },
   discount: { type: Number },
+  price: { type: Number },
+  minItems: { type: Number },
+  maxItems: { type: Number },
 }, { timestamps: true })
 
 BranchCategoryOverrideSchema.index({ branchId: 1, categoryId: 1 }, { unique: true })

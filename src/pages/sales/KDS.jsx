@@ -4,7 +4,7 @@ import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import {
-  ChefHat, CheckCircle2, Clock, Flame, PackageCheck,
+  ChefHat, CheckCircle2, Clock, PackageCheck,
   Bell, ArrowRight, RefreshCw, Volume2, VolumeX,
   Timer, Utensils, Bike, ShoppingBag, Car, Printer,
 } from 'lucide-react'
@@ -15,11 +15,11 @@ import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
 const COLUMNS = [
-  { key: 'new', label: 'New Orders', icon: Bell, color: 'blue', next: 'preparing', nextLabel: 'Start Cooking', nextIcon: Flame },
-  { key: 'preparing', label: 'Preparing', icon: Flame, color: 'amber', next: 'ready', nextLabel: 'Mark Ready', nextIcon: CheckCircle2 },
-  { key: 'ready', label: 'Ready / Pickup', icon: CheckCircle2, color: 'green', next: 'completed', nextLabel: 'Complete', nextIcon: PackageCheck },
+  { key: 'active', label: 'Orders', icon: Bell, color: 'blue', next: 'completed', nextLabel: 'Complete', nextIcon: PackageCheck },
   { key: 'completed', label: 'Completed', icon: PackageCheck, color: 'slate', next: null, nextLabel: '', nextIcon: null },
 ]
+
+const ACTIVE_STATUSES = new Set(['new', 'preparing', 'ready', 'active'])
 
 const colorMap = {
   blue: { bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-600 dark:text-blue-400', dot: 'bg-blue-500', btn: 'bg-blue-500 hover:bg-blue-600', count: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' },
@@ -95,7 +95,7 @@ export default function KDS() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastNewCount, setLastNewCount] = useState(0)
   // Mobile: show one kanban column at a time
-  const [mobileCol, setMobileCol] = useState('new')
+  const [mobileCol, setMobileCol] = useState('active')
   const audioRef = useRef(null)
 
   useEffect(() => {
@@ -125,11 +125,11 @@ export default function KDS() {
           ? list.filter(k => String(k.date || '').slice(0, 10) === String(selectedDate))
           : list
         setKots(filtered)
-        const newCount = filtered.filter(k => (k.status || 'new') === 'new').length
-        if (newCount > lastNewCount && lastNewCount > 0 && soundOn) {
+        const activeCount = filtered.filter(k => ACTIVE_STATUSES.has(k.status || 'new')).length
+        if (activeCount > lastNewCount && lastNewCount > 0 && soundOn) {
           playBell()
         }
-        setLastNewCount(newCount)
+        setLastNewCount(activeCount)
       }
     } catch {}
     if (!silent) setLoading(false)
@@ -187,10 +187,11 @@ export default function KDS() {
   }
 
   const groupedByStatus = useMemo(() => {
-    const groups = { new: [], preparing: [], ready: [], completed: [] }
+    const groups = { active: [], completed: [] }
     kots.forEach(k => {
       const s = k.status || 'new'
-      if (groups[s]) groups[s].push(k)
+      if (s === 'completed') groups.completed.push(k)
+      else groups.active.push(k)
     })
     Object.keys(groups).forEach(s => {
       groups[s].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
@@ -230,10 +231,7 @@ export default function KDS() {
 
   const openPrintPreview = async () => {
     try {
-      const statusLabel = (s) => {
-        const col = COLUMNS.find(c => c.key === s)
-        return col?.label || s || 'New'
-      }
+      const statusLabel = (s) => ((s || '') === 'completed' ? 'Completed' : 'Open')
       const sorted = [...kots].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
       const completed = sorted.filter(k => (k.status || '') === 'completed')
       const avgMs = completed.length
@@ -250,9 +248,7 @@ export default function KDS() {
       const body =
         reportSummary([
           { label: 'Total KOTs', amount: String(sorted.length) },
-          { label: 'New', amount: String(groupedByStatus.new?.length || 0) },
-          { label: 'Preparing', amount: String(groupedByStatus.preparing?.length || 0) },
-          { label: 'Ready', amount: String(groupedByStatus.ready?.length || 0) },
+          { label: 'Open', amount: String(groupedByStatus.active?.length || 0) },
           { label: 'Completed', amount: String(groupedByStatus.completed?.length || 0) },
           { label: 'Avg cook time (completed)', amount: avgDur },
         ]) +
@@ -427,7 +423,7 @@ export default function KDS() {
 
       {/* Kanban board */}
       <div className="flex-1 overflow-x-auto p-3 sm:p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
 
           {COLUMNS.map(col => {
             const c = colorMap[col.color]
@@ -463,8 +459,8 @@ export default function KDS() {
                   {items.map(kot => {
                     const OrderIcon = orderTypeIcon(kot.orderType)
                     const elapsed = elapsedSeconds(kot.createdAt)
-                    const isUrgent = col.key === 'new' && elapsed > 300
-                    const isVeryUrgent = col.key === 'new' && elapsed > 600
+                    const isUrgent = col.key === 'active' && elapsed > 300
+                    const isVeryUrgent = col.key === 'active' && elapsed > 600
                     const doneAt = kotCompletedAt(kot)
                     const durationEnd = doneAt || (col.key !== 'completed' ? new Date() : null)
                     const duration = durationLabel(kot.createdAt, durationEnd)

@@ -25,6 +25,34 @@
           document.documentElement.style.colorScheme = 'dark'
         }
       } catch (e) {}
+      // Browser default zoom 67% (Electron uses webContents zoomFactor — skip there)
+      try {
+        if (!/Electron/i.test(navigator.userAgent || '')) {
+          var DEFAULT_APP_ZOOM = 0.67
+          document.documentElement.style.zoom = String(DEFAULT_APP_ZOOM)
+          window.__APP_ZOOM__ = DEFAULT_APP_ZOOM
+          window.__setAppZoom = function (next) {
+            var n = Number(next)
+            if (!Number.isFinite(n) || n < 0.5 || n > 3) return
+            document.documentElement.style.zoom = String(n)
+            window.__APP_ZOOM__ = n
+          }
+          window.addEventListener('keydown', function (ev) {
+            if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return
+            var cur = Number(window.__APP_ZOOM__ || DEFAULT_APP_ZOOM) || DEFAULT_APP_ZOOM
+            if (ev.key === '0') {
+              ev.preventDefault()
+              window.__setAppZoom(DEFAULT_APP_ZOOM)
+            } else if (ev.key === '=' || ev.key === '+') {
+              ev.preventDefault()
+              window.__setAppZoom(Math.min(3, Math.round((cur + 0.05) * 100) / 100))
+            } else if (ev.key === '-' || ev.key === '_') {
+              ev.preventDefault()
+              window.__setAppZoom(Math.max(0.5, Math.round((cur - 0.05) * 100) / 100))
+            }
+          }, { capture: true })
+        }
+      } catch (eZoom) {}
       // Network-only SW — required for Chrome "Install app" prompt. No caching.
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {

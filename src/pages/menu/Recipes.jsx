@@ -6,7 +6,7 @@ import { useBranch } from '../../state/BranchContext.jsx'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import { useUserBusy } from '../../hooks/useUserBusy.js'
 import Pagination from '../../components/Pagination.jsx'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, Copy, ClipboardPaste } from 'lucide-react'
 import { format } from 'date-fns'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
@@ -107,6 +107,7 @@ export default function Recipes() {
   )
 
   const [viewItem, setViewItem] = useState(null)
+  const [copiedRecipe, setCopiedRecipe] = useState(null) // { recipe, sourceName }
   const [listSearch, setListSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -155,23 +156,47 @@ export default function Recipes() {
     setShowRecipeDialog(true)
   }
 
-  const startEdit = (m) => {
+  const recipeToRows = (recipe) => {
+    const keys = Object.keys(recipe || {})
+    if (!keys.length) return [blankIngredient()]
+    return keys.map(name => ({
+      ingredientName: name,
+      amount: Number(recipe[name] || 0),
+      search: name,
+      showDrop: false,
+    }))
+  }
+
+  const startEdit = (m, recipeOverride = null) => {
     setEditingSingle(true)
     setApplyToAllBranches(!(m.hasRecipeOverride || m.hasOverride) && !m.isBranchOnly)
+    const recipe = recipeOverride || m.recipe || {}
     setBlocks([{
       menuId: m.id,
       menuSearch: '',
       menuDropOpen: false,
-      rows: Object.keys(m.recipe || {}).length
-        ? Object.keys(m.recipe).map(name => ({
-          ingredientName: name,
-          amount: Number(m.recipe[name] || 0),
-          search: name,
-          showDrop: false,
-        }))
-        : [blankIngredient()],
+      rows: recipeToRows(recipe),
     }])
     setShowRecipeDialog(true)
+  }
+
+  const copyRecipe = (m) => {
+    const recipe = { ...(m.recipe || {}) }
+    if (!Object.keys(recipe).length) {
+      toast.error('Nothing to copy')
+      return
+    }
+    setCopiedRecipe({ recipe, sourceName: m.name || 'item' })
+    toast.success(`Copied recipe from ${m.name}`)
+  }
+
+  const pasteRecipe = (m) => {
+    if (!copiedRecipe?.recipe || !Object.keys(copiedRecipe.recipe).length) {
+      toast.error('Copy a recipe first')
+      return
+    }
+    startEdit(m, copiedRecipe.recipe)
+    toast.success(`Pasted from ${copiedRecipe.sourceName} — adjust quantities then save`)
   }
 
   const updateBlock = (idx, patch) => {
@@ -297,8 +322,7 @@ export default function Recipes() {
   const getRecipeSummary = (recipe) => {
     const keys = Object.keys(recipe || {})
     if (!keys.length) return '—'
-    if (keys.length <= 3) return keys.map(k => `${k} (${recipe[k]})`).join(', ')
-    return `${keys.slice(0, 3).map(k => `${k} (${recipe[k]})`).join(', ')} +${keys.length - 3} more`
+    return keys.map(k => `${k} (${recipe[k]})`).join(', ')
   }
 
   const recipeEconomics = (m) => {
@@ -678,8 +702,29 @@ export default function Recipes() {
           />
         </div>
 
+        {copiedRecipe && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
+            <span>
+              Clipboard: <span className="font-bold">{copiedRecipe.sourceName}</span>
+              {' '}({Object.keys(copiedRecipe.recipe || {}).length} ingredients) — use Paste on another item, then tweak amounts and save.
+            </span>
+            <button type="button" onClick={() => setCopiedRecipe(null)} className="px-2 py-1 rounded-lg border border-sky-300 text-xs font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/40">Clear</button>
+          </div>
+        )}
+
         <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-x-auto shadow-sm">
-          <table className="min-w-[1100px] w-full text-sm">
+          <table className="min-w-[1100px] w-full table-fixed text-sm">
+            <colgroup>
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '28%' }} />
+              <col style={{ width: '5%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '11%' }} />
+            </colgroup>
             <thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
               <tr>
                 <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Menu Item</th>
@@ -705,11 +750,12 @@ export default function Recipes() {
                     : margin >= 20
                       ? 'text-amber-700 dark:text-amber-300'
                       : 'text-rose-700 dark:text-rose-300'
+                const btn = 'w-full px-2 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50'
                 return (
-                  <tr key={m.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="p-3 font-medium text-gray-900 dark:text-gray-100">{m.name}</td>
-                    <td className="p-3 text-gray-600 dark:text-gray-400">{m.category || '—'}</td>
-                    <td className="p-3 text-gray-600 dark:text-gray-400 text-xs">
+                  <tr key={m.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 align-top">
+                    <td className="p-3 font-medium text-gray-900 dark:text-gray-100 break-words whitespace-normal leading-snug">{m.name}</td>
+                    <td className="p-3 text-gray-600 dark:text-gray-400 break-words whitespace-normal leading-snug">{m.category || '—'}</td>
+                    <td className="p-3 text-gray-600 dark:text-gray-400 text-xs break-words whitespace-normal leading-relaxed">
                       {hasRecipe ? getRecipeSummary(m.recipe) : <span className="text-amber-600 font-medium">No recipe</span>}
                     </td>
                     <td className="p-3 text-center">
@@ -717,31 +763,36 @@ export default function Recipes() {
                         hasRecipe ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800'
                       }`}>{recipeKeys.length}</span>
                     </td>
-                    <td className="p-3 text-right font-semibold tabular-nums whitespace-nowrap">{fmtMoney(sell)}</td>
-                    <td className={`p-3 text-right font-bold tabular-nums whitespace-nowrap ${marginClass}`}>{hasRecipe ? fmtPct(margin) : '—'}</td>
-                    <td className="p-3 text-right tabular-nums whitespace-nowrap">
+                    <td className="p-3 text-right font-semibold tabular-nums break-words whitespace-normal">{fmtMoney(sell)}</td>
+                    <td className={`p-3 text-right font-bold tabular-nums break-words whitespace-normal ${marginClass}`}>{hasRecipe ? fmtPct(margin) : '—'}</td>
+                    <td className="p-3 text-right tabular-nums break-words whitespace-normal">
                       {hasRecipe ? (
                         <>
                           <div className="font-semibold">{fmtMoney(cost)}</div>
                           {missing > 0 && (
-                            <div className="text-[10px] text-amber-600">{missing} missing price</div>
+                            <div className="text-[10px] text-amber-600 break-words whitespace-normal">{missing} missing price</div>
                           )}
                         </>
                       ) : '—'}
                     </td>
-                    <td className="p-3 whitespace-nowrap">
+                    <td className="p-3 break-words whitespace-normal">
                       <ScopeBadge m={m} />
                     </td>
-                    <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <td className="p-2 align-top">
+                      <div className="grid grid-cols-2 gap-1.5 min-w-[7.5rem]">
                         {hasRecipe ? (
                           <>
-                            <button onClick={() => setViewItem(m)} className="px-3 py-1.5 rounded-lg bg-sky-500 text-white text-sm font-medium">View</button>
-                            <button onClick={() => startEdit(m)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium">Edit</button>
-                            <button disabled={deleting} onClick={() => onDelete(m)} className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-sm font-medium disabled:opacity-50">Delete</button>
+                            <button type="button" onClick={() => setViewItem(m)} className={`${btn} bg-sky-500`}>View</button>
+                            <button type="button" onClick={() => startEdit(m)} className={`${btn} bg-amber-500`}>Edit</button>
+                            <button type="button" onClick={() => copyRecipe(m)} className={`${btn} bg-indigo-500 inline-flex items-center justify-center gap-1`} title="Copy recipe"><Copy size={12} /> Copy</button>
+                            <button type="button" disabled={!copiedRecipe} onClick={() => pasteRecipe(m)} className={`${btn} bg-violet-500 inline-flex items-center justify-center gap-1 disabled:opacity-40`} title="Paste copied recipe"><ClipboardPaste size={12} /> Paste</button>
+                            <button type="button" disabled={deleting} onClick={() => onDelete(m)} className={`${btn} col-span-2 bg-rose-500`}>Delete</button>
                           </>
                         ) : (
-                          <button onClick={() => startEdit(m)} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium">Add recipe</button>
+                          <>
+                            <button type="button" onClick={() => startEdit(m)} className={`${btn} col-span-2 bg-emerald-600`}>Add recipe</button>
+                            <button type="button" disabled={!copiedRecipe} onClick={() => pasteRecipe(m)} className={`${btn} col-span-2 bg-violet-500 inline-flex items-center justify-center gap-1 disabled:opacity-40`} title="Paste copied recipe"><ClipboardPaste size={12} /> Paste recipe</button>
+                          </>
                         )}
                       </div>
                     </td>

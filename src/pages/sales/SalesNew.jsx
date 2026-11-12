@@ -2,7 +2,17 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useData } from '../../state/DataContext.jsx'
-import { createLineTotal } from './utils.js'
+import {
+  createLineTotal,
+  computeCategoryAwareSubtotal,
+  computeCategoryAwareDiscount,
+  validateCategorySelectionLimits,
+  resolvePersistUnitPrice,
+  findCategoryByName,
+  resolveItemCategoryName,
+  getCategoryPackagePrice,
+  categoryKeyOf,
+} from './utils.js'
 import CategoryBar from './components/CategoryBar.jsx'
 import ItemsList from './components/ItemsList.jsx'
 import CartTable from './components/CartTable.jsx'
@@ -106,27 +116,14 @@ export default function SalesNew() {
     [state.settings, orderType]
   )
   const allCategories = state.categories || []
-  const itemsDiscount = useMemo(() => items.reduce((disc, it) => {
-    const m = menu.find(x=>x.id===it.itemId)
-    if (!m) return disc
-    const itemDisc = Number(m.discount || 0)
-    let discPct = 0
-    if (itemDisc > 0) {
-      discPct = itemDisc
-    } else {
-      const cat = allCategories.find(c => c.name === m.category)
-      if (cat && Number(cat.discount || 0) > 0) discPct = Number(cat.discount)
-    }
-    if (discPct > 0) {
-      const lt = lineTotal(m, it) || 0
-      return disc + Math.round(lt * (discPct / 100))
-    }
-    return disc
-  }, 0), [items, menu, allCategories, lineTotal])
-  const subTotal = useMemo(() => items.reduce((s, it) => {
-    const m = menu.find(x=>x.id===it.itemId)
-    return s + (lineTotal(m, it) || 0)
-  }, 0), [items, menu, lineTotal])
+  const itemsDiscount = useMemo(
+    () => computeCategoryAwareDiscount(items, menu, allCategories, lineTotal),
+    [items, menu, allCategories, lineTotal]
+  )
+  const subTotal = useMemo(
+    () => computeCategoryAwareSubtotal(items, menu, allCategories, lineTotal),
+    [items, menu, allCategories, lineTotal]
+  )
   const totalItems = items.length
   const totalQty = items.reduce((s,it)=> s + Number(it.qty||0), 0)
 
@@ -274,10 +271,30 @@ export default function SalesNew() {
     if (!confirmed) return; 
     setItems([]) 
   }
+  const mapCartItemForPersist = (it) => {
+    const m = menu.find(x => x.id === it.itemId)
+    const catName = resolveItemCategoryName(m, it)
+    const cat = findCategoryByName(allCategories, catName)
+    const pkg = getCategoryPackagePrice(cat, it)
+    const price = resolvePersistUnitPrice(m, it, allCategories, lineTotal)
+    return {
+      itemId: it.itemId,
+      name: it.custom?.name || m?.name || '',
+      price,
+      qty: Number(it.qty || 1),
+      mods: it.mods || {},
+      custom: it.custom || (m ? { name: m.name, price: Number(m.price || 0), category: m.category } : null),
+      category: catName || m?.category || '',
+      ...(pkg > 0 ? { categoryPrice: pkg } : {}),
+    }
+  }
+
   const onKot = async () => {
     if (!items.length) { toast.error('Add items before KOT'); return }
     if (!orderType) { toast.error('Please select an order type first'); return }
-    
+    const limits = validateCategorySelectionLimits(items, menu, allCategories)
+    if (!limits.ok) { toast.error(limits.message); return }
+
     // Refresh tables before showing modal to ensure newly added tables appear
     if (orderType === 'Dine-in') {
       try {
@@ -297,13 +314,11 @@ export default function SalesNew() {
     if (!requireBranch('Select a branch in the header before selling')) return
     if (!items.length) return
     // Build a minimal order object similar to recall for unified payment flow
+    const limits = validateCategorySelectionLimits(items, menu, allCategories)
+    if (!limits.ok) { toast.error(limits.message); return }
     const buildOrd = () => {
-      const mappedItems = items.map(it => {
-        const m = menu.find(x=>x.id===it.itemId)
-        const price = m ? (lineTotal(m, { ...it, qty: 1 }) || 0) : Number(it.custom?.price || 0)
-        return { itemId: it.itemId, name: it.custom?.name || m?.name || '', price, qty: Number(it.qty||1), mods: it.mods||{}, custom: it.custom||null }
-      })
-      const subtotalLocal = mappedItems.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
+      const mappedItems = items.map(mapCartItemForPersist)
+      const subtotalLocal = computeCategoryAwareSubtotal(items, menu, allCategories, lineTotal)
       const totalQtyLocal = mappedItems.reduce((s,it)=> s + Number(it.qty||0), 0)
       return {
         createdAt: Date.now(),
@@ -938,23 +953,38 @@ export default function SalesNew() {
   }
 
   const onUpdateRecall = async () => {
-    // Update recalled order with current cart items without KOT (for adding drinks, etc.)
+    // Update recalled order with current cart items + order type / table / customer
     if (!activeRecall) { toast.error('No recalled order'); return }
     if (activeRecallSource !== 'recall') { toast.error('Update is only available for recalled orders'); return }
     if (!items.length) { toast.error('No items to update'); return }
+    if (!orderType) { toast.error('Select an order type before updating'); return }
+    if (orderType === 'Dine-in' && !String(kotTable || activeRecall.tableNo || '').trim()) {
+      toast.error('Select a table for Dine-in (use Change Table or KOT)')
+      return
+    }
 
     try {
       // Build merged items from current cart
-      const mergedItems = items.map(it => {
-        const m = menu.find(x=>x.id===it.itemId)
-        const price = m ? (lineTotal(m, { ...it, qty: 1 }) || 0) : Number(it.custom?.price || 0)
-        return { itemId: it.itemId, name: it.custom?.name || m?.name || '', price, qty: Number(it.qty||1), mods: it.mods||{}, custom: it.custom||null }
-      })
+      const mergedItems = items.map(mapCartItemForPersist)
 
-      // Recalculate totals
-      const subtotalLocal = mergedItems.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
+      // Recalculate totals (category package price ignores item prices)
+      const subtotalLocal = computeCategoryAwareSubtotal(items, menu, allCategories, lineTotal)
       const totalQtyLocal = mergedItems.reduce((s,it)=> s + Number(it.qty||0), 0)
       const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0) + Number(deliveryAmt||0))
+
+      const nextTable = orderType === 'Dine-in'
+        ? String(kotTable || activeRecall.tableNo || '').trim()
+        : ''
+      const nextWaiter = orderType === 'Dine-in'
+        ? String(kotWaiterId || activeRecall.waiterId || '').trim()
+        : ''
+      const nextCustomer = orderType === 'Delivery'
+        ? {
+          name: payName || activeRecall?.customer?.name || '',
+          phone: payPhone || activeRecall?.customer?.phone || '',
+          address: payAddress || activeRecall?.customer?.address || '',
+        }
+        : null
 
       const patchBody = {
         items: mergedItems,
@@ -966,14 +996,36 @@ export default function SalesNew() {
         serviceAmt: Number(serviceAmt||0),
         deliveryAmt: Number(deliveryAmt||0),
         totalAmount: totalAmountLocal,
+        orderType,
+        tableNo: nextTable,
+        waiterId: nextWaiter,
+        customer: nextCustomer,
       }
 
-      const res = await fetch(`${API}/api/recalls/${activeRecall.id}`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify(patchBody) })
+      const recallId = activeRecall.id || activeRecall._id
+      const res = await fetch(`${API}/api/recalls/${recallId}`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify(patchBody) })
       if (res.ok) {
         const updated = await res.json()
-        setActiveRecall(updated)
+        const merged = {
+          ...activeRecall,
+          ...updated,
+          id: updated.id || updated._id || recallId,
+          orderType,
+          tableNo: nextTable,
+          waiterId: nextWaiter,
+          customer: nextCustomer,
+          items: mergedItems,
+          totalAmount: totalAmountLocal,
+        }
+        setActiveRecall(merged)
+        // Optimistic list update so Recall dialog shows new order type immediately
+        const nextRecalls = (Array.isArray(state.recalls) ? state.recalls : []).map(r => {
+          const rid = String(r.id || r._id || '')
+          return rid === String(recallId) ? { ...r, ...merged } : r
+        })
+        dispatch({ type: 'HYDRATE', payload: { recalls: nextRecalls } })
         await refreshRecalls()
-        toast.success('Order updated successfully')
+        toast.success(`Order updated (${orderType})`)
       } else {
         toast.error('Failed to update order')
       }
@@ -989,10 +1041,53 @@ export default function SalesNew() {
       const itemsForBody = (Array.isArray(selectedItems) && selectedItems.length)
         ? selectedItems
         : (Array.isArray(r.items) ? r.items : items)
+
+      // Category-priced deals must be voided all-or-nothing (no single item)
+      {
+        const orderItems = Array.isArray(r.items) ? r.items : items
+        const voidByKey = new Map()
+        const keyOfLine = (it) => {
+          const mods = it.mods || {}
+          const isCustom = !menu.some(x => String(x.id) === String(it.itemId))
+          const customKey = isCustom ? `|${(it.custom?.name || it.name || '')}` : ''
+          return `${it.itemId}${customKey}|${JSON.stringify(mods)}`
+        }
+        itemsForBody.forEach(it => {
+          const k = keyOfLine(it)
+          voidByKey.set(k, (voidByKey.get(k) || 0) + Number(it.qty || 0))
+        })
+        const dealGroups = new Map()
+        orderItems.forEach(it => {
+          const m = menu.find(x => String(x.id) === String(it.itemId))
+          const catName = resolveItemCategoryName(m, it)
+          const cat = findCategoryByName(allCategories, catName)
+          const pkg = getCategoryPackagePrice(cat, it)
+          if (!(pkg > 0) || !catName) return
+          const key = categoryKeyOf(cat, catName) || `name:${catName.toLowerCase()}`
+          const g = dealGroups.get(key) || { name: cat?.name || catName, lines: [] }
+          g.lines.push(it)
+          dealGroups.set(key, g)
+        })
+        for (const g of dealGroups.values()) {
+          let any = false
+          let allFull = true
+          for (const it of g.lines) {
+            const vq = Number(voidByKey.get(keyOfLine(it)) || 0)
+            const oq = Number(it.qty || 0)
+            if (vq > 0) any = true
+            if (vq !== oq) allFull = false
+          }
+          if (any && !allFull) {
+            toast.error(`Cannot void a single item from "${g.name}" — void the whole deal`)
+            return
+          }
+        }
+      }
+
       const itemsMapped = itemsForBody.map(it => {
         const m = (state.menu||[]).find(x=>x.id===it.itemId)
         const name = it.custom?.name || m?.name || it.itemId
-        return { itemId: it.itemId, qty: Number(it.qty||0), custom: { ...(it.custom||{}), name }, mods: it.mods||{} }
+        return { itemId: it.itemId, qty: Number(it.qty||0), custom: { ...(it.custom||{}), name }, mods: it.mods||{}, category: it.category || m?.category || '', categoryPrice: it.categoryPrice }
       })
 
       const body = {
@@ -1060,13 +1155,9 @@ export default function SalesNew() {
         })
 
         if (remaining.length > 0) {
-          // Recompute totals and PATCH
-          const patched = remaining.map(it => {
-            const m = (state.menu||[]).find(x=>x.id===it.itemId)
-            const price = m ? (lineTotal(m, { ...it, qty: 1 }) || 0) : Number(it.custom?.price || 0)
-            return { itemId: it.itemId, name: it.custom?.name || m?.name || '', price, qty: Number(it.qty||1), mods: it.mods||{}, custom: it.custom||null }
-          })
-          const subtotalLocal = patched.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
+          // Recompute totals and PATCH (keep category package pricing)
+          const patched = remaining.map(mapCartItemForPersist)
+          const subtotalLocal = computeCategoryAwareSubtotal(remaining, menu, allCategories, lineTotal)
           const totalQtyLocal = patched.reduce((s,it)=> s + Number(it.qty||0), 0)
           const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0))
           const patchBody = { items: patched, subtotal: subtotalLocal, totalQty: totalQtyLocal, itemsDiscount: Number(itemsDiscount||0), billDiscount: Number(billDiscAmt||0), taxAmt: Number(taxAmt||0), serviceAmt: Number(serviceAmt||0), totalAmount: totalAmountLocal }
@@ -1114,6 +1205,10 @@ export default function SalesNew() {
     if (!requireBranch('Select a branch in the header before sending KOT')) return
     // Prevent accidental double submissions (e.g., double click)
     if (kotSubmittingRef.current) return
+    if (kotMode === 'kot') {
+      const limits = validateCategorySelectionLimits(items, menu, allCategories)
+      if (!limits.ok) { toast.error(limits.message); return }
+    }
     kotSubmittingRef.current = true
     setKotSubmitting(true)
     // If this is a recalled Dine-in order, ensure waiter/table are prefilled from recall
@@ -1179,14 +1274,10 @@ export default function SalesNew() {
           })
           addToMerged(baseItems)
           addToMerged(delta)
-          const mergedItems = Array.from(mergedMap.values()).map(it => {
-            const m = menu.find(x=>x.id===it.itemId)
-            const price = m ? (lineTotal(m, { ...it, qty: 1 }) || 0) : Number(it.custom?.price || 0)
-            return { itemId: it.itemId, name: it.custom?.name || m?.name || '', price, qty: Number(it.qty||1), mods: it.mods||{}, custom: it.custom||null }
-          })
+          const mergedItems = Array.from(mergedMap.values()).map(mapCartItemForPersist)
 
-          // Recalculate totals for the recall
-          const subtotalLocal = mergedItems.reduce((s,it)=> s + Number(it.price||0) * Number(it.qty||0), 0)
+          // Recalculate totals for the recall (category package price ignores item prices)
+          const subtotalLocal = computeCategoryAwareSubtotal(mergedItems, menu, allCategories, lineTotal)
           const totalQtyLocal = mergedItems.reduce((s,it)=> s + Number(it.qty||0), 0)
           const totalAmountLocal = Math.max(0, subtotalLocal - Number(itemsDiscount||0) - Number(billDiscAmt||0) + Number(taxAmt||0) + Number(serviceAmt||0) + Number(deliveryAmt||0))
 
@@ -1226,7 +1317,17 @@ export default function SalesNew() {
             const base = it.custom?.name || (menu.find(x=>x.id===it.itemId)?.name || it.name || String(it.itemId||''))
             return size ? `${base} (${size})` : base
           }
-          const deltaLines = delta.map(it => ({ name: nameForKot(it), qty: Number(it.qty||1) }))
+          const deltaLines = delta.map(it => {
+            const m = menu.find(x => String(x.id) === String(it.itemId))
+            return {
+              itemId: it.itemId,
+              name: nameForKot(it),
+              qty: Number(it.qty || 1),
+              mods: it.mods || {},
+              custom: it.custom || (m ? { name: m.name, price: Number(m.price || 0), category: m.category } : null),
+              category: it.category || it.custom?.category || m?.category || '',
+            }
+          })
           // Save this KOT punch to history (delta only)
           try {
             const kotItems = delta.map(it => {
@@ -1321,11 +1422,7 @@ export default function SalesNew() {
           createdAt: Date.now(),
           date: String(businessDate||'').slice(0,10),
           orderType,
-          items: items.map(it => {
-            const m = menu.find(x=>x.id===it.itemId)
-            const price = m ? (lineTotal(m, { ...it, qty: 1 }) || 0) : Number(it.custom?.price || 0)
-            return { itemId: it.itemId, name: it.custom?.name || m?.name || '', price, qty: Number(it.qty||1), mods: it.mods||{}, custom: it.custom||null }
-          }),
+          items: items.map(mapCartItemForPersist),
           waiterId: orderType==='Dine-in' ? kotWaiterId : '',
           tableNo: orderType==='Dine-in' ? kotTable : '',
           customer: orderType==='Delivery' ? { name: payName, phone: payPhone, address: payAddress } : null,
@@ -1396,18 +1493,29 @@ export default function SalesNew() {
           // Directly print instead of showing receipt dialog
           await openKotPrintUtil({
             state,
-            items: items.map(it => ({ name: (function(){
+            items: items.map(it => {
+              const m = menu.find(x => String(x.id) === String(it.itemId))
               const size = String(it?.mods?.size || it?.size || '').toUpperCase()
               const ids = Array.isArray(it?.mods?.flavours) ? it.mods.flavours : []
+              let name
               if (ids.length) {
-                const names = ids.map(fid => (menu.find(x=>x.id===fid)?.name || '')).filter(Boolean)
-                const fallback = it.custom?.name || (menu.find(x=>x.id===it.itemId)?.name || it.name || String(it.itemId||''))
+                const names = ids.map(fid => (menu.find(x => String(x.id) === String(fid))?.name || '')).filter(Boolean)
+                const fallback = it.custom?.name || m?.name || it.name || String(it.itemId || '')
                 const title = names.join(' + ') || fallback
-                return size ? `${title} (${size})` : title
+                name = size ? `${title} (${size})` : title
+              } else {
+                const base = it.custom?.name || m?.name || it.name || String(it.itemId || '')
+                name = size ? `${base} (${size})` : base
               }
-              const base = it.custom?.name || (menu.find(x=>x.id===it.itemId)?.name || it.name || String(it.itemId||''))
-              return size ? `${base} (${size})` : base
-            })(), qty: Number(it.qty||1) })),
+              return {
+                itemId: it.itemId,
+                name,
+                qty: Number(it.qty || 1),
+                mods: it.mods || {},
+                custom: it.custom || (m ? { name: m.name, price: Number(m.price || 0), category: m.category } : null),
+                category: it.category || it.custom?.category || m?.category || '',
+              }
+            }),
             tokenNo: (createdRecall?.tokenNo || ''),
             orderType,
             waiterId: orderType==='Dine-in' ? kotWaiterId : '',

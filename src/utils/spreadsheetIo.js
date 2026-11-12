@@ -112,13 +112,16 @@ export function rowsToMenuImportPayload(rows = []) {
 }
 
 export function exportCategoriesSpreadsheet(format, categories = []) {
-  const headers = ['Name', 'Show on POS', 'Active', 'Sort Order', 'Discount %']
+  const headers = ['Name', 'Show on POS', 'Active', 'Sort Order', 'Discount %', 'Price', 'Min Items', 'Max Items']
   const rows = (categories || []).map(c => [
     c.name || '',
     yesNo(c.showOnPos !== false),
     yesNo(c.active !== false),
     Number(c.sortOrder ?? 0),
     Number(c.discount ?? 0),
+    Number(c.price ?? 0),
+    Number(c.minItems ?? 0),
+    Number(c.maxItems ?? 0),
   ])
   const stamp = exportDateStamp()
   if (format === 'xlsx') {
@@ -138,6 +141,9 @@ export function rowsToCategoryImportPayload(rows = []) {
       active: parseBoolCell(raw.Active ?? raw.active, true),
       sortOrder: Number(raw['Sort Order'] ?? raw.sortOrder ?? raw.Order ?? 0) || 0,
       discount: Number(raw['Discount %'] ?? raw.Discount ?? raw.discount ?? 0) || 0,
+      price: Number(raw.Price ?? raw.price ?? 0) || 0,
+      minItems: Number(raw['Min Items'] ?? raw.minItems ?? raw.Min ?? 0) || 0,
+      maxItems: Number(raw['Max Items'] ?? raw.maxItems ?? raw.Max ?? 0) || 0,
     }
   }).filter(Boolean)
 }

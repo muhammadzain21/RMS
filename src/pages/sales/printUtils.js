@@ -1,3 +1,5 @@
+import { groupItemsByCategory, getCategoryPackagePrice } from './utils.js'
+
 // Printing utilities
 const isDarkMode = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
 const getAPIBase = () => {
@@ -174,6 +176,18 @@ export const PROFESSIONAL_SLIP_CSS = `
   .qty { width: 14%; text-align: right; }
   .rate { width: 20%; text-align: right; }
   .amount { width: 20%; text-align: right; font-variant-numeric: tabular-nums; }
+  table.items tr.cat-head td {
+    border-bottom: 1px solid #94a3b8;
+    padding-top: 8px;
+    font-size: 12px !important;
+    font-weight: 900 !important;
+    text-transform: none;
+  }
+  table.items tr.cat-item td.desc { padding-left: 6px; }
+  table.items tr.cat-price td {
+    border-bottom: 1px solid #cbd5e1;
+    font-weight: 900 !important;
+  }
   .kv {
     display: flex;
     justify-content: space-between;
@@ -565,6 +579,7 @@ export async function printSaleReceiptUtil(opts = {}) {
     // Track if this is a reprint (has original timestamp)
     const isReprint = !!opts.createdAt
 
+    const categories = Array.isArray(state.categories) ? state.categories : []
     const getMenuItem = (id) => menu.find(m => m.id === id)
     const getRate = (m, it) => {
       if (typeof it?.price === 'number') return Number(it.price || 0)
@@ -587,21 +602,20 @@ export async function printSaleReceiptUtil(opts = {}) {
       return size ? `${base} (${size})` : base
     }
     const qty = (it) => Number(it?.qty || 0)
-    const getFlavourNote = (it) => {
-      try {
-        const ids = Array.isArray(it?.mods?.flavours) ? it.mods.flavours : []
-        if (!ids.length) return ''
-        const names = ids
-          .map(id => (getMenuItem(id)?.name || ''))
-          .filter(Boolean)
-          .map(n => escapeHtml(n))
-        return names.length ? `<div class="muted">Flavour: ${names.join(', ')}</div>` : ''
-      } catch { return '' }
-    }
 
-    // Totals
-    const lineAmount = (m, it) => getRate(m, it) * qty(it)
-    const subtotal = items.reduce((s, it) => s + lineAmount(getMenuItem(it.itemId), it), 0)
+    // Totals — category package price (when set) ignores item prices
+    const groups = groupItemsByCategory(items, menu, categories)
+    let subtotal = 0
+    for (const g of groups) {
+      const pkg = Number(g.packagePrice || 0) || getCategoryPackagePrice(g.category, g.items[0]?.it)
+      if (pkg > 0) {
+        subtotal += pkg
+      } else {
+        for (const { it, menuItem } of g.items) {
+          subtotal += getRate(menuItem, it) * qty(it)
+        }
+      }
+    }
     const itemsDiscount = Number(opts.itemsDiscount || 0)
     const billDiscount = Number(opts.billDiscount || 0)
     const taxAmt = Number(opts.taxAmt || 0)
@@ -632,17 +646,40 @@ export async function printSaleReceiptUtil(opts = {}) {
     const orderNo = opts.receiptOrderNo || opts.orderNo || ''
     const customer = opts.customer || { name: '', address: '', phone: '' }
 
-    const rowsHtml = items.map((it) => {
-      const m = getMenuItem(it.itemId)
-      const name = buildDisplayName(it)
-      const rate = getRate(m, it)
-      const amount = lineAmount(m, it)
-      return `<tr>
-        <td class="desc">${escapeHtml(name)}</td>
-        <td class="qty">${qty(it)}</td>
-        <td class="rate">${fmt(rate)}</td>
-        <td class="amount">${fmt(amount)}</td>
-      </tr>`
+    const rowsHtml = groups.map((g) => {
+      const pkg = Number(g.packagePrice || 0) || getCategoryPackagePrice(g.category, g.items[0]?.it)
+      const showHead = g.showHeader !== false && !!String(g.categoryName || '').trim()
+      const head = showHead
+        ? `<tr class="cat-head"><td class="desc" colspan="4">${escapeHtml(g.categoryName)}:</td></tr>`
+        : ''
+      const itemRows = g.items.map(({ it, menuItem }) => {
+        const name = buildDisplayName(it)
+        if (pkg > 0) {
+          return `<tr class="${showHead ? 'cat-item' : ''}">
+            <td class="desc">${escapeHtml(name)}</td>
+            <td class="qty">${qty(it)}</td>
+            <td class="rate"></td>
+            <td class="amount"></td>
+          </tr>`
+        }
+        const rate = getRate(menuItem, it)
+        const amount = rate * qty(it)
+        return `<tr class="${showHead ? 'cat-item' : ''}">
+          <td class="desc">${escapeHtml(name)}</td>
+          <td class="qty">${qty(it)}</td>
+          <td class="rate">${fmt(rate)}</td>
+          <td class="amount">${fmt(amount)}</td>
+        </tr>`
+      }).join('')
+      const priceRow = pkg > 0 && showHead
+        ? `<tr class="cat-price">
+            <td class="desc">${escapeHtml(g.categoryName)} price</td>
+            <td class="qty">1</td>
+            <td class="rate">${fmt(pkg)}</td>
+            <td class="amount">${fmt(pkg)}</td>
+          </tr>`
+        : ''
+      return head + itemRows + priceRow
     }).join('')
 
     // Prefer silent printing when a Bill/Customer Bill printer is configured
@@ -798,20 +835,32 @@ export function buildKOTHtml(opts = {}) {
     const remarks = opts.payRemarks || opts.remarks || ''
     const userName = opts.userName || opts.user || ''
 
+    const categories = Array.isArray(state.categories) ? state.categories : []
+    const findMenu = (id) => (menu || []).find(x => String(x.id || x._id) === String(id || ''))
     const getSizeCode = (it) => String(it?.mods?.size || it?.size || '').trim().toUpperCase()
     const getItemName = (it) => {
-      const m = menu.find(x=>x.id===it.itemId)
+      const m = findMenu(it.itemId)
       const size = getSizeCode(it)
       const flvs = Array.isArray(it?.mods?.flavours) ? it.mods.flavours : []
       if (flvs.length) {
-        const names = flvs.map(fid => (menu.find(x=>x.id===fid)?.name || '')).filter(Boolean)
+        const names = flvs.map(fid => (findMenu(fid)?.name || '')).filter(Boolean)
         const title = names.join(' + ') || (it?.custom?.name || m?.name || it?.name || String(it.itemId||''))
         return escapeHtml(size ? `${title} (${size})` : title)
       }
       const base = it?.custom?.name || m?.name || it?.name || String(it.itemId||'')
       return escapeHtml(size ? `${base} (${size})` : base)
     }
-    const rowsHtml = items.map(it => `<tr><td>${getItemName(it)}</td><td class="qty"><b>${Number(it.qty||0)}</b></td></tr>`).join('')
+    const groups = groupItemsByCategory(items, menu, categories)
+    const rowsHtml = groups.map((g) => {
+      const showHead = g.showHeader !== false && !!String(g.categoryName || '').trim()
+      const head = showHead
+        ? `<tr class="cat-head"><td class="desc" colspan="2">${escapeHtml(g.categoryName)}:</td></tr>`
+        : ''
+      const itemRows = g.items.map(({ it }) =>
+        `<tr class="${showHead ? 'cat-item' : ''}"><td class="desc">${getItemName(it)}</td><td class="qty"><b>${Number(it.qty||0)}</b></td></tr>`
+      ).join('')
+      return head + itemRows
+    }).join('')
     const kitchenNote = String(opts.kitchenNote || '').trim()
 
     // Build table info for Dine-in orders

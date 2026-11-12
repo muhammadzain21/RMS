@@ -32,14 +32,20 @@ function waitForLocalServer(port = 5000, attempts = 80) {
 
 // Default “actual size” for POS readability on typical displays (Ctrl+0 resets here).
 const DEFAULT_ZOOM_FACTOR = 0.67
-// Bump when the default changes so old saved 100% prefs are migrated once.
-const ZOOM_STORE_VERSION = 2
+// Always open at 67%. Session zoom (Ctrl +/-) is kept until the window closes;
+// next launch resets to default so users are never stuck at 100%.
+const ZOOM_STORE_VERSION = 3
+const FORCE_DEFAULT_ZOOM_ON_LAUNCH = true
 
 function zoomStorePath() {
   try { return path.join(app.getPath('userData'), 'window-zoom.json') } catch { return '' }
 }
 
 function loadSavedZoomFactor() {
+  if (FORCE_DEFAULT_ZOOM_ON_LAUNCH) {
+    saveZoomFactor(DEFAULT_ZOOM_FACTOR)
+    return DEFAULT_ZOOM_FACTOR
+  }
   try {
     const p = zoomStorePath()
     if (!p || !fs.existsSync(p)) {
@@ -48,7 +54,7 @@ function loadSavedZoomFactor() {
     }
     const j = JSON.parse(fs.readFileSync(p, 'utf8'))
     const ver = Number(j?.v) || 0
-    // Migrate pre-v2 stores (usually stuck at 1.0 / 100%) to the new default once
+    // Migrate older stores (often stuck at 1.0 / 100%) to the new default once
     if (ver < ZOOM_STORE_VERSION) {
       saveZoomFactor(DEFAULT_ZOOM_FACTOR)
       return DEFAULT_ZOOM_FACTOR

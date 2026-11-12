@@ -36,6 +36,7 @@ const salesSection = {
  { path: '/call-center', label: 'Call Center', icon: Headphones, order: 2.3 },
  { path: '/sales/return', label: 'Return', icon: Undo2, order: 3, end: true },
  { path: '/sales/history', label: 'Sale history', icon: History, order: 4 },
+ { path: '/sales/summary', label: 'Sales Summary', icon: BarChart3, order: 4.5 },
  { path: '/sales/deleted', label: 'Deleted Sales', icon: Trash2, order: 5 },
  { path: '/sales/return-history', label: 'Return history', icon: FileText, order: 6 },
  { path: '/sales/kot-history', label: 'KOT History', icon: FileText, order: 7 },

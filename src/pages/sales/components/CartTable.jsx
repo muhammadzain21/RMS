@@ -1,4 +1,5 @@
 import React from 'react'
+import { findCategoryByName, getCategoryPackagePrice } from '../utils.js'
 
 export default function CartTable({ items = [], menu = [], categories = [], decQty, incQty, updateItem, removeItem, lineTotal, onEditItem }) {
  return (
@@ -11,21 +12,20 @@ export default function CartTable({ items = [], menu = [], categories = [], decQ
  const m = menu.find(m => m.id === it.itemId)
  const baseName = m ? m.name : (it.custom?.name || it.name || `Item ${it.itemId || idx+1}`)
  const size = (it?.mods?.size || it?.size || '').toString().toUpperCase()
+ const cat = m?.category ? findCategoryByName(categories, m.category) : null
+ const pkgPrice = getCategoryPackagePrice(cat, it)
+ const usesCategoryPrice = pkgPrice > 0
  // Determine applicable discount (item > category, one at a time)
  const itemDisc = m ? Number(m.discount || 0) : 0
  let discPct = 0
- let discSource = ''
+ if (!usesCategoryPrice) {
  if (itemDisc > 0) {
  discPct = itemDisc
- discSource = 'item'
- } else if (m && m.category) {
- const cat = categories.find(c => c.name === m.category)
- if (cat && Number(cat.discount || 0) > 0) {
+ } else if (cat && Number(cat.discount || 0) > 0) {
  discPct = Number(cat.discount)
- discSource = 'category'
  }
  }
- const lineAmt = Number(lineTotal(m, it) || 0)
+ const lineAmt = usesCategoryPrice ? 0 : Number(lineTotal(m, it) || 0)
  const discAmt = discPct > 0 ? Math.round(lineAmt * (discPct / 100)) : 0
  // Prefer flavour title when present
  const flavourTitle = (()=>{
@@ -36,10 +36,12 @@ export default function CartTable({ items = [], menu = [], categories = [], decQ
  })()
  const title = flavourTitle || baseName
  const displayName = size ? `${title} (${size})` : title
- // Show unit price computed by pricing engine for clarity (size-aware)
- const unitPrice = Number(lineTotal(m, { ...it, qty: 1 }))
+ const unitPrice = usesCategoryPrice ? 0 : Number(lineTotal(m, { ...it, qty: 1 }))
+ const limitsHint = cat && (Number(cat.minItems || 0) > 0 || Number(cat.maxItems || 0) > 0)
+  ? ` · pick ${Number(cat.minItems || 0) || 0}${Number(cat.maxItems || 0) > 0 ? `–${Number(cat.maxItems)}` : '+'} items`
+  : ''
  return (
- <div key={idx} className="grid grid-cols-12 md:grid-cols-12 items-center text-sm md:text-base min-w-0"><div className="col-span-12 md:col-span-6 px-2 py-1.5 min-w-0"><div className="font-semibold text-sm whitespace-normal break-words leading-tight">{displayName}</div><div className="text-[10px] text-gray-600 dark:text-gray-400">Unit PKRs {unitPrice.toFixed(2)}</div>{discPct > 0 && <div className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">{discPct}% off (-PKRs {discAmt})</div>}</div><div className="col-span-6 md:col-span-2 px-2 py-1.5 flex items-center justify-between md:justify-center gap-1"><button type="button" onClick={()=>decQty(idx)} className="px-1.5 py-0.5 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">-</button><input type="number" value={it.qty} onChange={e=>updateItem(idx, { qty: Math.max(1, Number(e.target.value)||1) })} className="w-12 px-1 py-0.5 text-sm border rounded text-center bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600" /><button type="button" onClick={()=>incQty(idx)} className="px-1.5 py-0.5 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">+</button></div><div className="col-span-6 md:col-span-3 px-2 py-1.5 text-right font-semibold text-sm">{lineAmt.toFixed(2)}{discAmt > 0 && <div className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">-{discAmt.toFixed(2)}</div>}</div><div className="col-span-12 md:col-span-1 px-2 py-1.5 text-right md:text-center"><button
+ <div key={idx} className="grid grid-cols-12 md:grid-cols-12 items-center text-sm md:text-base min-w-0"><div className="col-span-12 md:col-span-6 px-2 py-1.5 min-w-0"><div className="font-semibold text-sm whitespace-normal break-words leading-tight">{displayName}</div>{m?.category && <div className="text-[10px] text-indigo-600 dark:text-indigo-300 font-medium">{m.category}{usesCategoryPrice ? ` · package ${pkgPrice}` : ''}{limitsHint}</div>}<div className="text-[10px] text-gray-600 dark:text-gray-400">{usesCategoryPrice ? 'Included in category price' : `Unit PKRs ${unitPrice.toFixed(2)}`}</div>{discPct > 0 && <div className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">{discPct}% off (-PKRs {discAmt})</div>}</div><div className="col-span-6 md:col-span-2 px-2 py-1.5 flex items-center justify-between md:justify-center gap-1"><button type="button" onClick={()=>decQty(idx)} className="px-1.5 py-0.5 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">-</button><input type="number" value={it.qty} onChange={e=>updateItem(idx, { qty: Math.max(1, Number(e.target.value)||1) })} className="w-12 px-1 py-0.5 text-sm border rounded text-center bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600" /><button type="button" onClick={()=>incQty(idx)} className="px-1.5 py-0.5 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">+</button></div><div className="col-span-6 md:col-span-3 px-2 py-1.5 text-right font-semibold text-sm">{usesCategoryPrice ? '—' : lineAmt.toFixed(2)}{discAmt > 0 && <div className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">-{discAmt.toFixed(2)}</div>}</div><div className="col-span-12 md:col-span-1 px-2 py-1.5 text-right md:text-center"><button
  type="button"
  aria-label="Remove item"
  title="Remove"

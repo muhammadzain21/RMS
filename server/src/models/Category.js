@@ -7,6 +7,11 @@ const CategorySchema = new mongoose.Schema({
   imageUrl: { type: String, default: '' },
   sortOrder: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
+  // When > 0, bill uses this package price and ignores item prices for this category
+  price: { type: Number, default: 0 },
+  // Selection limits on KOT (0 = no limit)
+  minItems: { type: Number, default: 0 },
+  maxItems: { type: Number, default: 0 },
   // '' = shared across all branches; set = branch-only category
   branchId: { type: String, default: '', index: true },
 }, { timestamps: true })

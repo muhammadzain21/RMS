@@ -32,12 +32,18 @@ function toPublic(c, override = null, branchId = '') {
     imageUrl: (o?.imageUrl !== undefined && o?.imageUrl !== null) ? String(o.imageUrl) : (base.imageUrl || ''),
     sortOrder: o?.sortOrder !== undefined && o?.sortOrder !== null ? Number(o.sortOrder) : Number(base.sortOrder || 0),
     discount: o?.discount !== undefined && o?.discount !== null ? Number(o.discount) : Number(base.discount || 0),
+    price: o?.price !== undefined && o?.price !== null ? Number(o.price) : Number(base.price || 0),
+    minItems: o?.minItems !== undefined && o?.minItems !== null ? Number(o.minItems) : Number(base.minItems || 0),
+    maxItems: o?.maxItems !== undefined && o?.maxItems !== null ? Number(o.maxItems) : Number(base.maxItems || 0),
     branchId: base.branchId || '',
     isShared: shared,
     isBranchOnly: !shared,
     hasOverride: !!o,
     baseName: base.name || '',
     baseDiscount: Number(base.discount || 0),
+    basePrice: Number(base.price || 0),
+    baseMinItems: Number(base.minItems || 0),
+    baseMaxItems: Number(base.maxItems || 0),
     baseActive: base.active !== false,
     viewBranchId: branchId || '',
   }
@@ -107,6 +113,9 @@ router.post('/import', requireRole('Admin', 'Manager'), async (req, res, next) =
         imageUrl: String(raw.imageUrl || ''),
         sortOrder: Number(raw.sortOrder ?? 0) || 0,
         discount: Number(raw.discount ?? 0) || 0,
+        price: Number(raw.price ?? 0) || 0,
+        minItems: Number(raw.minItems ?? 0) || 0,
+        maxItems: Number(raw.maxItems ?? 0) || 0,
         branchId: '',
       }
       await Category.findOneAndUpdate(
@@ -143,6 +152,9 @@ router.post('/', requireRole('Admin', 'Manager'), async (req, res, next) => {
       imageUrl: String(body.imageUrl || ''),
       sortOrder: Number(body.sortOrder ?? 0),
       discount: Number(body.discount ?? 0),
+      price: Number(body.price ?? 0),
+      minItems: Number(body.minItems ?? 0),
+      maxItems: Number(body.maxItems ?? 0),
       branchId: branchOnly ? String(branchId || '') : '',
     })
     await logAudit(req, 'category', `Added category ${item.name}`, { id: item._id, branchId: item.branchId || '' })
@@ -181,6 +193,9 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
     delete update.hasOverride
     delete update.baseName
     delete update.baseDiscount
+    delete update.basePrice
+    delete update.baseMinItems
+    delete update.baseMaxItems
     delete update.baseActive
     delete update.viewBranchId
     delete update.id
@@ -190,6 +205,9 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
     if (update.imageUrl !== undefined) update.imageUrl = String(update.imageUrl || '')
     if (update.sortOrder !== undefined) update.sortOrder = Number(update.sortOrder ?? 0)
     if (update.discount !== undefined) update.discount = Number(update.discount ?? 0)
+    if (update.price !== undefined) update.price = Number(update.price ?? 0)
+    if (update.minItems !== undefined) update.minItems = Number(update.minItems ?? 0)
+    if (update.maxItems !== undefined) update.maxItems = Number(update.maxItems ?? 0)
 
     const existing = await Category.findById(req.params.id)
     if (!existing) return res.status(404).json({ error: 'Not found' })
@@ -228,7 +246,7 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
     }
 
     const overrideFields = {}
-    for (const key of ['name', 'showOnPos', 'active', 'imageUrl', 'sortOrder', 'discount']) {
+    for (const key of ['name', 'showOnPos', 'active', 'imageUrl', 'sortOrder', 'discount', 'price', 'minItems', 'maxItems']) {
       if (update[key] !== undefined) overrideFields[key] = update[key]
     }
 

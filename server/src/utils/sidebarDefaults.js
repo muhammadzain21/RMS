@@ -12,6 +12,7 @@ export const defaultSidebarItems = [
   { path: '/call-center', label: 'Call Center', visible: false, order: 2.3, section: 'Sales' },
   { path: '/sales/return', label: 'Return', visible: false, order: 3, section: 'Sales' },
   { path: '/sales/history', label: 'Sale history', visible: false, order: 4, section: 'Sales' },
+  { path: '/sales/summary', label: 'Sales Summary', visible: false, order: 4.5, section: 'Sales' },
   { path: '/sales/deleted', label: 'Deleted Sales', visible: false, order: 5, section: 'Sales' },
   { path: '/sales/return-history', label: 'Return history', visible: false, order: 6, section: 'Sales' },
   { path: '/sales/kot-history', label: 'KOT History', visible: false, order: 7, section: 'Sales' },
