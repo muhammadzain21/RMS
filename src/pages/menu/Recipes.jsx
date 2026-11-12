@@ -90,11 +90,11 @@ function ScopeBadge({ m }) {
 }
 
 export default function Recipes() {
-  const { state, dispatch } = useData()
+ const { state, dispatch } = useData()
   const { token, user: currentUser } = useAuth()
   const { activeBranch } = useBranch()
-  const { confirm, ConfirmDialog } = useConfirm()
-  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const { confirm, ConfirmDialog } = useConfirm()
+ const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
 
   const allMenu = useMemo(
@@ -106,17 +106,17 @@ export default function Recipes() {
     [state.ingredients],
   )
 
-  const [viewItem, setViewItem] = useState(null)
+ const [viewItem, setViewItem] = useState(null)
   const [copiedRecipe, setCopiedRecipe] = useState(null) // { recipe, sourceName }
-  const [listSearch, setListSearch] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [showRecipeDialog, setShowRecipeDialog] = useState(false)
+ const [listSearch, setListSearch] = useState('')
+ const [saving, setSaving] = useState(false)
+ const [deleting, setDeleting] = useState(false)
+ const [showRecipeDialog, setShowRecipeDialog] = useState(false)
   const [editingSingle, setEditingSingle] = useState(false)
   const [blocks, setBlocks] = useState([blankRecipeBlock()])
   const [applyToAllBranches, setApplyToAllBranches] = useState(true)
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(100)
+ const [page, setPage] = useState(1)
+ const [limit, setLimit] = useState(100)
   const [listTab, setListTab] = useState('with') // with | without | all
 
   const menuWithRecipes = useMemo(
@@ -128,14 +128,14 @@ export default function Recipes() {
     [allMenu],
   )
 
-  const filteredList = useMemo(() => {
+ const filteredList = useMemo(() => {
     const base = listTab === 'without'
       ? menuWithoutRecipes
       : listTab === 'all'
         ? allMenu
         : menuWithRecipes
     if (!listSearch.trim()) return base
-    const q = listSearch.toLowerCase()
+ const q = listSearch.toLowerCase()
     return base.filter(m =>
       String(m.name || '').toLowerCase().includes(q)
       || String(m.category || '').toLowerCase().includes(q)
@@ -143,18 +143,18 @@ export default function Recipes() {
     )
   }, [listTab, allMenu, menuWithRecipes, menuWithoutRecipes, listSearch])
 
-  const totalPages = Math.max(1, Math.ceil(filteredList.length / limit))
-  const pagedList = filteredList.slice((page - 1) * limit, page * limit)
+ const totalPages = Math.max(1, Math.ceil(filteredList.length / limit))
+ const pagedList = filteredList.slice((page - 1) * limit, page * limit)
 
   useUserBusy(showRecipeDialog || !!viewItem)
   useEffect(() => { setPage(1) }, [listSearch, listTab])
 
-  const startNew = () => {
+ const startNew = () => {
     setEditingSingle(false)
     setBlocks([blankRecipeBlock()])
     setApplyToAllBranches(true)
-    setShowRecipeDialog(true)
-  }
+ setShowRecipeDialog(true)
+ }
 
   const recipeToRows = (recipe) => {
     const keys = Object.keys(recipe || {})
@@ -177,8 +177,8 @@ export default function Recipes() {
       menuDropOpen: false,
       rows: recipeToRows(recipe),
     }])
-    setShowRecipeDialog(true)
-  }
+ setShowRecipeDialog(true)
+ }
 
   const copyRecipe = (m) => {
     const recipe = { ...(m.recipe || {}) }
@@ -230,7 +230,7 @@ export default function Recipes() {
     return ingredients.filter(i => String(i.name || '').toLowerCase().includes(q))
   }
 
-  const onSave = async () => {
+ const onSave = async () => {
     const used = new Set()
     const jobs = []
     for (const block of blocks) {
@@ -252,9 +252,9 @@ export default function Recipes() {
       return
     }
 
-    try {
-      setSaving(true)
-      const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+ try {
+ setSaving(true)
+ const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
       let ok = 0
       let fail = 0
       for (const job of jobs) {
@@ -279,7 +279,7 @@ export default function Recipes() {
             },
           })
           ok++
-        } catch {
+ } catch {
           fail++
         }
       }
@@ -287,41 +287,41 @@ export default function Recipes() {
       else if (ok && fail) toast.success(`${ok} saved, ${fail} failed`)
       else toast.error('Failed to save recipes')
       if (ok) setShowRecipeDialog(false)
-    } finally {
-      setSaving(false)
-    }
-  }
+ } finally {
+ setSaving(false)
+ }
+ }
 
-  const onDelete = async (m) => {
+ const onDelete = async (m) => {
     const ok = await confirm({
       title: 'Delete Recipe',
       message: `Delete recipe for "${m.name}"?`,
     })
-    if (!ok) return
-    try {
-      setDeleting(true)
-      const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+ if (!ok) return
+ try {
+ setDeleting(true)
+ const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
       const payload = { recipe: {} }
       // Clear shared recipe for shared items without a branch recipe override; otherwise clear override
       if (!m.isBranchOnly && isAdminUser && !m.hasRecipeOverride) payload.editShared = true
       const res = await fetch(`${API}/api/menu/${m.id}`, { method: 'PATCH', headers, body: JSON.stringify(payload) })
-      if (!res.ok) throw new Error('Failed to delete recipe')
+ if (!res.ok) throw new Error('Failed to delete recipe')
       const updated = await res.json().catch(() => null)
       dispatch({
         type: 'UPDATE_MENU',
         payload: { id: m.id, data: updated ? { ...updated, id: updated.id || updated._id } : { recipe: {} } },
       })
-      toast.success('Recipe deleted')
-    } catch {
-      toast.error('Failed to delete recipe')
-    } finally {
-      setDeleting(false)
-    }
-  }
+ toast.success('Recipe deleted')
+ } catch {
+ toast.error('Failed to delete recipe')
+ } finally {
+ setDeleting(false)
+ }
+ }
 
-  const getRecipeSummary = (recipe) => {
-    const keys = Object.keys(recipe || {})
-    if (!keys.length) return '—'
+ const getRecipeSummary = (recipe) => {
+ const keys = Object.keys(recipe || {})
+ if (!keys.length) return '—'
     return keys.map(k => `${k} (${recipe[k]})`).join(', ')
   }
 
@@ -335,104 +335,104 @@ export default function Recipes() {
   const recipeReportRows = () => filteredList.map(m => {
     const { sell, cost, margin } = recipeEconomics(m)
     return [
-      m.name || '',
-      m.category || '',
+   m.name || '',
+   m.category || '',
       m.isBranchOnly ? 'Branch only' : (m.hasRecipeOverride || m.hasOverride) ? 'Branch override' : 'Shared',
-      getRecipeSummary(m.recipe),
-      Object.keys(m.recipe || {}).length,
+   getRecipeSummary(m.recipe),
+   Object.keys(m.recipe || {}).length,
       fmtMoney(sell),
       fmtMoney(cost),
       fmtPct(margin),
     ]
   })
 
-  const openPrintPreview = async () => {
-    try {
-      const body =
-        reportSummary([
-          { label: 'Recipes listed', amount: String(filteredList.length) },
-          { label: 'Total with recipes', amount: String(menuWithRecipes.length) },
-        ]) +
-        reportSec(`Recipes (${filteredList.length})`) +
-        reportTable({
+ const openPrintPreview = async () => {
+ try {
+ const body =
+ reportSummary([
+ { label: 'Recipes listed', amount: String(filteredList.length) },
+ { label: 'Total with recipes', amount: String(menuWithRecipes.length) },
+ ]) +
+ reportSec(`Recipes (${filteredList.length})`) +
+ reportTable({
           headers: [
             'Menu Item', 'Category', 'Scope', 'Ingredients', { t: 'Count', align: 'r' },
             { t: 'Sell price', align: 'r' }, { t: 'Goods cost', align: 'r' }, { t: 'Margin %', align: 'r' },
           ],
-          numbered: true,
+ numbered: true,
           rows: filteredList.map(m => {
             const { sell, cost, margin } = recipeEconomics(m)
             return [
-              m.name,
-              m.category || '—',
+ m.name,
+ m.category || '—',
               m.isBranchOnly ? 'Branch only' : (m.hasRecipeOverride || m.hasOverride) ? 'Branch override' : 'Shared',
-              getRecipeSummary(m.recipe),
-              { v: Object.keys(m.recipe || {}).length, align: 'r' },
+ getRecipeSummary(m.recipe),
+ { v: Object.keys(m.recipe || {}).length, align: 'r' },
               { v: fmtMoney(sell), align: 'r' },
               { v: fmtMoney(cost), align: 'r' },
               { v: fmtPct(margin), align: 'r' },
             ]
           }),
-          emptyText: 'No recipes match filters',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Recipes',
-        reportLabel: 'Recipe Report',
-        reportNo: `Rpt #: REC-${exportDateStamp()}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', listSearch.trim() || 'All']],
-        metaRight: [['Records', String(filteredList.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Recipes-${exportDateStamp()}.pdf`)
-      toast.success('Print preview opened')
-    } catch (e) {
-      console.error(e)
-      toast.error('Print preview failed')
-    }
-  }
+ emptyText: 'No recipes match filters',
+ })
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Recipes',
+ reportLabel: 'Recipe Report',
+ reportNo: `Rpt #: REC-${exportDateStamp()}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', listSearch.trim() || 'All']],
+ metaRight: [['Records', String(filteredList.length)]],
+ body,
+ })
+ await previewHtmlReport(html, `Recipes-${exportDateStamp()}.pdf`)
+ toast.success('Print preview opened')
+ } catch (e) {
+ console.error(e)
+ toast.error('Print preview failed')
+ }
+ }
 
-  const exportPDF = () => {
-    try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Recipes', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${filteredList.length} recipes`, 40, 46)
-      doc.autoTable({
+ const exportPDF = () => {
+ try {
+ const doc = new jsPDF('l', 'pt', 'a4')
+ doc.setFontSize(14)
+ doc.text(state?.settings?.companyName || 'Recipes', 40, 32)
+ doc.setFontSize(10)
+ doc.text(`${filteredList.length} recipes`, 40, 46)
+ doc.autoTable({
         head: [['Menu Item', 'Category', 'Scope', 'Ingredients', 'Count', 'Sell price', 'Goods cost', 'Margin %']],
-        body: recipeReportRows(),
-        startY: 54,
-        styles: { fontSize: 7, cellPadding: 3 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`recipes_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported successfully')
-    } catch (e) {
-      console.error(e)
-      toast.error('Failed to export PDF')
-    }
-  }
+ body: recipeReportRows(),
+ startY: 54,
+ styles: { fontSize: 7, cellPadding: 3 },
+ headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+ margin: { left: 40, right: 40 },
+ })
+ doc.save(`recipes_${exportDateStamp()}.pdf`)
+ toast.success('PDF exported successfully')
+ } catch (e) {
+ console.error(e)
+ toast.error('Failed to export PDF')
+ }
+ }
 
-  const exportCSV = () => {
-    try {
-      downloadCsvFile(
-        `recipes_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+ const exportCSV = () => {
+ try {
+ downloadCsvFile(
+ `recipes_${format(new Date(), 'yyyy-MM-dd')}.csv`,
         ['Menu Item', 'Category', 'Scope', 'Ingredients', 'Count', 'Sell price', 'Goods cost', 'Margin %'],
         recipeReportRows(),
-      )
-      toast.success('CSV exported successfully')
-    } catch {
-      toast.error('Failed to export CSV')
-    }
-  }
+ )
+ toast.success('CSV exported successfully')
+ } catch {
+ toast.error('Failed to export CSV')
+ }
+ }
 
   const selectedIds = blocks.map(b => b.menuId).filter(Boolean)
 
-  return (
-    <div className="space-y-4 w-full">
-      {showRecipeDialog && (
+ return (
+ <div className="space-y-4 w-full">
+ {showRecipeDialog && (
         <div
           data-user-busy="1"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -490,8 +490,8 @@ export default function Recipes() {
                       {block.menuDropOpen && !editingSingle && (
                         <div className="absolute z-50 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
                           {menuMatches.map(m => {
-                            const hasRecipe = m.recipe && Object.keys(m.recipe).length > 0
-                            return (
+ const hasRecipe = m.recipe && Object.keys(m.recipe).length > 0
+ return (
                               <button
                                 key={m.id}
                                 type="button"
@@ -512,12 +512,12 @@ export default function Recipes() {
                               >
                                 <span>{m.name} {m.category ? <span className="text-gray-400">({m.category})</span> : null}</span>
                                 {hasRecipe && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">Has recipe</span>}
-                              </button>
-                            )
-                          })}
+ </button>
+ )
+ })}
                           {!menuMatches.length && <div className="px-3 py-2 text-sm text-slate-500">No menu matches</div>}
-                        </div>
-                      )}
+ </div>
+ )}
                     </div>
 
                     <div className="border rounded-xl overflow-visible border-gray-200 dark:border-gray-700">
@@ -532,9 +532,9 @@ export default function Recipes() {
                         </thead>
                         <tbody>
                           {block.rows.map((r, rIdx) => {
-                            const inv = ingredients.find(i => i.name === r.ingredientName)
+ const inv = ingredients.find(i => i.name === r.ingredientName)
                             const ingMatches = filteredIngredientsFor(r.search || r.ingredientName)
-                            return (
+ return (
                               <tr key={rIdx} className="border-t border-gray-200 dark:border-gray-700">
                                 <td className="p-3 relative">
                                   <input
@@ -739,8 +739,8 @@ export default function Recipes() {
               </tr>
             </thead>
             <tbody>
-              {pagedList.map(m => {
-                const recipeKeys = Object.keys(m.recipe || {})
+ {pagedList.map(m => {
+ const recipeKeys = Object.keys(m.recipe || {})
                 const hasRecipe = recipeKeys.length > 0
                 const { sell, cost, margin, missing } = recipeEconomics(m)
                 const marginClass = margin == null
@@ -751,7 +751,7 @@ export default function Recipes() {
                       ? 'text-amber-700 dark:text-amber-300'
                       : 'text-rose-700 dark:text-rose-300'
                 const btn = 'w-full px-2 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50'
-                return (
+ return (
                   <tr key={m.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 align-top">
                     <td className="p-3 font-medium text-gray-900 dark:text-gray-100 break-words whitespace-normal leading-snug">{m.name}</td>
                     <td className="p-3 text-gray-600 dark:text-gray-400 break-words whitespace-normal leading-snug">{m.category || '—'}</td>
@@ -797,9 +797,9 @@ export default function Recipes() {
                       </div>
                     </td>
                   </tr>
-                )
-              })}
-              {!pagedList.length && (
+ )
+ })}
+ {!pagedList.length && (
                 <tr>
                   <td colSpan={9} className="p-8 text-center text-gray-500">
                     {listTab === 'without'
@@ -814,11 +814,11 @@ export default function Recipes() {
           </table>
         </div>
 
-        {filteredList.length > 0 && (
+ {filteredList.length > 0 && (
           <Pagination page={page} pages={totalPages} total={filteredList.length} limit={limit} onLimitChange={n => { setLimit(n); setPage(1) }} onPageChange={setPage} />
-        )}
+ )}
 
-        {viewItem && (
+ {viewItem && (
           <div data-user-busy="1" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setViewItem(null)}>
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="p-5 border-b flex items-center justify-between">
@@ -852,7 +852,7 @@ export default function Recipes() {
                     </div>
                   )
                 })()}
-                {Object.keys(viewItem.recipe || {}).length > 0 ? (
+ {Object.keys(viewItem.recipe || {}).length > 0 ? (
                   <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-800">
                       <tr>
@@ -864,11 +864,11 @@ export default function Recipes() {
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(viewItem.recipe).map(([name, amt]) => {
+ {Object.entries(viewItem.recipe).map(([name, amt]) => {
                         const inv = ingredients.find(i => normName(i.name) === normName(name))
                         const unitPrice = Number(inv?.price) || 0
                         const lineCost = (Number(amt) || 0) * unitPrice
-                        return (
+ return (
                           <tr key={name} className="border-t">
                             <td className="p-2 font-medium">{name}</td>
                             <td className="p-2">{inv?.unit || '—'}</td>
@@ -890,10 +890,10 @@ export default function Recipes() {
               </div>
             </div>
           </div>
-        )}
+ )}
 
-        {ConfirmDialog}
+ {ConfirmDialog}
       </section>
     </div>
-  )
+ )
 }
