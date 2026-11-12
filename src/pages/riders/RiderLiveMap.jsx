@@ -19,8 +19,9 @@ function loadLeaflet() {
     }
     const existing = document.querySelector('script[data-leaflet]')
     if (existing) {
-      existing.addEventListener('load', () => resolve(window.L))
-      existing.addEventListener('error', reject)
+      if (window.L) return resolve(window.L)
+      existing.addEventListener('load', () => resolve(window.L), { once: true })
+      existing.addEventListener('error', reject, { once: true })
       return
     }
     const script = document.createElement('script')
@@ -33,119 +34,281 @@ function loadLeaflet() {
   })
 }
 
+function fixDefaultIcons(L) {
+  try {
+    // CDN Leaflet loses image paths under Vite bundling; point markers at unpkg
+    delete L.Icon.Default.prototype._getIconUrl
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    })
+  } catch {}
+}
+
+/** Wheel-zoom setTimeouts can fire after map.remove() and crash the whole app. */
+function hardenLeaflet(L) {
+  if (!L || L.__rmsHardened) return
+  L.__rmsHardened = true
+  try {
+    const origGetPos = L.DomUtil.getPosition
+    L.DomUtil.getPosition = function (el) {
+      if (!el) return new L.Point(0, 0)
+      try {
+        return origGetPos.call(this, el)
+      } catch {
+        return new L.Point(0, 0)
+      }
+    }
+  } catch {}
+  try {
+    const Proto = L.Map?.prototype
+    if (Proto && !Proto.__rmsSafeZoom) {
+      Proto.__rmsSafeZoom = true
+      const origSetZoomAround = Proto.setZoomAround
+      Proto.setZoomAround = function (...args) {
+        try {
+          if (!this || !this._mapPane || this._removed) return this
+          return origSetZoomAround.apply(this, args)
+        } catch {
+          return this
+        }
+      }
+    }
+  } catch {}
+}
+
+function safeMapCall(map, fn) {
+  try {
+    if (!map || !map._loaded || !map._mapPane) return null
+    return fn(map)
+  } catch (e) {
+    console.warn('[RiderLiveMap] map op skipped', e)
+    return null
+  }
+}
+
 /** Restaurant / manager live map of riders sharing GPS from the PWA. */
 export default function RiderLiveMap() {
   const { token } = useAuth()
   const mapEl = useRef(null)
   const mapRef = useRef(null)
   const markersRef = useRef({})
+  const aliveRef = useRef(true)
+  const tokenRef = useRef(token)
   const [riders, setRiders] = useState([])
   const [loading, setLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState('')
   const [netError, setNetError] = useState('')
+  const [mapReady, setMapReady] = useState(false)
   const lastToastAt = useRef(0)
 
-  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  tokenRef.current = token
 
-  const ensureMap = useCallback(async () => {
-    const L = await loadLeaflet()
-    if (!mapEl.current) return L
-    if (!mapRef.current) {
-      mapRef.current = L.map(mapEl.current).setView([31.5204, 74.3587], 12) // default Lahore-ish; fits Pakistan cities
-      // Carto tiles are more reliable behind some firewalls than osm.org directly
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
-        subdomains: 'abcd',
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        crossOrigin: true,
-      }).addTo(mapRef.current)
-    }
-    return L
+  const invalidate = useCallback(() => {
+    safeMapCall(mapRef.current, (map) => {
+      map.invalidateSize({ animate: false })
+    })
   }, [])
 
-  const paint = useCallback(async (list) => {
+  const paint = useCallback((list) => {
+    const map = mapRef.current
+    const L = window.L
+    if (!map || !L || !aliveRef.current) return
     try {
-      const L = await ensureMap()
-      if (!mapRef.current) return
+      if (!map._loaded || !map._mapPane) return
       const ids = new Set()
       const latLngs = []
       for (const r of list || []) {
-        if (r.lat == null || r.lng == null) continue
+        if (r.lat == null || r.lng == null || Number.isNaN(Number(r.lat)) || Number.isNaN(Number(r.lng))) continue
         const id = String(r.riderId)
         ids.add(id)
-        latLngs.push([r.lat, r.lng])
+        const latlng = [Number(r.lat), Number(r.lng)]
+        latLngs.push(latlng)
+        const popup = `<b>${r.riderName || 'Rider'}</b><br/>${r.status}${r.orderLabel ? `<br/>Order: ${r.orderLabel}` : ''}${r.customerAddress ? `<br/>${r.customerAddress}` : ''}<br/><small>${r.ageSeconds != null ? `${r.ageSeconds}s ago` : ''}</small>`
         const label = `${r.riderName || 'Rider'}${r.status === 'on_delivery' ? ' · delivery' : ''}${r.stale ? ' · stale' : ''}`
         if (markersRef.current[id]) {
-          markersRef.current[id].setLatLng([r.lat, r.lng])
-          markersRef.current[id].bindPopup(
-            `<b>${r.riderName || 'Rider'}</b><br/>${r.status}${r.orderLabel ? `<br/>Order: ${r.orderLabel}` : ''}${r.customerAddress ? `<br/>${r.customerAddress}` : ''}<br/><small>${r.ageSeconds != null ? `${r.ageSeconds}s ago` : ''}</small>`
-          )
+          markersRef.current[id].setLatLng(latlng)
+          markersRef.current[id].setPopupContent(popup)
+          markersRef.current[id].setTooltipContent(label)
         } else {
-          const m = L.marker([r.lat, r.lng]).addTo(mapRef.current)
-          m.bindPopup(
-            `<b>${r.riderName || 'Rider'}</b><br/>${r.status}${r.orderLabel ? `<br/>Order: ${r.orderLabel}` : ''}${r.customerAddress ? `<br/>${r.customerAddress}` : ''}`
-          )
+          const m = L.marker(latlng).addTo(map)
+          m.bindPopup(popup)
           m.bindTooltip(label, { permanent: false })
           markersRef.current[id] = m
         }
       }
       Object.keys(markersRef.current).forEach((id) => {
         if (!ids.has(id)) {
-          try { mapRef.current.removeLayer(markersRef.current[id]) } catch {}
+          try { map.removeLayer(markersRef.current[id]) } catch {}
           delete markersRef.current[id]
         }
       })
-      if (latLngs.length === 1) mapRef.current.setView(latLngs[0], 14)
-      else if (latLngs.length > 1) mapRef.current.fitBounds(L.latLngBounds(latLngs).pad(0.2))
+      if (latLngs.length === 1) {
+        safeMapCall(map, (m) => m.setView(latLngs[0], Math.max(m.getZoom(), 14), { animate: false }))
+      } else if (latLngs.length > 1) {
+        safeMapCall(map, (m) => m.fitBounds(L.latLngBounds(latLngs).pad(0.25), { animate: false, maxZoom: 15 }))
+      }
+      invalidate()
     } catch (e) {
-      console.warn('[RiderLiveMap]', e)
+      console.warn('[RiderLiveMap] paint', e)
     }
-  }, [ensureMap])
+  }, [invalidate])
 
   const reload = useCallback(async () => {
+    if (!aliveRef.current) return
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setNetError('Offline — live locations pause until internet returns')
       return
     }
     setLoading(true)
     try {
+      const t = tokenRef.current
+      const headers = t ? { Authorization: `Bearer ${t}` } : {}
       const res = await fetch(`${API()}/api/rider-tracking/live`, { headers, cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
+      if (!aliveRef.current) return
       if (!res.ok) throw new Error(json.error || `Failed to load (${res.status})`)
       const list = Array.isArray(json.riders) ? json.riders : []
       setRiders(list)
       setUpdatedAt(new Date().toLocaleTimeString())
       setNetError('')
-      await paint(list)
+      paint(list)
     } catch (e) {
+      if (!aliveRef.current) return
       const msg = e?.message || 'Live map failed'
       setNetError(msg)
-      // Avoid toast spam every 8s while polling
       const now = Date.now()
       if (now - lastToastAt.current > 20000) {
         lastToastAt.current = now
         toast.error(msg)
       }
     } finally {
-      setLoading(false)
+      if (aliveRef.current) setLoading(false)
     }
-  }, [headers, paint])
+  }, [paint])
 
+  // Create map once; never tear it down on poll / token object churn
   useEffect(() => {
-    reload()
-    const t = setInterval(reload, 8000)
+    aliveRef.current = true
+    let cancelled = false
+    let resizeObs = null
+    let roTimer = null
+
+    ;(async () => {
+      try {
+        const L = await loadLeaflet()
+        if (cancelled || !mapEl.current || !aliveRef.current) return
+        fixDefaultIcons(L)
+        hardenLeaflet(L)
+
+        // Re-init if a previous instance left Leaflet's internal id on the node
+        if (mapEl.current._leaflet_id) {
+          try {
+            const old = mapEl.current._leaflet_id
+            if (L.Map?._instances?.[old]) L.Map._instances[old].remove()
+          } catch {}
+          try { delete mapEl.current._leaflet_id } catch {}
+          mapEl.current.innerHTML = ''
+        }
+
+        const map = L.map(mapEl.current, {
+          zoomControl: true,
+          scrollWheelZoom: true,
+          fadeAnimation: false,
+          zoomAnimation: true,
+          markerZoomAnimation: false,
+        }).setView([31.5204, 74.3587], 12)
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19,
+          subdomains: 'abcd',
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          crossOrigin: true,
+          errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+        }).addTo(map)
+
+        // Fallback tiles if Carto is blocked
+        map.whenReady(() => {
+          try {
+            const layers = []
+            map.eachLayer((ly) => { if (ly instanceof L.TileLayer) layers.push(ly) })
+            // keep carto; osm as silent backup if needed later
+            void layers
+          } catch {}
+        })
+
+        mapRef.current = map
+        setMapReady(true)
+
+        // Grey pane = size measured as 0; fix after layout / fonts / sidebar
+        requestAnimationFrame(() => {
+          invalidate()
+          setTimeout(invalidate, 80)
+          setTimeout(invalidate, 300)
+        })
+
+        if (typeof ResizeObserver !== 'undefined' && mapEl.current) {
+          resizeObs = new ResizeObserver(() => {
+            clearTimeout(roTimer)
+            roTimer = setTimeout(invalidate, 50)
+          })
+          resizeObs.observe(mapEl.current)
+        }
+
+        window.addEventListener('resize', invalidate)
+      } catch (e) {
+        console.warn('[RiderLiveMap] init failed', e)
+        if (aliveRef.current) setNetError('Map failed to load. Check internet / adblock for map tiles.')
+      }
+    })()
+
     return () => {
-      clearInterval(t)
+      cancelled = true
+      aliveRef.current = false
+      clearTimeout(roTimer)
+      try { resizeObs?.disconnect() } catch {}
+      window.removeEventListener('resize', invalidate)
       try {
         Object.values(markersRef.current).forEach((m) => {
           try { mapRef.current?.removeLayer(m) } catch {}
         })
         markersRef.current = {}
-        mapRef.current?.remove()
+        const map = mapRef.current
         mapRef.current = null
+        if (map) {
+          try { map._removed = true } catch {}
+          try { map.scrollWheelZoom?.disable() } catch {}
+          try { map.dragging?.disable() } catch {}
+          try { map.off() } catch {}
+          try { map.stop() } catch {}
+          try { map.remove() } catch {}
+        }
+        if (mapEl.current) {
+          try { delete mapEl.current._leaflet_id } catch {}
+          try { mapEl.current.innerHTML = '' } catch {}
+        }
       } catch {}
+      setMapReady(false)
     }
-  }, [reload])
+  }, [invalidate])
+
+  // Poll separately — does not remount the map
+  useEffect(() => {
+    if (!mapReady) return
+    reload()
+    const t = setInterval(reload, 8000)
+    return () => clearInterval(t)
+  }, [mapReady, reload, token])
+
+  const focusRider = (r) => {
+    if (r?.lat == null || r?.lng == null) return
+    safeMapCall(mapRef.current, (map) => {
+      map.setView([Number(r.lat), Number(r.lng)], 15, { animate: true })
+      const m = markersRef.current[String(r.riderId)]
+      try { m?.openPopup() } catch {}
+    })
+  }
 
   return (
     <div className="space-y-4 pb-10">
@@ -167,8 +330,20 @@ export default function RiderLiveMap() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-xl border border-[var(--color-border)] overflow-hidden shadow-sm bg-[var(--color-surface)]">
-          <div ref={mapEl} className="w-full h-[min(70vh,640px)] min-h-[360px] z-0" />
+        <div className="rounded-xl border border-[var(--color-border)] overflow-hidden shadow-sm bg-slate-100 dark:bg-slate-900 relative">
+          <div
+            ref={mapEl}
+            className="w-full h-[min(70vh,640px)] min-h-[360px] z-0 bg-[#d4dadc]"
+            onWheel={(e) => {
+              // If map was torn down mid-gesture, swallow so React error overlay doesn't spam
+              if (!mapRef.current?._mapPane) e.stopPropagation()
+            }}
+          />
+          {!mapReady ? (
+            <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-slate-600 pointer-events-none">
+              Loading map…
+            </div>
+          ) : null}
         </div>
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
@@ -181,7 +356,12 @@ export default function RiderLiveMap() {
                 No active riders. Rider opens staff app → Rider delivery (/rider) with Location on.
               </div>
             ) : riders.map(r => (
-              <div key={r.riderId} className="p-3 space-y-1">
+              <button
+                type="button"
+                key={r.riderId}
+                onClick={() => focusRider(r)}
+                className="w-full text-left p-3 space-y-1 hover:bg-[var(--color-surface-muted)] transition-colors"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-bold truncate">{r.riderName || r.riderId}</div>
                   <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
@@ -202,11 +382,12 @@ export default function RiderLiveMap() {
                     href={`https://www.google.com/maps?q=${r.lat},${r.lng}`}
                     target="_blank"
                     rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     Open in Maps <ExternalLink className="h-3 w-3" />
                   </a>
                 ) : null}
-              </div>
+              </button>
             ))}
           </div>
         </div>
