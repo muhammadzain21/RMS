@@ -6,6 +6,7 @@ import Staff from '../models/Staff.js'
 import { authRequired, signToken } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
 import { mergePermissions } from '../utils/sidebarDefaults.js'
+import { resolveMyWorkPages } from '../utils/myWorkPages.js'
 
 const router = Router()
 
@@ -21,6 +22,7 @@ async function getUserWithPermissions(user) {
     isHq: !!(user.isHq || user.role === 'Admin' || user.role === 'SuperAdmin'),
     useCustomPermissions: !!user.useCustomPermissions,
     myWorkAccess: false,
+    myWorkPages: [],
   }
 
   if (user.useCustomPermissions && Array.isArray(user.permissions)) {
@@ -32,20 +34,40 @@ async function getUserWithPermissions(user) {
     }
   }
 
-  // My Work is staff-only and driven by the Add Staff toggle — never by role defaults.
+  // My Work is staff-only and driven by Add Staff page toggles — never by role defaults.
   if (user.staffId) {
-    const staff = await Staff.findById(user.staffId).select('myWorkAccess').lean()
-    const allowed = !!(staff && staff.myWorkAccess !== false)
-    userData.myWorkAccess = allowed
-    const perms = (Array.isArray(userData.permissions) ? userData.permissions : []).filter(p => p.path !== '/my')
-    userData.permissions = allowed
-      ? [{ path: '/my', label: 'My Work', visible: true, order: 1.5, section: 'My Work' }, ...perms]
+    const staff = await Staff.findById(user.staffId).select('myWorkAccess myWorkPages position').lean()
+    const pages = resolveMyWorkPages(staff)
+    userData.myWorkPages = pages
+    userData.myWorkAccess = pages.length > 0
+    const perms = (Array.isArray(userData.permissions) ? userData.permissions : []).filter(p => p.path !== '/my' && p.path !== '/rider')
+    userData.permissions = pages.length
+      ? [
+          ...(pages.includes('/my') || pages.some(p => p.startsWith('/my/'))
+            ? [{ path: '/my', label: 'My Work', visible: true, order: 1.5, section: 'My Work' }]
+            : []),
+          ...perms,
+        ]
       : perms
   } else if (Array.isArray(userData.permissions)) {
-    userData.permissions = userData.permissions.map(p => p.path === '/my' ? { ...p, visible: false } : p)
+    userData.permissions = userData.permissions.map(p => (p.path === '/my' || p.path === '/rider') ? { ...p, visible: false } : p)
   }
 
   return userData
+}
+
+// Staff logins created before branch was copied onto the user still 403
+// every branch-scoped request when the browser sends another branch header.
+async function backfillStaffBranch(user) {
+  if (!user?.staffId) return
+  if (user.homeBranchId && Array.isArray(user.branchIds) && user.branchIds.length) return
+  const staff = await Staff.findById(user.staffId).select('branchId').lean()
+  const bid = String(staff?.branchId || '').trim()
+  if (!bid) return
+  if (!user.homeBranchId) user.homeBranchId = bid
+  const ids = new Set([...(user.branchIds || []).map(String).filter(Boolean), bid])
+  user.branchIds = [...ids]
+  await user.save()
 }
 
 // POST /api/auth/login
@@ -57,6 +79,7 @@ router.post('/login', async (req, res, next) => {
     if (!user) return res.status(401).json({ error: 'Invalid credentials' })
     const ok = await bcrypt.compare(password, user.passwordHash)
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
+    await backfillStaffBranch(user)
     const token = signToken(user)
     await logAudit(req, 'auth', 'Login success', { username }, { id: user._id?.toString?.() || '', username: user.username || 'user' })
     const userWithPerms = await getUserWithPermissions(user)
@@ -92,6 +115,7 @@ router.get('/me', authRequired, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id)
     if (!user) return res.status(404).json({ error: 'User not found' })
+    await backfillStaffBranch(user)
     const userWithPerms = await getUserWithPermissions(user)
     res.json({ user: userWithPerms })
   } catch (e) { next(e) }

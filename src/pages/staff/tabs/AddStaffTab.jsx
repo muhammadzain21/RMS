@@ -4,6 +4,7 @@ import StaffFormDialog from '../components/StaffFormDialog';
 import StaffEarningsDialog from '../components/StaffEarningsDialog.jsx';
 import { formatTime12 } from '../../../utils/dateUtils.js';
 import Pagination from '../../../components/Pagination.jsx';
+import { DEFAULT_MY_WORK_PAGES, resolveMyWorkPages } from '../../my/myWorkPages.js';
 
 export default function AddStaffTab({
  staff,
@@ -40,7 +41,8 @@ export default function AddStaffTab({
  username: '',
  password: '',
  role: 'Staff',
- myWorkAccess: true
+ myWorkAccess: true,
+ myWorkPages: [...DEFAULT_MY_WORK_PAGES],
  });
  const [customPos, setCustomPos] = useState('');
  const [jump, setJump] = useState(1);
@@ -193,7 +195,8 @@ export default function AddStaffTab({
  username: s.loginUsername || '',
  password: '',
  role: s.loginRole || 'Staff',
- myWorkAccess: s.myWorkAccess !== false
+ myWorkAccess: s.myWorkAccess !== false,
+ myWorkPages: resolveMyWorkPages(s),
  });
  setCustomPos('');
  setShowDialog(true);
@@ -216,7 +219,8 @@ export default function AddStaffTab({
  username: '',
  password: '',
  role: 'Staff',
- myWorkAccess: true
+ myWorkAccess: true,
+ myWorkPages: [...DEFAULT_MY_WORK_PAGES],
  });
  setCustomPos('');
  setShowDialog(true);
@@ -224,7 +228,13 @@ export default function AddStaffTab({
 
  const handleSave = () => {
  const pos = formData.position === 'Other' ? (customPos.trim() || 'Other') : formData.position;
- const payload = { ...formData, position: pos };
+ const pages = Array.isArray(formData.myWorkPages) ? formData.myWorkPages : [];
+ const payload = {
+   ...formData,
+   position: pos,
+   myWorkPages: pages,
+   myWorkAccess: pages.length > 0,
+ };
  if (!payload.username && !payload.password) { delete payload.username; delete payload.password; delete payload.role } // no login change
  if (editingId) {
  onUpdateStaff(editingId, payload);

@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useData } from '../state/DataContext.jsx'
 import { expandEnabledPaths, visibleItems } from '../layout/navConfig.js'
+import { hasMyWorkPage } from '../pages/my/myWorkPages.js'
 
 // Paths that correspond to a gated feature (sidebar pages). Sub-routes of a
 // feature (e.g. /staff/payroll/summary/123) inherit its gate. Routes that don't
@@ -18,10 +19,12 @@ export default function ProtectedRoute({ children, roles }) {
   // Admin / SuperAdmin always have full access
   if (user.role === 'SuperAdmin' || user.role === 'Admin') return children
 
-  const isMyWorkRoute = location.pathname === '/my' || location.pathname.startsWith('/my/')
-  const canSeeMyWork = Boolean(user.staffId) && user.myWorkAccess === true
-
   const currentPath = location.pathname
+  const isMyWorkRoute = currentPath === '/my' || currentPath.startsWith('/my/')
+  const isRiderRoute = currentPath === '/rider' || currentPath.startsWith('/rider/')
+  const myWorkPages = Array.isArray(user.myWorkPages) ? user.myWorkPages : []
+  const canSeeMyWork = Boolean(user.staffId) && myWorkPages.length > 0
+
   const enabledPaths = expandEnabledPaths(state?.settings?.enabledPaths)
   const isEnabled = (path) =>
     !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
@@ -30,7 +33,7 @@ export default function ProtectedRoute({ children, roles }) {
   const allowedPaths = Array.isArray(user.permissions)
     ? user.permissions.filter(p => p.visible).map(p => p.path)
     : null
-  const fallbackPath = allowedPaths ? allowedPaths.find(isEnabled) : null
+  const fallbackPath = allowedPaths ? allowedPaths.find(isEnabled) : (canSeeMyWork ? (myWorkPages[0] || '/my') : null)
   const noAccess = (
     <div className="flex items-center justify-center h-full p-10 text-sm text-gray-500 dark:text-gray-400">
       You do not have access to any page. Please contact your administrator.
@@ -51,8 +54,14 @@ export default function ProtectedRoute({ children, roles }) {
     }
   }
 
-  if (isMyWorkRoute) {
-    if (canSeeMyWork) return children
+  // Staff-linked accounts: My Work + Rider are granted per page from Add Staff, not role.
+  if (user.staffId && (isMyWorkRoute || isRiderRoute)) {
+    const ok = canSeeMyWork && (
+      isRiderRoute
+        ? myWorkPages.includes('/rider')
+        : (hasMyWorkPage(myWorkPages, currentPath) || (currentPath === '/my' && myWorkPages.some(p => p === '/my' || p.startsWith('/my/'))))
+    )
+    if (ok) return children
     return fallbackPath && fallbackPath !== currentPath
       ? <Navigate to={fallbackPath} replace />
       : noAccess

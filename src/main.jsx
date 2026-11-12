@@ -100,11 +100,13 @@ setupNativeChrome()
         const method = String(nextInit.method || (input && input.method) || 'GET').toUpperCase()
         // Auto-attach active branch for multi-branch writes/reads
         try {
+          const headers = new Headers(nextInit.headers || (input && input.headers) || {})
+          const authed = headers.has('Authorization') || !!sessionStorage.getItem('auth_token')
           const branchId = g.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || ''
           // Shared catalogs that ignore branch scope (menu still gets branch for overrides when header is set)
           const skipBranch = /\/api\/(auth|health|client-config|warehouse|call-center-orders|customers)(\/|$|\?)/i.test(String(url || ''))
-          if (branchId && !skipBranch && typeof url === 'string' && url.includes('/api/')) {
-            const headers = new Headers(nextInit.headers || (input && input.headers) || {})
+          // Never attach a leftover branch after logout (no token) — that 403s /api/settings
+          if (authed && branchId && !skipBranch && typeof url === 'string' && url.includes('/api/')) {
             if (!headers.has('X-Branch-Id')) headers.set('X-Branch-Id', branchId)
             nextInit.headers = headers
           }

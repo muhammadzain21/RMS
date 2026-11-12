@@ -5,8 +5,15 @@ import User from '../models/User.js'
 import Role from '../models/Role.js'
 import Audit from '../models/Audit.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
+import { normalizeMyWorkPages } from '../utils/myWorkPages.js'
 
 const router = Router()
+
+function applyMyWorkFields(body = {}) {
+  const normalized = normalizeMyWorkPages(body.myWorkPages, { myWorkAccess: body.myWorkAccess })
+  if (!normalized) return body
+  return { ...body, ...normalized }
+}
 
 // Ensure the built-in 'Staff' role exists (grants the /my self-service page by default)
 async function ensureStaffRole() {
@@ -16,7 +23,7 @@ async function ensureStaffRole() {
     role = await Role.create({
       name: 'Staff',
       description: 'Staff self-service: own attendance, purchases and payroll',
-      // /my is controlled by Staff.myWorkAccess at login time, not by this role default
+      // /my pages are controlled by Staff.myWorkPages at login time, not by this role default
       permissions: [],
       isDefault: false,
     })
@@ -89,7 +96,8 @@ router.get('/', async (req, res, next) => {
 router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
     // username/password are for the staff member's login account, not the staff doc
-    const { username, password, role, ...staffBody } = req.body || {}
+    const { username, password, role, ...rawStaffBody } = req.body || {}
+    const staffBody = applyMyWorkFields(rawStaffBody)
     const uname = String(username || '').trim()
     const roleName = String(role || 'Staff').trim() || 'Staff'
     if (roleName === 'SuperAdmin' && req.user?.role !== 'SuperAdmin') {
@@ -108,7 +116,14 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       }
       await ensureStaffRole()
       const passwordHash = await bcrypt.hash(String(password), 10)
-      await User.create({ username: uname, passwordHash, role: roleName, staffId: String(s._id) })
+      await User.create({
+      username: uname,
+      passwordHash,
+      role: roleName,
+      staffId: String(s._id),
+      homeBranchId: String(s.branchId || ''),
+      branchIds: s.branchId ? [String(s.branchId)] : [],
+    })
     }
     try { await Audit.create({ type: 'staff', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Added staff ${s?.name || s?._id}`, meta: { id: s._id, login: uname || null } }) } catch {}
     res.status(201).json(s)
@@ -117,7 +132,8 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
 
 router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
   try {
-    const { username, password, role, ...staffBody } = req.body || {}
+    const { username, password, role, ...rawStaffBody } = req.body || {}
+    const staffBody = applyMyWorkFields(rawStaffBody)
     const uname = String(username || '').trim()
     const roleName = role !== undefined ? (String(role).trim() || 'Staff') : undefined
     if (roleName === 'SuperAdmin' && req.user?.role !== 'SuperAdmin') {
@@ -154,13 +170,30 @@ router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
         }
         await ensureStaffRole()
         const passwordHash = await bcrypt.hash(String(password), 10)
-        await User.create({ username: uname, passwordHash, role: roleName || 'Staff', staffId: String(s._id) })
+        await User.create({
+          username: uname,
+          passwordHash,
+          role: roleName || 'Staff',
+          staffId: String(s._id),
+          homeBranchId: String(s.branchId || ''),
+          branchIds: s.branchId ? [String(s.branchId)] : [],
+        })
       } else {
         if (uname) linked.username = uname
         if (password) linked.passwordHash = await bcrypt.hash(String(password), 10)
         if (roleName) linked.role = roleName
+        if (s.branchId) {
+          linked.homeBranchId = String(s.branchId)
+          const ids = new Set([...(linked.branchIds || []).map(String), String(s.branchId)])
+          linked.branchIds = [...ids]
+        }
         await linked.save()
       }
+    } else if (linked && s.branchId && !linked.homeBranchId) {
+      linked.homeBranchId = String(s.branchId)
+      const ids = new Set([...(linked.branchIds || []).map(String), String(s.branchId)])
+      linked.branchIds = [...ids]
+      await linked.save()
     }
 
     try { await Audit.create({ type: 'staff', userId: req.user?.id||'', userName: req.user?.username || 'system', action: `Updated staff ${req.params.id}`, meta: { id: req.params.id, patch: req.body } }) } catch {}

@@ -16,7 +16,10 @@ const StaffSchema = new mongoose.Schema({
   status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
   joinDate: { type: Date },
   shiftId: { type: String, default: '' }, // Reference to shift id in StaffSettings.shifts
-  myWorkAccess: { type: Boolean, default: true }, // false => hide the 'My Work' page for this staff's login
+  // Legacy blanket flag; prefer myWorkPages. Kept so older clients still work.
+  myWorkAccess: { type: Boolean, default: true },
+  // Per-page My Work access (e.g. /my/attendance, /rider). Empty = no My Work portal.
+  myWorkPages: { type: [String], default: undefined },
   branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 

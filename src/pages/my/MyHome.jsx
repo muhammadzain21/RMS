@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   AreaChart, Area,
 } from 'recharts'
+import { useAuth } from '../../state/AuthContext.jsx'
 import { useMyWork, pkr, inRange, monthName, StatCard, Chip } from './myWorkShared.jsx'
 
 const LINKS = [
@@ -46,8 +47,13 @@ function ChartPanel({ title, children, className = '' }) {
 }
 
 export default function MyHome() {
+  const { user } = useAuth()
   const { data, month, from, to } = useMyWork()
   const staff = data?.staff || {}
+  const allowedPages = Array.isArray(user?.myWorkPages) ? user.myWorkPages : null
+  const quickLinks = allowedPages
+    ? LINKS.filter(item => allowedPages.includes(item.to))
+    : LINKS
   const att = inRange(data?.attendance, from, to)
   const purchases = inRange(data?.purchases, from, to)
   const advances = inRange(data?.advances, from, to)
@@ -330,7 +336,7 @@ export default function MyHome() {
         <div className="space-y-3">
           <h2 className="text-lg font-extrabold text-[var(--color-text-primary)]">Quick access</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {LINKS.map(item => (
+            {quickLinks.map(item => (
               <NavLink
                 key={item.to}
                 to={item.to}

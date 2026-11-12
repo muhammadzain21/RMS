@@ -1,6 +1,20 @@
 import React from 'react';
 import { formatTime12 } from '../../../utils/dateUtils.js';
 import DatePicker from '../../../components/DatePicker.jsx';
+import { MY_WORK_PAGE_OPTIONS } from '../../my/myWorkPages.js';
+
+function PageToggle({ on, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${on ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+      aria-pressed={on}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${on ? 'translate-x-5' : ''}`} />
+    </button>
+  );
+}
 
 export default function StaffFormDialog({
   isOpen,
@@ -15,6 +29,23 @@ export default function StaffFormDialog({
   roles = []
 }) {
   if (!isOpen) return null;
+
+  const pages = Array.isArray(formData.myWorkPages) ? formData.myWorkPages : [];
+  const togglePage = (path) => {
+    const next = pages.includes(path)
+      ? pages.filter(p => p !== path)
+      : [...pages, path];
+    setFormData({
+      ...formData,
+      myWorkPages: next,
+      myWorkAccess: next.length > 0,
+    });
+  };
+  const allOn = MY_WORK_PAGE_OPTIONS.every(p => pages.includes(p.path));
+  const toggleAll = () => {
+    const next = allOn ? [] : MY_WORK_PAGE_OPTIONS.map(p => p.path);
+    setFormData({ ...formData, myWorkPages: next, myWorkAccess: next.length > 0 });
+  };
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:px-4 sm:py-6">
@@ -62,7 +93,18 @@ export default function StaffFormDialog({
             <select
               className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
               value={formData.position}
-              onChange={e => setFormData({ ...formData, position: e.target.value })}
+              onChange={e => {
+                const position = e.target.value
+                let nextPages = Array.isArray(formData.myWorkPages) ? [...formData.myWorkPages] : []
+                if (position === 'Rider' && !nextPages.includes('/rider')) nextPages = [...nextPages, '/rider']
+                if (position !== 'Rider' && position !== 'Other') nextPages = nextPages.filter(p => p !== '/rider')
+                setFormData({
+                  ...formData,
+                  position,
+                  myWorkPages: nextPages,
+                  myWorkAccess: nextPages.length > 0,
+                })
+              }}
             >
               <option>Waiter</option>
               <option>Chef</option>
@@ -158,18 +200,36 @@ export default function StaffFormDialog({
               ))}
             </select>
           </div>
-          <div className="md:col-span-2 flex items-center justify-between px-3 py-2 rounded border bg-gray-50 dark:bg-gray-800/50">
-            <div>
-              <div className="text-sm font-medium">My Work portal</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Show this staff member their attendance, purchases & salary history</div>
+          <div className="md:col-span-2 rounded border bg-gray-50 dark:bg-gray-800/50 px-3 py-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">My Work pages</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Turn on only the pages this staff login should see (e.g. waiters without Rider)
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] font-semibold text-gray-500">{allOn ? 'All on' : 'All off'}</span>
+                <PageToggle on={allOn} onClick={toggleAll} />
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, myWorkAccess: !(formData.myWorkAccess !== false) })}
-              className={`relative w-11 h-6 rounded-full transition-colors ${formData.myWorkAccess !== false ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.myWorkAccess !== false ? 'translate-x-5' : ''}`} />
-            </button>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {MY_WORK_PAGE_OPTIONS.map(opt => {
+                const on = pages.includes(opt.path);
+                return (
+                  <div
+                    key={opt.path}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-[var(--color-text-primary)]">{opt.label}</div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{opt.desc}</div>
+                    </div>
+                    <PageToggle on={on} onClick={() => togglePage(opt.path)} />
+                  </div>
+                );
+              })}
+            </div>
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm mb-1">Status</label>

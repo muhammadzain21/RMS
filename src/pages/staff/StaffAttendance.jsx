@@ -24,7 +24,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  const [tab, setTab] = useState(initialTab);
  const [staff, setStaff] = useState([]);
  const [biometricMaps, setBiometricMaps] = useState([]); // { staffId, enrollId }
- const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
+ const [pagination, setPagination] = useState({ page: 1, limit: 100, total: 0, pages: 1 });
  const [search, setSearch] = useState('');
  const [loadingStaff, setLoadingStaff] = useState(false);
  const [attendance, setAttendance] = useState([]);
@@ -72,6 +72,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  loginUsername: d.loginUsername || '',
  loginRole: d.loginRole || 'Staff',
  myWorkAccess: d.myWorkAccess !== false,
+ myWorkPages: Array.isArray(d.myWorkPages) ? d.myWorkPages : undefined,
  }));
  setStaff(mapped);
  setPagination(prev => ({
@@ -228,7 +229,8 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  status: payload.status === 'inactive' ? 'Inactive' : 'Active',
  joinDate: payload.joinDate,
  shiftId: payload.shiftId || '',
- myWorkAccess: payload.myWorkAccess !== false,
+ myWorkAccess: Array.isArray(payload.myWorkPages) ? payload.myWorkPages.length > 0 : payload.myWorkAccess !== false,
+ ...(Array.isArray(payload.myWorkPages) ? { myWorkPages: payload.myWorkPages } : {}),
  ...(payload.username ? { username: payload.username, password: payload.password || '', role: payload.role || 'Staff' } : {})
  })
  });
@@ -264,7 +266,8 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  status: payload.status === 'inactive' ? 'Inactive' : 'Active',
  joinDate: payload.joinDate,
  shiftId: payload.shiftId || '',
- myWorkAccess: payload.myWorkAccess !== false,
+ myWorkAccess: Array.isArray(payload.myWorkPages) ? payload.myWorkPages.length > 0 : payload.myWorkAccess !== false,
+ ...(Array.isArray(payload.myWorkPages) ? { myWorkPages: payload.myWorkPages } : {}),
  ...(payload.username || payload.password ? { username: payload.username || '', password: payload.password || '', role: payload.role || 'Staff' } : {})
  })
  });

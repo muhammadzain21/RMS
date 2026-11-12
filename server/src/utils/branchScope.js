@@ -97,8 +97,15 @@ export function branchFilter(req, { allowAllForHq = false, allAccessible = false
 
   const branchId = resolveBranchId(req)
   if (branchId) {
-    assertBranchAccess(req, branchId)
-    return { branchId: String(branchId) }
+    try {
+      assertBranchAccess(req, branchId)
+      return { branchId: String(branchId) }
+    } catch (e) {
+      // Stale header branch (e.g. admin branch left in the browser while a staff
+      // account is logged in). Scope to branches this user may access instead of 403.
+      if (e.status !== 403) throw e
+      return accessibleBranchFilter(req)
+    }
   }
 
   // No header/home: HQ-wide only when explicitly opted in

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
-  Plus, RefreshCw, Wallet, Building2, Tags, Settings2, X, Eye, CheckCircle2, RotateCcw, Trash2, Pencil,
+  Plus, RefreshCw, Wallet, Building2, Tags, Settings2, X, CheckCircle2,
 } from 'lucide-react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
@@ -38,6 +38,38 @@ function displayHeads(exp) {
     if (names.length > 1) return names.join(', ')
   }
   return exp?.expenseHead || exp?.category || '—'
+}
+
+function displayDesc(exp) {
+  if (Array.isArray(exp?.lines) && exp.lines.length) {
+    const bits = exp.lines.map(l => String(l.description || '').trim()).filter(Boolean)
+    if (bits.length) return bits.join(' · ')
+  }
+  return String(exp?.description || '').trim()
+}
+
+function fmtDate(d) {
+  const s = String(d || '').trim()
+  if (!s) return '—'
+  try {
+    const dt = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00` : s)
+    if (Number.isNaN(dt.getTime())) return s
+    return format(dt, 'dd MMM yyyy')
+  } catch {
+    return s
+  }
+}
+
+function ActionBtn({ label, onClick, className }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-bold tracking-wide transition-colors ${className}`}
+    >
+      {label}
+    </button>
+  )
 }
 
 function emptyLine(names) {
@@ -518,40 +550,58 @@ export default function ExpenseNew() {
                 <th>Date</th>
                 <th>Head(s)</th>
                 <th>Account</th>
-                <th className="text-right">Amount</th>
+                <th>Amount</th>
                 <th>Added by</th>
                 <th>Status</th>
-                <th className="text-center">Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && <tr><td colSpan={7} className="text-center py-8 text-[var(--color-text-muted)] font-medium">Loading…</td></tr>}
-              {!loading && expenses.map(e => (
+              {!loading && expenses.map(e => {
+                const desc = displayDesc(e)
+                const bank = e.accountHead === 'bank'
+                const addedBy = String(e.userName || '').trim()
+                return (
                 <tr key={e.id}>
-                  <td className="font-semibold">{e.date || '-'}</td>
-                  <td className="font-semibold">{displayHeads(e)}</td>
-                  <td>{e.accountHead === 'bank' ? 'Bank' : 'Cash in Hand'}</td>
-                  <td className="text-right font-extrabold">PKR {Number(e.amount || 0).toLocaleString()}</td>
-                  <td className="font-semibold">{e.userName || '-'}</td>
+                  <td className="whitespace-nowrap font-semibold tabular-nums">{fmtDate(e.date)}</td>
+                  <td>
+                    <div className="font-semibold text-[var(--color-text-primary)] truncate" title={displayHeads(e)}>{displayHeads(e)}</div>
+                    {desc ? <div className="mt-0.5 truncate text-xs font-medium text-[var(--color-text-muted)]" title={desc}>{desc}</div> : null}
+                  </td>
+                  <td>
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${bank ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                      {bank ? 'Bank' : 'Cash'}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap pr-6 font-extrabold tabular-nums text-[var(--color-text-primary)]">
+                    PKR {Number(e.amount || 0).toLocaleString()}
+                  </td>
+                  <td className="whitespace-nowrap min-w-[8rem]">
+                    {addedBy
+                      ? <span className="font-semibold text-[var(--color-text-primary)]">{addedBy}</span>
+                      : <span className="font-medium text-[var(--color-text-muted)]">—</span>}
+                  </td>
                   <td><StatusBadge status={e.status} /></td>
-                  <td className="text-center">
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <button type="button" onClick={() => setShowView(e)} className="text-slate-600 font-bold text-xs inline-flex items-center gap-1"><Eye className="h-3.5 w-3.5" /> View</button>
+                  <td>
+                    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                      <ActionBtn label="View" onClick={() => setShowView(e)} className="border-slate-200 text-slate-700 hover:bg-slate-100" />
                       {canManage && (
                         <>
-                          <button type="button" onClick={() => startEdit(e)} className="text-blue-600 font-bold text-xs inline-flex items-center gap-1"><Pencil className="h-3.5 w-3.5" /> Edit</button>
+                          <ActionBtn label="Edit" onClick={() => startEdit(e)} className="border-blue-200 text-blue-700 hover:bg-blue-50" />
                           {e.status === 'approved' ? (
-                            <button type="button" onClick={() => unapprove(e.id)} className="text-amber-700 font-bold text-xs inline-flex items-center gap-1"><RotateCcw className="h-3.5 w-3.5" /> Unapprove</button>
+                            <ActionBtn label="Unapprove" onClick={() => unapprove(e.id)} className="border-amber-200 text-amber-800 hover:bg-amber-50" />
                           ) : (
-                            <button type="button" onClick={() => approve(e.id)} className="text-emerald-700 font-bold text-xs inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Approve</button>
+                            <ActionBtn label="Approve" onClick={() => approve(e.id)} className="border-emerald-200 text-emerald-800 hover:bg-emerald-50" />
                           )}
-                          <button type="button" onClick={() => remove(e.id)} className="text-rose-600 font-bold text-xs inline-flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+                          <ActionBtn label="Delete" onClick={() => remove(e.id)} className="border-rose-200 text-rose-700 hover:bg-rose-50" />
                         </>
                       )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
               {!loading && expenses.length === 0 && (
                 <tr><td colSpan={7} className="text-center py-10 text-[var(--color-text-muted)] font-medium">No expenses match the filters</td></tr>
               )}
@@ -575,7 +625,7 @@ export default function ExpenseNew() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={ev => { if (ev.target === ev.currentTarget) closeDialog() }}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-extrabold">{editingId ? 'Edit Expense' : 'Add Expense'}</h3>
               <button type="button" onClick={closeDialog} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
@@ -611,13 +661,13 @@ export default function ExpenseNew() {
                           {names.map(h => <option key={h} value={h}>{h}</option>)}
                         </select>
                       </div>
-                      <div className="col-span-12 sm:col-span-5">
-                        <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Description</label>
-                        <input value={line.description} onChange={e => setLine(idx, { description: e.target.value })} className="input mt-0.5 w-full text-sm" placeholder="Optional" />
-                      </div>
-                      <div className="col-span-10 sm:col-span-3">
+                      <div className="col-span-12 sm:col-span-3">
                         <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Amount</label>
                         <input type="number" value={line.amount} onChange={e => setLine(idx, { amount: e.target.value })} className="input mt-0.5 w-full text-sm" placeholder="0" />
+                      </div>
+                      <div className="col-span-10 sm:col-span-5">
+                        <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Description</label>
+                        <input value={line.description} onChange={e => setLine(idx, { description: e.target.value })} className="input mt-0.5 w-full text-sm" placeholder="Optional" />
                       </div>
                       <div className="col-span-2 sm:col-span-1 flex justify-end pb-0.5">
                         {form.lines.length > 1 && (
@@ -658,13 +708,13 @@ export default function ExpenseNew() {
               )}
             </div>
             <table className="tbl text-sm mb-3">
-              <thead><tr><th>Head</th><th>Description</th><th className="text-right">Amount</th></tr></thead>
+              <thead><tr><th>Head</th><th className="text-right">Amount</th><th>Description</th></tr></thead>
               <tbody>
                 {(Array.isArray(showView.lines) && showView.lines.length ? showView.lines : [{ expenseHead: displayHeads(showView), description: showView.description, amount: showView.amount }]).map((l, i) => (
                   <tr key={i}>
                     <td className="font-semibold">{l.expenseHead || '—'}</td>
-                    <td>{l.description || '-'}</td>
-                    <td className="text-right font-bold">PKR {Number(l.amount || 0).toLocaleString()}</td>
+                    <td className="text-right font-bold whitespace-nowrap tabular-nums">PKR {Number(l.amount || 0).toLocaleString()}</td>
+                    <td>{l.description || '—'}</td>
                   </tr>
                 ))}
               </tbody>

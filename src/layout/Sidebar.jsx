@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { dashboardItem, navSections, myWorkItem, myWorkNavItems, expandEnabledPaths } from './navConfig.js'
+import { dashboardItem, navSections, myWorkNavItems, expandEnabledPaths } from './navConfig.js'
 import { LogOut, X, Menu as MenuIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useData } from '../state/DataContext.jsx'
 
@@ -28,14 +28,20 @@ export function isDashboardVisible(user, enabledPaths) {
  return false
 }
 
-function withStaffMyWork(sections, user, enabledPaths) {
- const showMyWork = Boolean(user?.staffId) && user?.myWorkAccess === true && isEnabled(enabledPaths, myWorkItem.path)
+function withStaffMyWork(sections, user) {
+ const pages = Array.isArray(user?.myWorkPages) ? user.myWorkPages : []
+ // Granted in Add Staff. These paths are not in the installation feature list,
+ // so they must not disappear once settings.enabledPaths loads.
+ const showMyWork = Boolean(user?.staffId) && pages.length > 0
  if (!showMyWork) return sections.filter(s => s.label !== 'My Work')
  const rest = sections.filter(s => s.label !== 'My Work')
+ const allowed = new Set(pages)
  return [{
   label: 'My Work',
-  items: myWorkNavItems.map(i => ({ to: i.path, label: i.label, icon: i.icon, end: i.end })),
- }, ...rest]
+  items: myWorkNavItems
+   .filter(i => allowed.has(i.path))
+   .map(i => ({ to: i.path, label: i.label, icon: i.icon, end: i.end })),
+ }, ...rest].filter(s => s.items.length > 0)
 }
 
 export function getVisibleSections(user, enabledPaths) {
@@ -43,7 +49,7 @@ export function getVisibleSections(user, enabledPaths) {
  const sections = navSections()
  // Admin / SuperAdmin always get every page
  if (user?.role === 'SuperAdmin' || user?.role === 'Admin') {
- return withStaffMyWork(sections, user, enabledPaths)
+ return withStaffMyWork(sections, user)
  }
  if (user?.permissions && Array.isArray(user.permissions)) {
  const allowedPaths = new Set(user.permissions.filter(p => p.visible && p.path !== '/my').map(p => p.path))
@@ -60,11 +66,10 @@ export function getVisibleSections(user, enabledPaths) {
   sections
    .map(s => ({ ...s, items: s.items.filter(i => i.to !== '/my' && allowedPaths.has(i.to) && isEnabled(enabledPaths, i.to)) }))
    .filter(s => s.items.length > 0),
-  user,
-  enabledPaths
+  user
  )
  }
- return withStaffMyWork([], user, enabledPaths)
+ return withStaffMyWork([], user)
 }
 
 // ─── Sidebar component ────────────────────────────────────────────────────

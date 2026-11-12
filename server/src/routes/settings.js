@@ -13,7 +13,10 @@ router.get('/', authOptional, async (req, res, next) => {
   try {
     let branchId = ''
     try { branchId = resolveBranchId(req) || '' } catch { branchId = '' }
-    if (branchId) {
+    // Login / logout leaves a branch header with no user — never 403 the public settings read
+    if (!req.user) {
+      branchId = ''
+    } else if (branchId) {
       try { assertBranchAccess(req, branchId) } catch (e) {
         return res.status(e.status || 403).json({ error: e.message })
       }

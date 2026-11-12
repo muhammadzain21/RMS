@@ -29,7 +29,26 @@ export function AuthProvider({ children }) {
         const res = await fetch(`${getAPI()}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         if (res.ok) {
           const data = await res.json()
-          if (!cancelled && data?.user) setUser(data.user)
+          if (!cancelled && data?.user) {
+            setUser(data.user)
+            try {
+              const u = data.user
+              const hq = u?.role === 'Admin' || u?.role === 'SuperAdmin' || !!u?.isHq
+              if (!hq && u?.staffId) {
+                const branchId = String(u.homeBranchId || '')
+                const current = String(localStorage.getItem('active_branch_id') || '')
+                const allowed = new Set([
+                  ...(Array.isArray(u.branchIds) ? u.branchIds : []),
+                  u.homeBranchId,
+                ].filter(Boolean).map(String))
+                if (!current || (allowed.size && !allowed.has(current))) {
+                  localStorage.setItem('active_branch_id', branchId)
+                  window.ACTIVE_BRANCH_ID = branchId
+                  window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: branchId }))
+                }
+              }
+            } catch {}
+          }
         } else if (res.status === 401 && !cancelled) {
           // Stale/invalid token — force re-login
           setUser(null)
@@ -145,14 +164,15 @@ export function AuthProvider({ children }) {
         try {
           const u = data.user
           const hq = u?.role === 'Admin' || u?.role === 'SuperAdmin' || !!u?.isHq
-          if (hq) {
-            localStorage.setItem('active_branch_id', '')
-            const uk = String(u?.id || u?._id || u?.username || '')
-            if (uk) localStorage.setItem(`active_branch_id_u_${uk}`, '')
-            if (typeof window !== 'undefined') {
-              window.ACTIVE_BRANCH_ID = ''
-              window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: '' }))
-            }
+          // Staff must not keep an admin branch in the header — that header is sent
+          // on every API call and comes back 403 Forbidden.
+          const branchId = hq ? '' : String(u?.homeBranchId || '')
+          localStorage.setItem('active_branch_id', branchId)
+          const uk = String(u?.id || u?._id || u?.username || '')
+          if (uk) localStorage.setItem(`active_branch_id_u_${uk}`, branchId)
+          if (typeof window !== 'undefined') {
+            window.ACTIVE_BRANCH_ID = branchId
+            window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: branchId }))
           }
         } catch {}
         return { ok: true, user: data.user }
@@ -180,6 +200,14 @@ export function AuthProvider({ children }) {
     setToken('')
     sessionStorage.removeItem('auth_token')
     sessionStorage.removeItem('auth_user')
+    // Drop staff/admin branch header so post-logout /api/settings is not Forbidden
+    try {
+      localStorage.setItem('active_branch_id', '')
+      if (typeof window !== 'undefined') {
+        window.ACTIVE_BRANCH_ID = ''
+        window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: '' }))
+      }
+    } catch {}
   }
 
   const canManageUsers = () => !!(token && user)
