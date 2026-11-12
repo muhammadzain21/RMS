@@ -72,6 +72,8 @@ const SettingsSchema = new mongoose.Schema({
   // Feature access: array of enabled sidebar paths (null/empty = all enabled).
   // Managed only by the SuperAdmin portal.
   enabledPaths: { type: mongoose.Schema.Types.Mixed, default: null },
+  // Google Maps JavaScript API key (browser). Restrict by HTTP referrer in Google Cloud.
+  googleMapsApiKey: { type: String, default: '' },
   // Chart of expense heads (categories) used on Expenses page
   expenseHeads: {
     type: [String],

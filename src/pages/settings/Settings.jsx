@@ -89,6 +89,7 @@ export default function Settings() {
  kotPrinterIp: s.kotPrinterIp || '',
  billPrinterName: s.billPrinterName || '',
  billPrinterIp: s.billPrinterIp || '',
+ googleMapsApiKey: s.googleMapsApiKey || '',
  })
 
  const [cloudSync, setCloudSync] = useState(() => {
@@ -192,6 +193,7 @@ export default function Settings() {
  kotPrinterIp: ns.kotPrinterIp || '',
  billPrinterName: ns.billPrinterName || '',
  billPrinterIp: ns.billPrinterIp || '',
+ googleMapsApiKey: ns.googleMapsApiKey || '',
  })
  setSellFields({
  ...defaultSellFields(),
@@ -498,7 +500,18 @@ export default function Settings() {
  Show Personal payment option on Sell page
  </label><p className="text-sm text-gray-600 dark:text-gray-400">
  When enabled, cashiers can mark orders as Personal (no payment collected). Off by default.
- </p></div></div></CardBody></Card><Card><CardHeader
+ </p></div></div>
+ <InputGroup label="Google Maps API key (Rider Live Map)" helpText="Create a Maps JavaScript API key in Google Cloud Console. Restrict it by HTTP referrer (your domain). Leave blank to use street-map tiles.">
+   <input
+     type="password"
+     autoComplete="off"
+     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+     value={system.googleMapsApiKey || ''}
+     onChange={e => setSystem(v => ({ ...v, googleMapsApiKey: e.target.value.trim() }))}
+     placeholder="AIza…"
+   />
+ </InputGroup>
+ </CardBody></Card><Card><CardHeader
  title="Printer Configuration"
  subtitle="KOT and Void use the same printer. Set the Windows name and/or LAN IP for silent Print from the preview."
  icon=""

@@ -23,12 +23,18 @@ setupNativeChrome()
     window.addEventListener('unhandledrejection', (ev) => {
       try {
         console.error('[unhandledrejection]', ev?.reason)
+        // Prevent default so Chromium doesn't treat it as a fatal crash in Electron
         ev?.preventDefault?.()
       } catch {}
     })
     window.addEventListener('error', (ev) => {
       try {
-        // Resource load failures (script/img) still fire "error"; don't spam if no message
+        const msg = String(ev?.message || ev?.error?.message || '')
+        // Leaflet/Google Maps teardown races — log but do not escalate
+        if (/_leaflet_pos|Script error\.?|ResizeObserver loop/i.test(msg)) {
+          ev?.preventDefault?.()
+          return
+        }
         if (ev?.error) console.error('[window.error]', ev.error)
         else if (ev?.message) console.error('[window.error]', ev.message)
       } catch {}
@@ -146,24 +152,21 @@ setupNativeChrome()
       }catch{}
       return orig(input, init)
     }
-    // Auto-discovery only when user has NOT saved a URL (never overwrite LAN/online choice)
-    if (!isCapacitor && !strip(savedBase)) {
-      const tryDiscover = async () => {
-        try{
-          // Skip if user saved a URL while we were discovering
-          if (strip(localStorage.getItem('server_url'))) return
-          const discoverHost = window.location.hostname || 'localhost'
-          const discoverBase = `http://${discoverHost}:5000`
-          const res = await fetch(`${discoverBase}/api/client-config`, { cache: 'no-store' })
-          if (res.ok) {
-            if (strip(localStorage.getItem('server_url'))) return
-            const j = await res.json()
-            if (j && j.apiBase) rememberBase(j.apiBase)
-          }
-        }catch{}
-      }
-      tryDiscover()
+    // Always pull optional Maps key from server; discover API base only if user has not pinned one
+    const pullClientConfig = async (base) => {
+      try {
+        const res = await fetch(`${strip(base) || guessBase}/api/client-config`, { cache: 'no-store' })
+        if (!res.ok) return
+        const j = await res.json()
+        try {
+          if (j?.googleMapsApiKey) window.__GOOGLE_MAPS_API_KEY = String(j.googleMapsApiKey)
+        } catch {}
+        if (!isCapacitor && !strip(savedBase) && !strip(localStorage.getItem('server_url')) && j?.apiBase) {
+          rememberBase(j.apiBase)
+        }
+      } catch {}
     }
+    pullClientConfig(strip(g.API_BASE) || guessBase)
   }catch{}
 })()
 
@@ -172,13 +175,21 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <Router>
         <UIProvider>
-          <AuthProvider>
-            <BranchProvider>
-              <DataProvider>
-                <App />
-              </DataProvider>
-            </BranchProvider>
-          </AuthProvider>
+          <ErrorBoundary>
+            <AuthProvider>
+              <ErrorBoundary>
+                <BranchProvider>
+                  <ErrorBoundary>
+                    <DataProvider>
+                      <ErrorBoundary>
+                        <App />
+                      </ErrorBoundary>
+                    </DataProvider>
+                  </ErrorBoundary>
+                </BranchProvider>
+              </ErrorBoundary>
+            </AuthProvider>
+          </ErrorBoundary>
         </UIProvider>
       </Router>
     </ErrorBoundary>

@@ -19,6 +19,16 @@ export default class ErrorBoundary extends React.Component {
     try {
       console.error('[ErrorBoundary]', error, info?.componentStack)
     } catch {}
+    try {
+      // Lightweight breadcrumb for post-deploy debugging (never throws)
+      const prev = JSON.parse(sessionStorage.getItem('rms_last_ui_error') || 'null')
+      sessionStorage.setItem('rms_last_ui_error', JSON.stringify({
+        at: new Date().toISOString(),
+        message: String(error?.message || error || ''),
+        path: typeof location !== 'undefined' ? location.href : '',
+        prev: prev?.message || null,
+      }))
+    } catch {}
   }
 
   handleReset = () => {

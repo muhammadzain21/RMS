@@ -54,7 +54,16 @@ const initialState = () => {
 function reducer(state, action) {
   switch (action.type) {
     case 'HYDRATE': {
-      const next = { ...state, ...(action.payload || {}) }
+      const payload = action.payload || {}
+      const next = { ...state, ...payload }
+      // Never let a bad hydrate turn collection fields into non-arrays (whitescreen risk)
+      for (const key of [
+        'sales', 'returns', 'expenses', 'supplies', 'ingredients', 'menu', 'categories',
+        'staff', 'riders', 'customers', 'suppliers', 'audit', 'cashOpenings', 'advanceBookings',
+        'payInOuts', 'dayCloses', 'helds', 'demands', 'recalls', 'deletedSales',
+      ]) {
+        if (payload[key] !== undefined && !Array.isArray(next[key])) next[key] = []
+      }
       return log(next, 'Hydrated from backend')
     }
     case 'ADD_INGREDIENT': {
@@ -763,14 +772,17 @@ export function DataProvider({ children }) {
     }
   }
   const monthKey = format(new Date(), 'yyyy-MM')
-  const todaysSalesGross = state.sales.filter(s => s.date === businessDate).reduce((a,b) => a + Number(b.total), 0)
-  const todaysReturns = (state.returns || []).filter(r => r.date === businessDate).reduce((a,b) => a + Number(b.refund || 0), 0)
+  const salesArr = Array.isArray(state.sales) ? state.sales : []
+  const returnsArr = Array.isArray(state.returns) ? state.returns : []
+  const ingredientsArr = Array.isArray(state.ingredients) ? state.ingredients : []
+  const todaysSalesGross = salesArr.filter(s => s.date === businessDate).reduce((a,b) => a + Number(b.total), 0)
+  const todaysReturns = returnsArr.filter(r => r.date === businessDate).reduce((a,b) => a + Number(b.refund || 0), 0)
   const todaysSales = Math.max(0, todaysSalesGross - todaysReturns)
-  const monthlySalesGross = state.sales.filter(s => s.date?.startsWith(monthKey)).reduce((a,b) => a + Number(b.total), 0)
-  const monthlyReturns = (state.returns || []).filter(r => r.date?.startsWith(monthKey)).reduce((a,b) => a + Number(b.refund || 0), 0)
+  const monthlySalesGross = salesArr.filter(s => s.date?.startsWith(monthKey)).reduce((a,b) => a + Number(b.total), 0)
+  const monthlyReturns = returnsArr.filter(r => r.date?.startsWith(monthKey)).reduce((a,b) => a + Number(b.refund || 0), 0)
   const monthlySales = Math.max(0, monthlySalesGross - monthlyReturns)
-  const lowStock = state.ingredients.filter(i => i.qty <= 5)
-  const ordersCount = state.sales.length
+  const lowStock = ingredientsArr.filter(i => i.qty <= 5)
+  const ordersCount = salesArr.length
 
   // Expose for CSV/PDF/Print filenames (exportDateStamp reads this)
   useEffect(() => {

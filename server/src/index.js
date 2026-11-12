@@ -101,13 +101,14 @@ app.get('/api/health', (_req, res) => {
 // Public client config: lets the frontend discover the API base from server env or request host
 app.get('/api/client-config', (req, res) => {
   try {
+    const mapsKey = String(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || '').trim()
     const explicit = process.env.PUBLIC_API_BASE
-    if (explicit) return res.json({ apiBase: String(explicit) })
+    if (explicit) return res.json({ apiBase: String(explicit), googleMapsApiKey: mapsKey })
     const proto = (req.headers['x-forwarded-proto'] || (req.protocol || 'http')).toString()
     const host = (req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`).toString()
-    return res.json({ apiBase: `${proto}://${host}` })
+    return res.json({ apiBase: `${proto}://${host}`, googleMapsApiKey: mapsKey })
   } catch {
-    res.json({ apiBase: `http://localhost:${PORT}` })
+    res.json({ apiBase: `http://localhost:${PORT}`, googleMapsApiKey: '' })
   }
 })
 
@@ -203,9 +204,11 @@ app.use((err, req, res, _next) => {
 
 process.on('unhandledRejection', (reason) => {
   try { console.error('[unhandledRejection]', reason) } catch {}
+  // Do not exit — keep POS server alive for the restaurant floor
 })
 process.on('uncaughtException', (err) => {
   try { console.error('[uncaughtException]', err) } catch {}
+  // Log only. Exiting would take down the whole install on a single bad callback.
 })
 
 async function start() {

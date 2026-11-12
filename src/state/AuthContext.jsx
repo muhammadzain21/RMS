@@ -13,7 +13,9 @@ export function AuthProvider({ children }) {
       return null
     }
   })
-  const [token, setToken] = useState(() => sessionStorage.getItem('auth_token') || '')
+  const [token, setToken] = useState(() => {
+    try { return sessionStorage.getItem('auth_token') || '' } catch { return '' }
+  })
   const [users, setUsers] = useState([])
 
   // No localStorage persistence; token and user live in memory only

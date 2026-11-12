@@ -105,8 +105,12 @@ export default function SalesNew() {
     })
   }
   const updateItem = (idx, patch) => setItems(prev => prev.map((it,i)=> i===idx ? { ...it, ...patch } : it))
-  const incQty = (idx) => updateItem(idx, { qty: items[idx].qty + 1 })
-  const decQty = (idx) => updateItem(idx, { qty: Math.max(1, items[idx].qty - 1) })
+  const incQty = (idx) => setItems(prev => prev.map((it, i) => (
+    i === idx ? { ...it, qty: Number(it?.qty || 0) + 1 } : it
+  )))
+  const decQty = (idx) => setItems(prev => prev.map((it, i) => (
+    i === idx ? { ...it, qty: Math.max(1, Number(it?.qty || 1) - 1) } : it
+  )))
   const removeItem = (idx) => setItems(prev => prev.filter((_,i)=> i!==idx))
 
   // Order type first — Foodpanda uses priceFoodpanda on menu items
