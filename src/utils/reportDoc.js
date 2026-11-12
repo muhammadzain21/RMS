@@ -14,6 +14,30 @@ export function resolveAssetUrl(raw) {
   } catch { return raw || '' }
 }
 
+function sanitizeReportFileName(fileName) {
+  const clean = String(fileName || 'report')
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim() || 'report'
+  return /\.pdf$/i.test(clean) ? clean : `${clean}.pdf`
+}
+
+function triggerBrowserPdfDownload(data, fileName, { base64 = false } = {}) {
+  const name = sanitizeReportFileName(fileName)
+  const a = document.createElement('a')
+  a.download = name
+  if (base64) {
+    a.href = `data:application/pdf;base64,${data}`
+  } else {
+    const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/pdf' })
+    a.href = URL.createObjectURL(blob)
+  }
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  if (!base64) setTimeout(() => { try { URL.revokeObjectURL(a.href) } catch {} }, 2500)
+}
+
 /**
  * Preview a report document. Electron renders the HTML to an A4 PDF and opens
  * it in the PDF preview window; browsers print via a hidden iframe (the system
@@ -33,12 +57,87 @@ export async function previewHtmlReport(html, fileName) {
     document.body.appendChild(iframe)
     const doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)
     if (!doc) { iframe.remove(); return }
+    let printed = false
+    const doPrint = () => {
+      if (printed) return
+      printed = true
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch {}
+    }
     doc.open(); doc.write(String(html || '')); doc.close()
-    const doPrint = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch {} }
-    iframe.onload = doPrint
-    setTimeout(doPrint, 500)
+    // Single print only (onload + timeout previously opened the dialog twice)
+    if (iframe.contentDocument?.readyState === 'complete') {
+      setTimeout(doPrint, 250)
+    } else {
+      iframe.onload = () => setTimeout(doPrint, 50)
+      setTimeout(doPrint, 800)
+    }
     setTimeout(() => { try { iframe.remove() } catch {} }, 60000)
   } catch {}
+}
+
+/**
+ * Download the same A4 letterhead HTML used by Print, as a PDF file.
+ * Electron: Chromium printToPDF (matches print preview exactly).
+ * Browser: html2pdf.js from the same HTML document.
+ */
+export async function downloadHtmlReport(html, fileName) {
+  const name = sanitizeReportFileName(fileName)
+  try {
+    const api = (typeof window !== 'undefined') ? window.pdfPreview : null
+    if (api && typeof api.downloadHtml === 'function') {
+      const r = await api.downloadHtml(html, name)
+      if (r && r.ok && r.base64) {
+        triggerBrowserPdfDownload(r.base64, name, { base64: true })
+        return true
+      }
+    }
+  } catch (e) {
+    console.warn('[downloadHtmlReport] Electron path failed:', e)
+  }
+
+  // Browser: render the same HTML document to a multi-page A4 PDF
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none;'
+  document.body.appendChild(iframe)
+  try {
+    const idoc = iframe.contentDocument || iframe.contentWindow?.document
+    if (!idoc) throw new Error('iframe unavailable')
+    idoc.open()
+    idoc.write(String(html || ''))
+    idoc.close()
+    await new Promise((resolve) => {
+      const done = () => resolve()
+      if (idoc.readyState === 'complete') setTimeout(done, 200)
+      else iframe.onload = () => setTimeout(done, 200)
+      setTimeout(done, 1200)
+    })
+    // Wait for images (logo/watermark) so PDF matches print
+    try {
+      const imgs = [...(idoc.images || [])]
+      await Promise.all(imgs.map((img) => (img.complete ? Promise.resolve() : new Promise((res) => {
+        img.onload = img.onerror = () => res()
+        setTimeout(res, 1500)
+      }))))
+    } catch {}
+
+    const html2pdf = (await import('html2pdf.js')).default
+    const opt = {
+      margin: 0,
+      filename: name,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    }
+    await html2pdf().set(opt).from(idoc.body).save()
+    return true
+  } catch (e) {
+    console.warn('[downloadHtmlReport] browser path failed:', e)
+    throw e
+  } finally {
+    try { iframe.remove() } catch {}
+  }
 }
 
 export function reportCss(accent = '#1e3a8a') {
@@ -136,4 +235,11 @@ export async function printReportDoc(opts = {}) {
   const html = wrapReportDoc(opts)
   const safe = String(opts.fileName || `${String(opts.title || 'report').replace(/\s+/g, '-')}.pdf`)
   await previewHtmlReport(html, safe)
+}
+
+/** Build the letterhead doc and download it as a PDF (same layout as print). */
+export async function downloadReportDoc(opts = {}) {
+  const html = wrapReportDoc(opts)
+  const safe = String(opts.fileName || `${String(opts.title || 'report').replace(/\s+/g, '-')}.pdf`)
+  await downloadHtmlReport(html, safe)
 }

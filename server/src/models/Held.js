@@ -11,7 +11,7 @@ const LineSchema = new mongoose.Schema({
 
 const HeldSchema = new mongoose.Schema({
   createdAt: { type: Number, required: true },
-  orderType: { type: String, enum: ['Dine-in','Take-away','Delivery','Drive Through','Drive-thru'], required: true },
+  orderType: { type: String, enum: ['Dine-in','Take-away','Delivery','Drive Through','Drive-thru','Foodpanda'], required: true },
   items: { type: [LineSchema], default: [] },
   waiterId: { type: String, default: '' },
   tableNo: { type: String, default: '' },

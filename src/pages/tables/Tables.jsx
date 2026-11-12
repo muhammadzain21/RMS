@@ -9,9 +9,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import { Plus, X } from 'lucide-react'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function Tables() {
@@ -174,8 +172,8 @@ export default function Tables() {
    ? selectedDate
    : `${fromDate || '…'} to ${toDate || '…'}`
 
- const openPrintPreview = async () => {
- try {
+ const buildReportHtml = () => {
+ const fileName = `Tables-${exportDateStamp()}.pdf`
  const totalBill = rows.reduce((a, r) => a + Number(r.totalAmount || 0), 0)
  const body =
  reportSummary([
@@ -208,7 +206,13 @@ export default function Tables() {
  metaRight: [['Search', search.trim() || 'All'], ['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Tables-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildReportHtml()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -216,23 +220,11 @@ export default function Tables() {
  }
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Tables', 40, 32)
- doc.setFontSize(10)
- doc.text(`${periodLabel} · ${rows.length} tables`, 40, 46)
- doc.autoTable({
- head: [['Table', 'Floor', 'Orders', 'Last Order', 'Last Waiter', 'Total Bill (PKR)']],
- body: tableReportRows(),
- startY: 54,
- styles: { fontSize: 8, cellPadding: 4 },
- headStyles: { fillColor: [6, 182, 212], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`tables_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
+ const { html, fileName } = buildReportHtml()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded')
  } catch (e) {
  console.error(e)
  toast.error('Failed to export PDF')

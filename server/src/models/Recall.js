@@ -19,7 +19,7 @@ const RecallSchema = new mongoose.Schema({
   createdAt: { type: Number, required: true },
   // Business date (YYYY-MM-DD) to scope tokens per day; optional for backward compatibility
   date: { type: String, default: '' },
-  orderType: { type: String, enum: ['Dine-in','Take-away','Delivery','Drive Through','Drive-thru'], required: true },
+  orderType: { type: String, enum: ['Dine-in','Take-away','Delivery','Drive Through','Drive-thru','Foodpanda'], required: true },
   items: { type: [LineSchema], default: [] },
   orderNo: { type: String, default: '' },
   tokenNo: { type: String, default: '' },

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { useData } from '../../state/DataContext.jsx'
@@ -11,7 +9,7 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import SlipDialog from '../../components/SlipDialog.jsx'
 import { Plus, X } from 'lucide-react'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 
 export default function CashCount() {
  const { state, businessDate } = useData()
@@ -133,8 +131,7 @@ export default function CashCount() {
  }
  }
 
- const openPrintPreview = async () => {
- try {
+ const buildCashCountReport = () => {
  const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
  const periodFrom = from || '—'
  const periodTo = to || '—'
@@ -157,6 +154,7 @@ export default function CashCount() {
  r.userName || '-',
  ]),
  })
+ const fileName = `Cash-Count-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Manager Cash Count History',
@@ -167,7 +165,13 @@ export default function CashCount() {
  body,
  footNote: 'Manager cash counts do not affect day close totals.',
  })
- await previewHtmlReport(html, `Cash-Count-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildCashCountReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }
@@ -188,32 +192,10 @@ export default function CashCount() {
  toast.success('CSV exported successfully')
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF()
- doc.setFontSize(16)
- doc.text('Manager Cash Count History', 14, 16)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 14, 24)
- const body = rows.map(r => [
- r.date,
- (r.createdAt ? format(new Date(r.createdAt), 'h:mm a') : ''),
- `PKR ${Number(r.amount).toLocaleString()}`,
- r.fromUser || '-',
- r.receiver || '-',
- r.note || '-',
- r.userName || '-',
- ])
- autoTable(doc, {
- head: [['Date','Time','Amount','From','Receiver','Note','User']],
- body,
- startY: 30,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255 },
- foot: [['Totals', '', `PKR ${totalAmount.toLocaleString()}`, '', '', '', '']],
- footStyles: { fillColor: [245,245,245] },
- })
- doc.save(`cash_count_history_${exportDateStamp()}.pdf`)
+ const { html, fileName } = buildCashCountReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

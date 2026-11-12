@@ -4,9 +4,7 @@ import ChartCard from '../components/ChartCard.jsx'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Tooltip, XAxis, YAxis } from 'recharts'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../utils/reportDoc.js'
 
 export default function ProfitLoss() {
  const { state, businessDate } = useData()
@@ -86,8 +84,8 @@ export default function ProfitLoss() {
 
  const money = (n) => 'PKR ' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
- const openPrintPreview = async () => {
- try {
+ const buildProfitLossReport = () => {
+ const fileName = `Profit-Loss-${year}.pdf`
  const body =
  reportSummary([
  { label: `${year} — Total Sales`, amount: money(yearlyTotals.sales) },
@@ -132,7 +130,14 @@ export default function ProfitLoss() {
  body,
  footNote: 'Net Profit = max(0, Sales − Returns − Personal) − (Purchases + Expenses).',
  })
- await previewHtmlReport(html, `Profit-Loss-${year}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildProfitLossReport()
+ await previewHtmlReport(html, fileName)
+ toast.success('Print preview opened')
  } catch {
  toast.error('Print preview failed')
  }
@@ -160,41 +165,10 @@ export default function ProfitLoss() {
  }
  }
 
- const downloadPDF = () => {
+ const downloadPDF = async () => {
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(16)
- doc.text(`Profit & Loss — ${year}`, 40, 32)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 40, 48)
- autoTable(doc, {
- startY: 60,
- head: [['Month', 'Sales', 'Returns', 'Discount', 'Personal', 'Purchases', 'Expenses', 'Net Profit']],
- body: monthlyRows.map(r => [
- r.monthName,
- r.sales.toFixed(2),
- r.returns.toFixed(2),
- r.discount.toFixed(2),
- r.complimentary.toFixed(2),
- r.purchases.toFixed(2),
- r.expenses.toFixed(2),
- r.profit.toFixed(2),
- ]),
- foot: [[
- 'Total',
- yearlyTotals.sales.toFixed(2),
- yearlyTotals.returns.toFixed(2),
- yearlyTotals.discount.toFixed(2),
- yearlyTotals.complimentary.toFixed(2),
- yearlyTotals.purchases.toFixed(2),
- yearlyTotals.expenses.toFixed(2),
- yearlyTotals.profit.toFixed(2),
- ]],
- footStyles: { fillColor: [245, 245, 245] },
- styles: { fontSize: 9 },
- headStyles: { fillColor: [99, 102, 241], textColor: 255 },
- })
- doc.save(`profit_loss_${year}.pdf`)
+ const { html, fileName } = buildProfitLossReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF downloaded')
  } catch (err) {
  console.error('PDF export error:', err)

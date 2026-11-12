@@ -5,15 +5,13 @@ import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { toast } from 'react-hot-toast'
 import DeleteKeyModal from '../../components/DeleteKeyModal.jsx'
 import SlipDialog from '../../components/SlipDialog.jsx'
 import { useConfirm } from '../../components/useConfirm.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 
 export default function DayClose() {
  const { state, dispatch, businessDate } = useData()
@@ -359,8 +357,7 @@ export default function DayClose() {
  }
  }
 
- const openPrintPreview = async () => {
- try {
+ const buildDayCloseReport = () => {
  const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
  const periodFrom = from || '—'
  const periodTo = to || '—'
@@ -394,6 +391,7 @@ export default function DayClose() {
  r.note || '-',
  ]),
  })
+ const fileName = `Day-Close-History-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Day Close History',
@@ -403,7 +401,13 @@ export default function DayClose() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Day-Close-History-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildDayCloseReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }
@@ -424,32 +428,10 @@ export default function DayClose() {
  URL.revokeObjectURL(url)
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF()
- doc.text('Day Close History', 14, 16)
- autoTable(doc, {
- startY: 20,
- head: [[ 'Date','Opening','Cash','Bank','Card','Returns','Handover','Pay In','Pay Out','Expenses','Expected','Counted','Variance','User','ID' ]],
- body: rows.map(r => [
- r.date,
- `PKR ${Number(r.openingCash).toLocaleString()}`,
- `PKR ${Number(r.cashSales).toLocaleString()}`,
- `PKR ${Number(r.onlineSales ?? 0).toLocaleString()}`,
- `PKR ${Number(r.cardSales||0).toLocaleString()}`,
- `PKR ${Number(r.returns||0).toLocaleString()}`,
- `PKR ${Number(r.handovers).toLocaleString()}`,
- `PKR ${Number(r.payIns).toLocaleString()}`,
- `PKR ${Number(r.payOuts).toLocaleString()}`,
- `PKR ${Number(r.expenses||0).toLocaleString()}`,
- `PKR ${Number(r.expectedCash).toLocaleString()}`,
- `PKR ${Number(r.countedCash).toLocaleString()}`,
- `PKR ${Number(r.variance).toLocaleString()}`,
- r.userName||'-',
- r.id.slice(0,8)+'...'
- ])
- })
- doc.save('day_close.pdf')
+ const { html, fileName } = buildDayCloseReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

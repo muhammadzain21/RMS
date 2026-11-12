@@ -3,13 +3,11 @@ import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { toast } from 'react-hot-toast'
 import DeleteKeyModal from '../../components/DeleteKeyModal.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function CashOpening() {
@@ -234,8 +232,7 @@ export default function CashOpening() {
  }
  }
 
- const openPrintPreview = async () => {
- try {
+ const buildCashOpeningReport = () => {
  const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
  const periodFrom = from || '—'
  const periodTo = to || '—'
@@ -250,6 +247,7 @@ export default function CashOpening() {
  numbered: true,
  rows: rows.map(r => [r.date, { v: money(r.openingCash), align: 'r' }, r.userName || '-']),
  })
+ const fileName = `Cash-Opening-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Day Opening History',
@@ -259,7 +257,13 @@ export default function CashOpening() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Cash-Opening-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildCashOpeningReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }
@@ -279,24 +283,10 @@ export default function CashOpening() {
  URL.revokeObjectURL(url)
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF()
- doc.setFontSize(14)
- doc.text('Day Opening History', 14, 16)
- const body = rows.map(r => [r.date, `PKR ${Number(r.openingCash).toLocaleString()}`, r.userName || '-'])
- autoTable(doc, {
- head: [['Date','Opening Cash','User']],
- body,
- startY: 20,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [240,240,240], textColor: 0 },
- foot: [[
- 'Totals', `PKR ${totalOpening.toLocaleString()}`, ''
- ]],
- footStyles: { fillColor: [245,245,245] },
- })
- doc.save('cash_opening_history.pdf')
+ const { html, fileName } = buildCashOpeningReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

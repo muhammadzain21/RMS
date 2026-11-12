@@ -47,6 +47,8 @@ export const defaultSidebarItems = [
   { path: '/menu/recipes', label: 'Recipes', visible: false, order: 23, section: 'Operations' },
   { path: '/sales/consumption', label: 'Consumption', visible: false, order: 24, section: 'Operations' },
   { path: '/riders', label: 'Riders', visible: false, order: 25, section: 'Operations' },
+  { path: '/riders/live', label: 'Rider Live Map', visible: false, order: 25.2, section: 'Operations' },
+  { path: '/rider', label: 'Rider App (PWA)', visible: true, order: 25.3, section: 'Operations' },
   // Staff Management
   { path: '/staff/mark-attendance', label: 'Mark Attendance', visible: false, order: 26, section: 'Staff Management' },
   { path: '/staff/add', label: 'Add Staff', visible: false, order: 27, section: 'Staff Management' },

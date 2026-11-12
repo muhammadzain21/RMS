@@ -2,13 +2,74 @@
 // Loads Vite dev server in development (VITE_DEV_SERVER_URL), or the built index.html in production.
 
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, nativeImage, shell } = require('electron')
-const { execSync } = require('child_process')
+const { execSync, execFile } = require('child_process')
 const http = require('http')
+const net = require('net')
 const path = require('path')
 const fs = require('fs')
 const fsp = require('fs').promises
 const { pathToFileURL } = require('url')
 let printer
+
+/** Cache Windows printer → LAN IP so rush KOT prints stay sub-second */
+const printerHostCache = new Map()
+
+function looksLikeIpv4(s) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(String(s || '').trim())
+}
+
+function sendEscPosTcp(host, port, data) {
+  return new Promise((resolve) => {
+    const h = String(host || '').trim()
+    const p = Number(port) || 9100
+    if (!h || !data) return resolve({ ok: false, error: 'missing host or data' })
+    const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'binary')
+    const socket = net.connect({ host: h, port: p })
+    let settled = false
+    const done = (result) => {
+      if (settled) return
+      settled = true
+      try { socket.destroy() } catch {}
+      resolve(result)
+    }
+    socket.setTimeout(700)
+    socket.on('connect', () => {
+      socket.write(buf, (err) => {
+        if (err) return done({ ok: false, error: String(err.message || err) })
+        try { socket.end() } catch {}
+        done({ ok: true, host: h, port: p, bytes: buf.length })
+      })
+    })
+    socket.on('timeout', () => done({ ok: false, error: 'tcp timeout' }))
+    socket.on('error', (e) => done({ ok: false, error: String(e && e.message || e) }))
+  })
+}
+
+async function resolvePrinterHost(deviceName, explicitHost) {
+  const direct = String(explicitHost || '').trim()
+  if (looksLikeIpv4(direct)) return direct
+  const name = String(deviceName || '').trim()
+  if (!name) return ''
+  if (looksLikeIpv4(name)) return name
+  if (printerHostCache.has(name)) return printerHostCache.get(name)
+  try {
+    const safe = name.replace(/'/g, "''")
+    const stdout = await new Promise((resolve, reject) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', `(Get-Printer -Name '${safe}' -ErrorAction Stop).PortName`],
+        { timeout: 4000, windowsHide: true },
+        (err, out) => (err ? reject(err) : resolve(String(out || '')))
+      )
+    })
+    const m = String(stdout).match(/(\d{1,3}(?:\.\d{1,3}){3})/)
+    const ip = m ? m[1] : ''
+    if (ip) printerHostCache.set(name, ip)
+    return ip
+  } catch {
+    return ''
+  }
+}
 
 function waitForLocalServer(port = 5000, attempts = 80) {
   return new Promise((resolve) => {
@@ -554,6 +615,39 @@ ipcMain.handle('printing:raw', async (_event, { text, deviceName }) => {
   })
 })
 
+// Fast path: ESC/POS bytes straight to thermal LAN port 9100 (no Chromium / HTML / PDF)
+ipcMain.handle('printing:escpos', async (_event, { text, deviceName, host, port }) => {
+  try {
+    const payload = text == null ? '' : String(text)
+    if (!payload) return { ok: false, error: 'empty payload' }
+    const resolved = await resolvePrinterHost(deviceName, host)
+    if (resolved) {
+      const tcp = await sendEscPosTcp(resolved, port || 9100, payload)
+      if (tcp.ok) return tcp
+      console.warn('[print] escpos tcp failed:', tcp.error, '| host:', resolved)
+    }
+    // Fallback: Windows RAW spooler (still much faster than HTML)
+    if (printer && deviceName) {
+      return await new Promise((resolve) => {
+        try {
+          printer.printDirect({
+            data: payload,
+            printer: deviceName,
+            type: 'RAW',
+            success: (jobID) => resolve({ ok: true, jobID, via: 'spooler' }),
+            error: (err) => resolve({ ok: false, error: String(err) }),
+          })
+        } catch (e) {
+          resolve({ ok: false, error: String(e && e.message || e) })
+        }
+      })
+    }
+    return { ok: false, error: resolved ? 'tcp failed' : 'no printer host' }
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) }
+  }
+})
+
 // IPC: list printers (for settings UI)
 ipcMain.handle('printing:list', async () => {
   try {
@@ -594,8 +688,8 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
   })
   try {
     await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || '')))
-    // Let images/fonts settle before print
-    await new Promise((r) => setTimeout(r, 180))
+    // Brief settle for layout; thermal slips are text-only so keep this short
+    await new Promise((r) => setTimeout(r, 40))
     if (!useSilent) {
       try {
         printWin.center()
@@ -721,8 +815,7 @@ ipcMain.handle('preview:open-pdf', async (_event, { name, data }) => {
   }
 })
 
-// IPC: render report HTML to an A4 PDF in a hidden window, then show the PDF preview
-ipcMain.handle('preview:print-html', async (_event, { html, name }) => {
+async function renderHtmlToPdfBuffer(html) {
   const printWin = new BrowserWindow({
     show: false,
     webPreferences: { backgroundThrottling: false },
@@ -730,12 +823,21 @@ ipcMain.handle('preview:print-html', async (_event, { html, name }) => {
   try {
     await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || '')))
     // preferCSSPageSize honors the report's own @page size/margins (A4, 12mm)
-    const pdf = await printWin.webContents.printToPDF({
+    return await printWin.webContents.printToPDF({
       printBackground: true,
       pageSize: 'A4',
       preferCSSPageSize: true,
       margins: { marginType: 'default' },
     })
+  } finally {
+    try { printWin.destroy() } catch {}
+  }
+}
+
+// IPC: render report HTML to an A4 PDF in a hidden window, then show the PDF preview
+ipcMain.handle('preview:print-html', async (_event, { html, name }) => {
+  try {
+    const pdf = await renderHtmlToPdfBuffer(html)
     const fileName = /\.[Pp][Dd][Ff]$/.test(String(name || '')) ? String(name) : `report-${Date.now()}.pdf`
     const fullPath = path.join(app.getPath('temp'), fileName)
     await fsp.writeFile(fullPath, pdf)
@@ -744,7 +846,17 @@ ipcMain.handle('preview:print-html', async (_event, { html, name }) => {
   } catch (e) {
     console.error('[preview] html->pdf failed:', e && e.message || e)
     return { ok: false, error: String(e && e.message || e) }
-  } finally {
-    try { printWin.destroy() } catch {}
+  }
+})
+
+// IPC: same A4 HTML→PDF as print preview, but return base64 for a file download (no preview window)
+ipcMain.handle('preview:download-html', async (_event, { html, name }) => {
+  try {
+    const pdf = await renderHtmlToPdfBuffer(html)
+    const fileName = /\.[Pp][Dd][Ff]$/.test(String(name || '')) ? String(name) : `report-${Date.now()}.pdf`
+    return { ok: true, fileName, base64: Buffer.from(pdf).toString('base64') }
+  } catch (e) {
+    console.error('[preview] html->pdf download failed:', e && e.message || e)
+    return { ok: false, error: String(e && e.message || e) }
   }
 })

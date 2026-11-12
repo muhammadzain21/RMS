@@ -6,9 +6,7 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function CustomerList() {
@@ -251,10 +249,10 @@ export default function CustomerList() {
    Number(c.spent ?? 0).toLocaleString(),
  ])
 
- const openPrintPreview = async () => {
- try {
+ const buildCustomersReport = async () => {
  const list = await fetchFilteredCustomers()
  const totalSpent = list.reduce((a, c) => a + Number(c.spent || 0), 0)
+ const fileName = `Customers-${exportDateStamp()}.pdf`
  const body =
  reportSummary([
  { label: 'Customers', amount: String(list.length) },
@@ -283,7 +281,13 @@ export default function CustomerList() {
  metaRight: [['Records', String(list.length)]],
  body,
  })
- await previewHtmlReport(html, `Customers-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = await buildCustomersReport()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -293,22 +297,9 @@ export default function CustomerList() {
 
  const exportPDF = async () => {
  try {
- const list = await fetchFilteredCustomers()
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Customers', 40, 32)
- doc.setFontSize(10)
- doc.text(`${list.length} customers${search.trim() ? ` · search: ${search.trim()}` : ''}`, 40, 46)
- doc.autoTable({
- head: [['Name', 'Phone', 'Address', 'Regular', 'Visits', 'Spent (PKR)']],
- body: customerReportRows(list),
- startY: 54,
- styles: { fontSize: 7, cellPadding: 3 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`customers_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
+ const { html, fileName } = await buildCustomersReport()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded')
  } catch (e) {
  console.error(e)
  toast.error('Failed to export PDF')

@@ -5,9 +5,7 @@ import { useBranch } from '../state/BranchContext.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../components/useConfirm.jsx'
 import DemandModal from '../components/DemandModal.jsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../utils/reportDoc.js'
 import { exportDateStamp } from '../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
@@ -104,77 +102,7 @@ export default function DemandList() {
  }
  }
 
- const buildAllPDF = () => {
- const doc = new jsPDF('p', 'mm', 'a4')
- const company = state?.settings?.companyName || 'Restaurant'
- doc.setFontSize(16)
- doc.text(`${company} - Demand Report`, 14, 16)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 14, 24)
-
- const data = demands.map(d => [
- d.date,
- d.status,
- d.items?.length || 0,
- d.items?.map(i => `${i.name} (${i.quantity} ${i.unit})`).join(', ') || '',
- d.createdByName || '-',
- ])
-
- autoTable(doc, {
- startY: 30,
- head: [['Date', 'Status', 'Items Count', 'Items', 'Created By']],
- body: data,
- styles: { fontSize: 8 },
- headStyles: { fillColor: [59, 130, 246] },
- })
-
- return doc
- }
-
- const buildSinglePDF = (demand) => {
- const doc = new jsPDF('p', 'mm', 'a4')
- const company = state?.settings?.companyName || 'Restaurant'
- doc.setFontSize(16)
- doc.text(`${company} - Demand`, 14, 16)
- doc.setFontSize(10)
- doc.text(`Date: ${demand.date}`, 14, 24)
- doc.text(`Status: ${demand.status}`, 14, 30)
- doc.text(`Created By: ${demand.createdByName || '-'}`, 14, 36)
- if (demand.note) {
- doc.text(`Note: ${demand.note}`, 14, 42)
- }
-
- const data = (demand.items || []).map(i => [
- i.name,
- i.quantity,
- i.unit,
- i.currentStock,
- i.isFromInventory ? 'Yes' : 'No',
- ])
-
- autoTable(doc, {
- startY: demand.note ? 50 : 44,
- head: [['Item', 'Quantity', 'Unit', 'Current Stock', 'From Inventory']],
- body: data,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [59, 130, 246] },
- })
-
- return doc
- }
-
- const exportAllPDF = () => {
- try {
- const doc = buildAllPDF()
- doc.save(`demands-${exportDateStamp()}.pdf`)
- toast.success('PDF downloaded successfully')
- } catch {
- toast.error('Failed to download PDF')
- }
- }
-
- const openPrintPreview = async () => {
- try {
+ const buildDemandsListReport = () => {
  const body =
  reportSummary([
  { label: 'Demands on page', amount: String(demands.length) },
@@ -195,6 +123,7 @@ export default function DemandList() {
  ]),
  emptyText: 'No demands on this page',
  })
+ const fileName = `Demands-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Demand Management',
@@ -205,25 +134,10 @@ export default function DemandList() {
  body,
  footNote: 'Export reflects current page of filtered results.',
  })
- await previewHtmlReport(html, `Demands-${exportDateStamp()}.pdf`)
- toast.success('Print preview opened')
- } catch {
- toast.error('Failed to open print preview')
- }
+ return { html, fileName }
  }
 
- const exportSinglePDF = (demand) => {
- try {
- const doc = buildSinglePDF(demand)
- doc.save(`demand-${demand.date}-${demand.id?.slice(-6) || 'single'}.pdf`)
- toast.success('PDF downloaded successfully')
- } catch {
- toast.error('Failed to download PDF')
- }
- }
-
- const printSinglePDF = async (demand) => {
- try {
+ const buildSingleDemandReport = (demand) => {
  const itemRows = (demand.items || []).map(i => [i.name, i.quantity, i.unit, i.currentStock, i.isFromInventory ? 'Yes' : 'No'])
  const body =
  reportSummary([
@@ -238,6 +152,7 @@ export default function DemandList() {
  emptyText: 'No items',
  }) +
  (demand.note ? reportSec('Note') + `<p>${String(demand.note).replace(/</g, '&lt;')}</p>` : '')
+ const fileName = `demand-${demand.date}-${demand.id?.slice(-6) || 'single'}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Demand Detail',
@@ -247,7 +162,43 @@ export default function DemandList() {
  metaRight: [['Status', demand.status]],
  body,
  })
- await previewHtmlReport(html, `demand-${demand.date}-${demand.id?.slice(-6) || 'single'}.pdf`)
+ return { html, fileName }
+ }
+
+ const exportAllPDF = async () => {
+ try {
+ const { html, fileName } = buildDemandsListReport()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded successfully')
+ } catch {
+ toast.error('Failed to download PDF')
+ }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildDemandsListReport()
+ await previewHtmlReport(html, fileName)
+ toast.success('Print preview opened')
+ } catch {
+ toast.error('Failed to open print preview')
+ }
+ }
+
+ const exportSinglePDF = async (demand) => {
+ try {
+ const { html, fileName } = buildSingleDemandReport(demand)
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded successfully')
+ } catch {
+ toast.error('Failed to download PDF')
+ }
+ }
+
+ const printSinglePDF = async (demand) => {
+ try {
+ const { html, fileName } = buildSingleDemandReport(demand)
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch {
  toast.error('Failed to open print preview')

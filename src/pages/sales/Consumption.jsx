@@ -1,12 +1,10 @@
 import { useMemo, useState, useEffect } from 'react'
 import { format, parseISO } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import DatePicker from '../../components/DatePicker.jsx'
-import { previewHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '../../utils/reportDoc'
+import { previewHtmlReport, downloadHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '../../utils/reportDoc'
 
 export default function Consumption() {
  const { state, businessDate, dispatch } = useData()
@@ -343,9 +341,7 @@ export default function Consumption() {
  }
  }
 
- // A4 print preview: branded letterhead report via the shared report-doc util
- const openPrintPreview = async () => {
- try {
+ const buildConsumptionReport = () => {
  const money = (n) => 'Rs ' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
  const gross = salesRevenue - totalConsumedCost
  const body =
@@ -383,6 +379,7 @@ export default function Consumption() {
  emptyText: 'No consumption',
  })
  const company = state?.settings?.companyName || 'Restaurant POS'
+ const fileName = `Consumption-Report-${fromDate}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Daily Sales & Consumption',
@@ -401,7 +398,14 @@ export default function Consumption() {
  body,
  footNote: `Variance = Physical Stock - Closing Stock (negative = shortage). Consumed Cost = Consumed x Purchase Price per unit. ${company} - ${fromDate} to ${toDate}`,
  })
- await previewHtmlReport(html, `Consumption-Report-${fromDate}.pdf`)
+ return { html, fileName }
+ }
+
+ // A4 print preview: branded letterhead report via the shared report-doc util
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildConsumptionReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }
@@ -443,33 +447,10 @@ export default function Consumption() {
  }
  }
 
- // Export: PDF using jsPDF + autotable
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF()
- doc.setFontSize(16)
- doc.text(`Daily Sales & Consumption - ${fromDate} to ${toDate}`, 14, 14)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 14, 20)
- // Items Sold table
- doc.autoTable({
- head: [['Name','Category','Qty']],
- body: filteredItemRows.map(r => [r.name, r.category||'', r.qty]),
- startY: 24,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' }
- })
- // Consumption table
- const y = doc.lastAutoTable.finalY + 8
- doc.text('Ingredient Consumption vs Inventory', 14, y)
- doc.autoTable({
- head: [['Ingredient','Unit','Consumed','Opening','Closing','Price','Cost','Physical','Var']],
- body: filteredConsumptionRows.map(r => [r.name, r.unit||'', r.consumed, r.openingQty, r.closingQty, r.price||0, r.consumedCost||0, physicalMap[r.name] ?? '', varianceOf(r) ?? '']),
- startY: y + 4,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' }
- })
- doc.save(`consumption_${fromDate}_to_${toDate}.pdf`)
+ const { html, fileName } = buildConsumptionReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch {
  toast.error('Export failed')

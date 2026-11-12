@@ -6,9 +6,7 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import SupplierModal from '../../components/SupplierModal.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function SupplierProfile() {
@@ -67,38 +65,44 @@ export default function SupplierProfile() {
     l.totalPrice,
   ])
 
+  const buildReportHtml = () => {
+    const fileName = `Supplier-Supplies-${exportDateStamp()}.pdf`
+    const body =
+      reportSummary([
+        { label: 'Supply entries', amount: String(totals.totalEntries) },
+        { label: 'Line items', amount: String(supplyLines.length) },
+        { label: 'Total cost (PKR)', amount: totals.totalCost.toLocaleString() },
+      ]) +
+      reportSec(`Supply lines (${supplyLines.length})`) +
+      reportTable({
+        headers: ['Date', 'Name', { t: 'Qty', align: 'r' }, 'Unit', { t: 'Unit Price', align: 'r' }, { t: 'Total', align: 'r' }],
+        numbered: true,
+        rows: supplyLines.map(l => [
+          l.date,
+          l.name,
+          { v: l.qty, align: 'r' },
+          l.unit,
+          { v: l.unitPrice.toLocaleString(), align: 'r' },
+          { v: l.totalPrice.toLocaleString(), align: 'r' },
+        ]),
+        emptyText: 'No supply lines',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: `Supplier: ${supplier?.name || supplier?.company || 'Profile'}`,
+      reportLabel: 'Supplier Supplies',
+      reportNo: `Rpt #: SP-${id}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Phone', supplier?.phone || '-']],
+      metaRight: [['Status', supplier?.status || 'Active'], ['Lines', String(supplyLines.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([
-          { label: 'Supply entries', amount: String(totals.totalEntries) },
-          { label: 'Line items', amount: String(supplyLines.length) },
-          { label: 'Total cost (PKR)', amount: totals.totalCost.toLocaleString() },
-        ]) +
-        reportSec(`Supply lines (${supplyLines.length})`) +
-        reportTable({
-          headers: ['Date', 'Name', { t: 'Qty', align: 'r' }, 'Unit', { t: 'Unit Price', align: 'r' }, { t: 'Total', align: 'r' }],
-          numbered: true,
-          rows: supplyLines.map(l => [
-            l.date,
-            l.name,
-            { v: l.qty, align: 'r' },
-            l.unit,
-            { v: l.unitPrice.toLocaleString(), align: 'r' },
-            { v: l.totalPrice.toLocaleString(), align: 'r' },
-          ]),
-          emptyText: 'No supply lines',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: `Supplier: ${supplier?.name || supplier?.company || 'Profile'}`,
-        reportLabel: 'Supplier Supplies',
-        reportNo: `Rpt #: SP-${id}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Phone', supplier?.phone || '-']],
-        metaRight: [['Status', supplier?.status || 'Active'], ['Lines', String(supplyLines.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Supplier-Supplies-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildReportHtml()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch (e) {
       console.error(e)
@@ -106,23 +110,11 @@ export default function SupplierProfile() {
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || supplier?.name || 'Supplier Supplies', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${supplyLines.length} lines · PKR ${totals.totalCost.toLocaleString()} total`, 40, 46)
-      doc.autoTable({
-        head: [['Date', 'Name', 'Qty', 'Unit', 'Unit Price', 'Total']],
-        body: supplyReportRows(),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`supplier_supplies_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported successfully')
+      const { html, fileName } = buildReportHtml()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch (e) {
       console.error(e)
       toast.error('Failed to export PDF')

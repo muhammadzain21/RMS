@@ -3,10 +3,8 @@ import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { format } from 'date-fns'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import DatePicker from '../../components/DatePicker.jsx'
 
 const btnPrint = 'ui-btn ui-btn-print'
@@ -79,59 +77,52 @@ export default function RiderDaily() {
     } finally { setLoading(false) }
   }
 
+  const buildRiderDailyReport = () => {
+    const fileName = `Rider-Daily-${form.date}.pdf`
+    const body =
+      reportSummary([
+        { label: 'Total deliveries', amount: String(totals.deliveries) },
+        { label: 'Total cash', amount: `PKR ${Number(totals.amount || 0).toLocaleString()}` },
+        { label: 'Records', amount: String(rows.length) },
+      ]) +
+      reportSec(`Rider daily — ${form.date}`) +
+      reportTable({
+        headers: ['Date', 'Rider', { t: 'Deliveries', align: 'r' }, { t: 'Cash (PKR)', align: 'r' }],
+        numbered: true,
+        rows: rows.map(r => [
+          r.date || '-',
+          r.riderName || '-',
+          { v: Number(r.deliveries || 0), align: 'r' },
+          { v: Number(r.amount || r.cash || 0).toLocaleString(), align: 'r' },
+        ]),
+        emptyText: 'No records for this date',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Rider Daily Record',
+      reportLabel: 'Rider Daily Report',
+      reportNo: `Rpt #: RD-${form.date}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', form.date]],
+      metaRight: [['Records', String(rows.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([
-          { label: 'Total deliveries', amount: String(totals.deliveries) },
-          { label: 'Total cash', amount: `PKR ${Number(totals.amount || 0).toLocaleString()}` },
-          { label: 'Records', amount: String(rows.length) },
-        ]) +
-        reportSec(`Rider daily — ${form.date}`) +
-        reportTable({
-          headers: ['Date', 'Rider', { t: 'Deliveries', align: 'r' }, { t: 'Cash (PKR)', align: 'r' }],
-          numbered: true,
-          rows: rows.map(r => [
-            r.date || '-',
-            r.riderName || '-',
-            { v: Number(r.deliveries || 0), align: 'r' },
-            { v: Number(r.amount || r.cash || 0).toLocaleString(), align: 'r' },
-          ]),
-          emptyText: 'No records for this date',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Rider Daily Record',
-        reportLabel: 'Rider Daily Report',
-        reportNo: `Rpt #: RD-${form.date}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', form.date]],
-        metaRight: [['Records', String(rows.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Rider-Daily-${form.date}.pdf`)
+      const { html, fileName } = buildRiderDailyReport()
+      await previewHtmlReport(html, fileName)
+      toast.success('Print preview opened')
     } catch {
       toast.error('Failed to open print preview')
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF()
-      doc.setFontSize(14)
-      doc.text('Rider Daily Record', 14, 16)
-      doc.setFontSize(10)
-      doc.setTextColor(90, 90, 90)
-      doc.text(`Date: ${form.date}`, 14, 23)
-      autoTable(doc, {
-        startY: 28,
-        head: [['Date', 'Rider', 'Deliveries', 'Cash']],
-        body: rows.map(r => [r.date || '-', r.riderName || '-', Number(r.deliveries || 0), `PKR ${Number(r.amount || r.cash || 0).toLocaleString()}`]),
-        foot: [['', 'Totals', totals.deliveries, `PKR ${Number(totals.amount || 0).toLocaleString()}`]],
-        styles: { fontSize: 9, cellPadding: 4 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
-      })
-      doc.save(`rider_daily_${form.date}.pdf`)
+      const { html, fileName } = buildRiderDailyReport()
+      await downloadHtmlReport(html, fileName)
       toast.success('PDF downloaded')
     } catch {
       toast.error('Failed to download PDF')

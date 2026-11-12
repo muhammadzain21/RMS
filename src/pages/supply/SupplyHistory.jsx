@@ -3,13 +3,11 @@ import { useMemo, useState, useEffect } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import BranchPurchaseModal from '../../components/BranchPurchaseModal.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
@@ -111,37 +109,43 @@ export default function SupplyHistory() {
     }
   }
 
+  const buildReportHtml = () => {
+    const fileName = `Branch-Purchases-${from || 'all'}.pdf`
+    const body =
+      reportSummary([
+        { label: 'Purchases', amount: String(filtered.length) },
+        { label: 'Total cost', amount: `PKR ${totalCost.toLocaleString()}` },
+        { label: 'Line items', amount: String(totalItems) },
+      ]) +
+      reportSec(`Branch Purchases (${filtered.length})`) +
+      reportTable({
+        headers: ['Date', 'Supplier', 'Invoice', 'Items', { t: 'Total', align: 'r' }],
+        numbered: true,
+        rows: filtered.map(r => [
+          r.date,
+          supplierName(r),
+          r.invoiceNo || '—',
+          String((r.items || []).length),
+          { v: `PKR ${Number(r.cost || 0).toLocaleString()}`, align: 'r' },
+        ]),
+        emptyText: 'No purchase records found',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Branch Purchases',
+      reportLabel: 'Branch Purchases Report',
+      reportNo: `Rpt #: PUR-${from || 'all'}-${to || 'all'}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', from || '...'], ['To', to || '...']],
+      metaRight: [['Records', String(filtered.length)], ['Total cost', `PKR ${totalCost.toLocaleString()}`]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([
-          { label: 'Purchases', amount: String(filtered.length) },
-          { label: 'Total cost', amount: `PKR ${totalCost.toLocaleString()}` },
-          { label: 'Line items', amount: String(totalItems) },
-        ]) +
-        reportSec(`Branch Purchases (${filtered.length})`) +
-        reportTable({
-          headers: ['Date', 'Supplier', 'Invoice', 'Items', { t: 'Total', align: 'r' }],
-          numbered: true,
-          rows: filtered.map(r => [
-            r.date,
-            supplierName(r),
-            r.invoiceNo || '—',
-            String((r.items || []).length),
-            { v: `PKR ${Number(r.cost || 0).toLocaleString()}`, align: 'r' },
-          ]),
-          emptyText: 'No purchase records found',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Branch Purchases',
-        reportLabel: 'Branch Purchases Report',
-        reportNo: `Rpt #: PUR-${from || 'all'}-${to || 'all'}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', from || '...'], ['To', to || '...']],
-        metaRight: [['Records', String(filtered.length)], ['Total cost', `PKR ${totalCost.toLocaleString()}`]],
-        body,
-      })
-      await previewHtmlReport(html, `Branch-Purchases-${from || 'all'}.pdf`)
+      const { html, fileName } = buildReportHtml()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch (err) {
       console.error(err)
@@ -149,23 +153,11 @@ export default function SupplyHistory() {
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Branch Purchases', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${from || '...'} to ${to || '...'} · PKR ${totalCost.toLocaleString()} total`, 40, 46)
-      doc.autoTable({
-        head: [['Date', 'Supplier', 'Invoice', 'Items', 'Total']],
-        body: filtered.map(r => [r.date, supplierName(r), r.invoiceNo || '—', (r.items || []).length, Number(r.cost || 0).toLocaleString()]),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`branch_purchases_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported successfully')
+      const { html, fileName } = buildReportHtml()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch (err) {
       console.error(err)
       toast.error('Failed to export PDF')

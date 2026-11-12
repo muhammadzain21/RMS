@@ -6,6 +6,8 @@ import mongoose from 'mongoose'
 const StaffPurchaseSchema = new mongoose.Schema({
   staffId: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff', required: true, index: true },
   staffName: { type: String, default: '' },
+  // Sale / finance branch (where items were purchased) — may differ from staff.home branch
+  branchId: { type: String, default: '', index: true },
   saleId: { type: String, default: '', index: true },
   billNo: { type: String, default: '' },
   date: { type: String, required: true, index: true }, // yyyy-MM-dd business date

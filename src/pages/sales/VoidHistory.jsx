@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
@@ -10,7 +8,7 @@ import { createLineTotal } from './utils.js'
 import { openKotPrintUtil } from './printUtils.js'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
@@ -134,8 +132,7 @@ export default function VoidHistory() {
  }).filter(Boolean).join('; ')
  }, [state.menu])
 
- const openPrintPreview = async () => {
- try {
+ const buildVoidHistoryReport = () => {
  const body =
  reportSummary([
  { label: 'Total voids', amount: String(filtered.length) },
@@ -159,6 +156,7 @@ export default function VoidHistory() {
  ]),
  emptyText: 'No voids found',
  })
+ const fileName = `Void-History-${fromDate || 'all'}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Void History',
@@ -168,7 +166,13 @@ export default function VoidHistory() {
  metaRight: [['Records', String(filtered.length)], ['Type filter', typeFilter || 'All']],
  body,
  })
- await previewHtmlReport(html, `Void-History-${fromDate || 'all'}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildVoidHistoryReport()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (err) {
  console.error(err)
@@ -176,30 +180,10 @@ export default function VoidHistory() {
  }
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Void History', 40, 32)
- doc.setFontSize(10)
- doc.text(`${fromDate || '...'} to ${toDate || '...'} · ${filtered.length} records`, 40, 46)
- doc.autoTable({
- head: [['Time', 'Token', 'Type', 'Table', 'Waiter', 'Reason', 'Items']],
- body: filtered.map(r => [
- r.createdAt ? format(new Date(r.createdAt), 'yyyy-MM-dd HH:mm') : '-',
- r.tokenNo || '-',
- r.orderType || '-',
- r.tableNo || '-',
- staffWaiterName(r.waiterId),
- r.reason || '-',
- itemSummary(r),
- ]),
- startY: 54,
- styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
- headStyles: { fillColor: [220, 38, 38], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`void_history_${exportDateStamp()}.pdf`)
+ const { html, fileName } = buildVoidHistoryReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error(err)

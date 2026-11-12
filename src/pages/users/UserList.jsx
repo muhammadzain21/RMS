@@ -7,9 +7,7 @@ import { UserPlus, Shield, Trash2 } from 'lucide-react'
 import PageHero from '../../components/PageHero.jsx'
 import { sidebarItems } from '../../layout/navConfig.js'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 function Toggle({ on, onClick }) {
@@ -442,32 +440,38 @@ export default function UserList() {
     pageAccessLabel(u),
   ])
 
+  const buildUserListReport = () => {
+    const body =
+      reportSummary([{ label: 'Users', amount: String(userList.length) }]) +
+      reportSec(`Users (${userList.length})`) +
+      reportTable({
+        headers: ['Username', 'Role', 'Branch', 'Page Access'],
+        numbered: true,
+        rows: userList.map(u => [
+          u.username || '-',
+          u.role || '-',
+          u.role === 'Admin' || u.isHq ? 'All branches' : branchName(u.homeBranchId),
+          pageAccessLabel(u),
+        ]),
+        emptyText: 'No users',
+      })
+    const fileName = `Users-${exportDateStamp()}.pdf`
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'User List',
+      reportLabel: 'Users Report',
+      reportNo: `Rpt #: USR-${exportDateStamp()}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+      metaRight: [['Records', String(userList.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([{ label: 'Users', amount: String(userList.length) }]) +
-        reportSec(`Users (${userList.length})`) +
-        reportTable({
-          headers: ['Username', 'Role', 'Branch', 'Page Access'],
-          numbered: true,
-          rows: userList.map(u => [
-            u.username || '-',
-            u.role || '-',
-            u.role === 'Admin' || u.isHq ? 'All branches' : branchName(u.homeBranchId),
-            pageAccessLabel(u),
-          ]),
-          emptyText: 'No users',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'User List',
-        reportLabel: 'Users Report',
-        reportNo: `Rpt #: USR-${exportDateStamp()}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
-        metaRight: [['Records', String(userList.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Users-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildUserListReport()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch (e) {
       console.error(e)
@@ -475,22 +479,10 @@ export default function UserList() {
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('p', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Users', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${userList.length} users`, 40, 46)
-      doc.autoTable({
-        head: [['Username', 'Role', 'Branch', 'Page Access']],
-        body: userReportRows(),
-        startY: 54,
-        styles: { fontSize: 9, cellPadding: 4 },
-        headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`users_${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildUserListReport()
+      await downloadHtmlReport(html, fileName)
       toast.success('PDF exported successfully')
     } catch (e) {
       console.error(e)

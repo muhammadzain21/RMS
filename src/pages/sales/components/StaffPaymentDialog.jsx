@@ -35,7 +35,9 @@ export default function StaffPaymentDialog({
       <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border-2 border-violet-200 dark:border-violet-800 shadow-2xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Staff Purchase</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Select the staff member. The amount is deducted from their salary at payroll — unless they pay it earlier from Staff History.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Staff from all branches can be selected. Sale revenue and inventory stay on the branch you are selling from.
+          </p>
         </div>
 
         <label className="block">
@@ -47,9 +49,15 @@ export default function StaffPaymentDialog({
             className="mt-1 w-full px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-white focus:border-violet-500 outline-none"
           >
             <option value="">— Select staff —</option>
-            {activeStaff.map(s => (
-              <option key={s.id} value={s.id}>{s.name}{s.position ? ` (${s.position})` : ''}</option>
-            ))}
+            {activeStaff.map(s => {
+              const branch = s.branchName ? ` · ${s.branchName}` : ''
+              const pos = s.position ? ` (${s.position})` : ''
+              return (
+                <option key={s.id || s._id} value={s.id || s._id}>
+                  {s.name}{pos}{branch}
+                </option>
+              )
+            })}
           </select>
         </label>
 

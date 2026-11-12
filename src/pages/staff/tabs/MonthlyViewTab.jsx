@@ -1,12 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import StaffEarningsDialog from '../components/StaffEarningsDialog.jsx';
 import SalarySlipDialog from '../components/SalarySlipDialog.jsx';
 import { format } from 'date-fns';
 import { formatTime12 } from '../../../utils/dateUtils.js';
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../../utils/reportDoc.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../../utils/reportDoc.js';
 import DatePicker from '../../../components/DatePicker.jsx';
 
 const btnPrint = 'ui-btn ui-btn-print';
@@ -129,10 +127,9 @@ export default function MonthlyViewTab({
  return { base, perDay, bonus, ded, net, extrasSum, manualDeduction, advTotal, netDue, lateDeduction, earlyOutDeduction, absentDeduction, totalLateMinutes: counts.totalLateMinutes, totalEarlyOutMinutes: counts.totalEarlyOutMinutes };
  }, [counts, monthlyStaffId, staff, settings, staffEarnings, advances, month]);
 
- const openPrintPreview = async () => {
- if (!monthlyStaffId) { toast.error('Select staff'); return; }
- try {
+ const buildMonthlyAttendanceReport = () => {
   const st = staff.find(s => s.id === monthlyStaffId);
+  const fileName = `${st?.name || 'staff'}-${month}-attendance.pdf`;
   const body =
    reportSummary([
     { label: 'Present (incl. late)', amount: String(counts.present + counts.late) },
@@ -165,7 +162,14 @@ export default function MonthlyViewTab({
    metaRight: [['Days', String(monthRecords.length)], ['Position', st?.position || '']],
    body,
   });
-  await previewHtmlReport(html, `${st?.name || 'staff'}-${month}-attendance.pdf`);
+  return { html, fileName };
+ };
+
+ const openPrintPreview = async () => {
+ if (!monthlyStaffId) { toast.error('Select staff'); return; }
+ try {
+  const { html, fileName } = buildMonthlyAttendanceReport();
+  await previewHtmlReport(html, fileName);
   toast.success('Print preview opened');
  } catch (err) {
   console.error(err);
@@ -198,130 +202,12 @@ export default function MonthlyViewTab({
  const exportPDF = async () => {
  if (!monthlyStaffId) { toast.error('Select staff'); return; }
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- const company = state?.settings?.companyName || 'Staff Report'
- const st = staff.find(s => s.id === monthlyStaffId)
-
- doc.setFontSize(16)
- doc.text(company, 40, 32)
- doc.setFontSize(12)
- doc.text(`Monthly Report: ${st?.name || ''} - ${month}`, 40, 48)
-
- // Summary stats as colored widget boxes (same pattern as SalesHistory)
- const widgets = [
- { label: 'Present', value: String(counts.present + counts.late), bg: [220, 252, 231], border: [22, 163, 74], text: [22, 163, 74] },
- { label: 'Late', value: String(counts.late), bg: [255, 237, 213], border: [234, 88, 12], text: [234, 88, 12] },
- { label: 'Leave', value: String(counts.leave), bg: [219, 234, 254], border: [37, 99, 235], text: [37, 99, 235] },
- { label: 'Early Out', value: String(counts.earlyOutDays), bg: [254, 243, 199], border: [180, 83, 9], text: [180, 83, 9] },
- { label: 'Absent', value: String(counts.absent), bg: [254, 226, 226], border: [220, 38, 38], text: [220, 38, 38] },
- ]
- const pageWidth = doc.internal.pageSize.getWidth()
- const margin = 40
- const gap = 8
- const boxW = (pageWidth - 2 * margin - 4 * gap) / 5
- const boxH = 52
- let statY = 64
- for (let i = 0; i < widgets.length; i++) {
- const x = margin + i * (boxW + gap)
- const y = statY
- const w = widgets[i]
- doc.setFillColor(w.bg[0], w.bg[1], w.bg[2])
- doc.setDrawColor(w.border[0], w.border[1], w.border[2])
- doc.setLineWidth(1.5)
- doc.roundedRect(x, y, boxW, boxH, 6, 6, 'FD')
- doc.setFontSize(7)
- doc.setTextColor(w.text[0], w.text[1], w.text[2])
- doc.setFont(undefined, 'bold')
- doc.text(w.label.toUpperCase(), x + 10, y + 16)
- doc.setFontSize(13)
- doc.text(w.value, x + 10, y + 38)
- doc.setTextColor(0, 0, 0)
- doc.setFont(undefined, 'normal')
- }
-
- // Attendance table
- const tableStartY = statY + boxH + gap + 6
- const tableData = monthRecords.map(r => [r.date, r.status, r.checkIn ? formatTime12(r.checkIn) : '-', r.checkOut ? formatTime12(r.checkOut) : '-', r.lateMinutes || '-', r.earlyOutMinutes || '-'])
- tableData.push(['Total', '', '', '', counts.totalLateMinutes, counts.totalEarlyOutMinutes])
-
- doc.autoTable({
- head: [['Date', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Out Min']],
- body: tableData,
- startY: tableStartY,
- styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak', halign: 'left' },
- headStyles: { fillColor: [20, 184, 166], textColor: 255, fontSize: 9, fontStyle: 'bold' },
- columnStyles: {
- 0: { cellWidth: 80 },
- 1: { cellWidth: 70 },
- 2: { cellWidth: 80 },
- 3: { cellWidth: 80 },
- 4: { cellWidth: 70 },
- 5: { cellWidth: 70 },
- },
- margin: { left: 40, right: 40 },
- tableWidth: 'auto'
- })
-
- // Salary calculation table
- let y2 = doc.lastAutoTable?.finalY || tableStartY
- y2 += 20
- doc.setFontSize(12)
- doc.setTextColor(0, 0, 0)
- doc.text('Salary Calculation:', 40, y2)
-
- const salaryData = [
- ['Base Salary', `${salaryCalc.base.toLocaleString()} PKR`],
- ['Per Day Rate', `${salaryCalc.perDay.toFixed(2)} PKR`],
- ['Bonus', `+${salaryCalc.bonus.toFixed(2)} PKR`],
- ['Absent Deduction', `-${salaryCalc.absentDeduction.toFixed(2)} PKR`],
- ['Late Deduction', `-${salaryCalc.lateDeduction.toFixed(2)} PKR`],
- ['Early Out Deduction', `-${salaryCalc.earlyOutDeduction.toFixed(2)} PKR`],
- ['Total Deductions', `-${salaryCalc.ded.toFixed(2)} PKR`],
- ['Earnings (extras)', `+${Number(salaryCalc.extrasSum || 0).toLocaleString()} PKR`],
- ['Adjustments', `-${Number(salaryCalc.manualDeduction || 0).toLocaleString()} PKR`],
- ['Advances Taken', `-${Number(salaryCalc.advTotal || 0).toLocaleString()} PKR`],
- ['Net Salary Due', `${Number(salaryCalc.netDue || 0).toLocaleString()} PKR`],
- ]
-
- doc.autoTable({
- head: [['Description', 'Amount']],
- body: salaryData,
- startY: y2 + 6,
- styles: { fontSize: 9, cellPadding: 4 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
- columnStyles: {
- 0: { cellWidth: 200 },
- 1: { cellWidth: 120, halign: 'right' },
- },
- margin: { left: 40, right: 40 },
- })
-
- // Earnings & adjustments
- if (staffEarnings.length > 0) {
- let y3 = doc.lastAutoTable?.finalY || y2 + 6
- y3 += 20
- doc.setFontSize(11)
- doc.text('Earnings & Adjustments:', 40, y3)
- const noteData = staffEarnings.map((n, idx) => {
- const isDed = n.category === 'Deduction'
- return [`${idx + 1}. ${n.category || 'Earning'}`, `${isDed ? '-' : '+'}${Number(n.amount).toLocaleString()} PKR`, n.date || '', n.notes || '']
- })
- doc.autoTable({
- head: [['Category', 'Amount', 'Date', 'Notes']],
- body: noteData,
- startY: y3 + 6,
- styles: { fontSize: 9, cellPadding: 4 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- }
-
- const fileName = `${st?.name || 'staff'}_${month}_report.pdf`
- doc.save(fileName)
- toast.success('PDF exported successfully')
+  const { html, fileName } = buildMonthlyAttendanceReport();
+  await downloadHtmlReport(html, fileName);
+  toast.success('PDF downloaded');
  } catch (err) {
- console.error('PDF export error:', err)
- toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+  console.error(err);
+  toast.error('Failed to export PDF');
  }
  };
 

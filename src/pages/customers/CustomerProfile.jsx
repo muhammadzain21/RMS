@@ -5,9 +5,7 @@ import CustomerModal from '../../components/CustomerModal.jsx'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function CustomerProfile() {
@@ -40,37 +38,43 @@ export default function CustomerProfile() {
     Number(s.total || 0).toFixed(2),
   ])
 
+  const buildCustomerReport = () => {
+    const fileName = `Customer-${customer?.name || id}-${exportDateStamp()}.pdf`
+    const body =
+      reportSummary([
+        { label: 'Customer', amount: customer?.name || '-', cls: '' },
+        { label: 'Visits', amount: String(totals.visits) },
+        { label: 'Total spent', amount: totals.spent.toFixed(2) },
+      ]) +
+      reportSec(`Sales (${sales.length})`) +
+      reportTable({
+        headers: ['Date', 'Items', { t: 'Subtotal', align: 'r' }, { t: 'Discount', align: 'r' }, { t: 'Total', align: 'r' }],
+        numbered: true,
+        rows: sales.map(s => [
+          s.date ? format(new Date(s.date), 'yyyy-MM-dd') : '-',
+          saleItemsText(s) || '-',
+          { v: Number(((s.total || 0) + (s.discount || 0))).toFixed(2), align: 'r' },
+          { v: Number(s.discount || 0).toFixed(2), align: 'r' },
+          { v: Number(s.total || 0).toFixed(2), align: 'r' },
+        ]),
+        emptyText: 'No sales for this customer',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: `Customer: ${customer?.name || 'Profile'}`,
+      reportLabel: 'Customer Sales',
+      reportNo: `Rpt #: C-${customer?.id || id}`,
+      metaLeft: [['Phone', customer?.phone || '-'], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+      metaRight: [['Regular', customer?.isRegular ? 'Yes' : 'No'], ['Sales', String(sales.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([
-          { label: 'Customer', amount: customer.name || '-', cls: '' },
-          { label: 'Visits', amount: String(totals.visits) },
-          { label: 'Total spent', amount: totals.spent.toFixed(2) },
-        ]) +
-        reportSec(`Sales (${sales.length})`) +
-        reportTable({
-          headers: ['Date', 'Items', { t: 'Subtotal', align: 'r' }, { t: 'Discount', align: 'r' }, { t: 'Total', align: 'r' }],
-          numbered: true,
-          rows: sales.map(s => [
-            s.date ? format(new Date(s.date), 'yyyy-MM-dd') : '-',
-            saleItemsText(s) || '-',
-            { v: Number(((s.total || 0) + (s.discount || 0))).toFixed(2), align: 'r' },
-            { v: Number(s.discount || 0).toFixed(2), align: 'r' },
-            { v: Number(s.total || 0).toFixed(2), align: 'r' },
-          ]),
-          emptyText: 'No sales for this customer',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: `Customer: ${customer.name || 'Profile'}`,
-        reportLabel: 'Customer Sales',
-        reportNo: `Rpt #: C-${customer.id || id}`,
-        metaLeft: [['Phone', customer.phone || '-'], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
-        metaRight: [['Regular', customer.isRegular ? 'Yes' : 'No'], ['Sales', String(sales.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Customer-${customer.name || id}-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildCustomerReport()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch (e) {
       console.error(e)
@@ -78,23 +82,11 @@ export default function CustomerProfile() {
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || customer.name || 'Customer Sales', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${customer.name || ''} · ${sales.length} sales · spent ${totals.spent.toFixed(2)}`, 40, 46)
-      doc.autoTable({
-        head: [['Date', 'Items', 'Subtotal', 'Discount', 'Total']],
-        body: salesReportRows(),
-        startY: 54,
-        styles: { fontSize: 7, cellPadding: 3 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`customer_sales_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported successfully')
+      const { html, fileName } = buildCustomerReport()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch (e) {
       console.error(e)
       toast.error('Failed to export PDF')

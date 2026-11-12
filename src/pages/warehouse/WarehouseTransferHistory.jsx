@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { useNavigate } from 'react-router-dom'
 import DatePicker from '../../components/DatePicker.jsx'
 import DataTable from '../../components/DataTable.jsx'
@@ -10,7 +8,7 @@ import Pagination from '../../components/Pagination.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { warehouseApiBase } from './warehouseApi.js'
 
 export default function WarehouseTransferHistory() {
@@ -67,60 +65,54 @@ export default function WarehouseTransferHistory() {
     t.notes || '',
   ])
 
+  const buildReportHtml = () => {
+    const fileName = `Transfer-History-${exportDateStamp()}.pdf`
+    const body =
+      reportSummary([{ label: 'Transfers', amount: String(filtered.length) }]) +
+      reportSec(`Transfer History (${filtered.length})`) +
+      reportTable({
+        headers: ['Date', 'Branch', 'Status', 'Items', 'Notes'],
+        numbered: true,
+        rows: filtered.map(t => [
+          t.date || '-',
+          t.toBranchName || t.toBranchId || '-',
+          t.status || '-',
+          (t.items || []).map(i => `${i.name}×${i.qty}`).join(', ') || '-',
+          t.notes || '-',
+        ]),
+        emptyText: 'No transfers',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Transfer History',
+      reportLabel: 'Warehouse Transfers',
+      reportNo: `Rpt #: WHT-${exportDateStamp()}`,
+      metaLeft: [
+        ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
+        ['From', from || 'All'],
+        ['To', to || 'All'],
+      ],
+      metaRight: [['Records', String(filtered.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([{ label: 'Transfers', amount: String(filtered.length) }]) +
-        reportSec(`Transfer History (${filtered.length})`) +
-        reportTable({
-          headers: ['Date', 'Branch', 'Status', 'Items', 'Notes'],
-          numbered: true,
-          rows: filtered.map(t => [
-            t.date || '-',
-            t.toBranchName || t.toBranchId || '-',
-            t.status || '-',
-            (t.items || []).map(i => `${i.name}×${i.qty}`).join(', ') || '-',
-            t.notes || '-',
-          ]),
-          emptyText: 'No transfers',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Transfer History',
-        reportLabel: 'Warehouse Transfers',
-        reportNo: `Rpt #: WHT-${exportDateStamp()}`,
-        metaLeft: [
-          ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
-          ['From', from || 'All'],
-          ['To', to || 'All'],
-        ],
-        metaRight: [['Records', String(filtered.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Transfer-History-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildReportHtml()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Transfer History', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${filtered.length} transfers`, 40, 46)
-      doc.autoTable({
-        head: [['Date', 'Branch', 'Status', 'Items', 'Notes']],
-        body: reportRows(filtered),
-        startY: 54,
-        styles: { fontSize: 7, cellPadding: 3 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`transfer_history_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported')
+      const { html, fileName } = buildReportHtml()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch {
       toast.error('PDF export failed')
     }

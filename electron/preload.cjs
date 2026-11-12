@@ -32,6 +32,19 @@ contextBridge.exposeInMainWorld('printing', {
   printRaw: async (text, deviceName) => {
     try { return await ipcRenderer.invoke('printing:raw', { text, deviceName }) } catch (e) { return { ok: false, error: String(e) } }
   },
+  /** ESC/POS over TCP 9100 (or Windows RAW). Prefer this for kitchen rush printing. */
+  printEscPos: async (text, opts = {}) => {
+    try {
+      return await ipcRenderer.invoke('printing:escpos', {
+        text,
+        deviceName: opts.deviceName || '',
+        host: opts.host || opts.ip || '',
+        port: opts.port || 9100,
+      })
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
+  },
   printHTML: async (html, deviceName, opts = {}) => {
     try {
       return await ipcRenderer.invoke('printing:print-html', {
@@ -60,7 +73,10 @@ contextBridge.exposeInMainWorld('pdfPreview', {
   },
   printHtml: async (html, name) => {
     try { return await ipcRenderer.invoke('preview:print-html', { html, name }) } catch (e) { return { ok: false, error: String(e && e.message || e) } }
-  }
+  },
+  downloadHtml: async (html, name) => {
+    try { return await ipcRenderer.invoke('preview:download-html', { html, name }) } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+  },
 })
 
 // Backup helpers for selecting a folder and saving/restoring files

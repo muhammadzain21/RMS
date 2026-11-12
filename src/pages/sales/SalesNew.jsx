@@ -33,10 +33,12 @@ import { printSaleReceiptUtil, openKotPrintUtil } from './printUtils.js'
 export default function SalesNew() {
   const { state, dispatch, businessDate } = useData()
   const { token, user } = useAuth()
-  const { requireBranch } = useBranch()
+  const { requireBranch, branches } = useBranch()
   const { confirm, ConfirmDialog } = useConfirm()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const authHeaders = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' }
+  // Cross-branch staff for Staff Purchase picker (sale finance still uses active branch)
+  const [staffAllBranches, setStaffAllBranches] = useState([])
   const navigate = useNavigate()
 
   // Guard against double-submit and provide a stable idempotency key per KOT action
@@ -374,6 +376,41 @@ export default function SalesNew() {
       .filter(s => String(s.position||'').toLowerCase().includes('rider') && String(s.status||'Active').toLowerCase() === 'active')
       .map(s => ({ id: s.id, name: s.name }))
   ), [staff])
+
+  // Staff purchase: list Active staff from every accessible branch
+  useEffect(() => {
+    if (!token) { setStaffAllBranches([]); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`${API}/api/staff?limit=500&allBranches=1`, {
+          headers: authHeaders,
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const json = await res.json().catch(() => ({}))
+        const rows = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : [])
+        const branchLabel = (bid) => {
+          const b = (branches || []).find(x => String(x._id || x.id) === String(bid || ''))
+          return b?.name || b?.code || ''
+        }
+        const mapped = rows.map(r => ({
+          ...r,
+          id: r.id || r._id,
+          branchName: r.branchName || branchLabel(r.branchId) || '',
+        }))
+        if (!cancelled) setStaffAllBranches(mapped)
+      } catch {
+        if (!cancelled) setStaffAllBranches([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [token, API, branches])
+
+  const staffForPurchase = useMemo(() => {
+    const list = staffAllBranches.length ? staffAllBranches : staff
+    return (list || []).filter(s => String(s.status || 'Active').toLowerCase() !== 'inactive')
+  }, [staffAllBranches, staff])
   const helds = Array.isArray(state.helds) ? state.helds : []
   // Tables can come either from state.tables or settings.tables depending on auth/hydration
   const tables = Array.isArray(state.tables) && state.tables.length
@@ -1370,7 +1407,7 @@ export default function SalesNew() {
             : null
           const floor = tableObj?.floor || ''
           
-          // Directly print instead of showing receipt dialog
+          // Silent print when KOT printer is set; preview only as fallback
           await openKotPrintUtil({
             state,
             items: deltaLines,
@@ -1490,7 +1527,7 @@ export default function SalesNew() {
             : null
           const floor = tableObj?.floor || ''
           
-          // Directly print instead of showing receipt dialog
+          // Silent print when KOT printer is set; preview only as fallback
           await openKotPrintUtil({
             state,
             items: items.map(it => {
@@ -1532,8 +1569,13 @@ export default function SalesNew() {
           // Reset all after printing
           resetAll()
         } else {
-          try { const txt = await res.text(); console.error('Failed to create recall', res.status, txt) } catch {}
-          toast.error('Failed to send KOT (could not create recall). Please try again.')
+          let detail = ''
+          try {
+            const txt = await res.text()
+            console.error('Failed to create recall', res.status, txt)
+            try { detail = JSON.parse(txt)?.error || txt } catch { detail = txt }
+          } catch {}
+          toast.error(detail ? `Failed to send KOT: ${detail}` : 'Failed to send KOT (could not create recall). Please try again.')
         }
       } catch {}
       finally { kotSubmittingRef.current = false; setKotSubmitting(false); clearKotActionKey() }
@@ -1626,7 +1668,7 @@ export default function SalesNew() {
           setBankLast4={setBankLast4}
           bankRef={bankRef}
           setBankRef={setBankRef}
-          staff={state.staff || []}
+          staff={staffForPurchase}
           staffId={payStaffId}
           setStaffId={setPayStaffId}
           staffName={payStaffName}

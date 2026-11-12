@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   CalendarCheck, ShoppingBag, HandCoins, TrendingUp, FileText, ChevronRight,
-  Wallet, Clock, UserRound, Percent, AlertCircle,
+  Wallet, Clock, UserRound, Percent, AlertCircle, Bike,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
@@ -12,6 +12,7 @@ import {
 import { useMyWork, pkr, inRange, monthName, StatCard, Chip } from './myWorkShared.jsx'
 
 const LINKS = [
+  { to: '/rider', label: 'Rider delivery', desc: 'Share live GPS on depart', icon: Bike, color: 'bg-rose-500' },
   { to: '/my/attendance', label: 'Attendance', desc: 'Daily check-in history', icon: CalendarCheck, color: 'bg-blue-500' },
   { to: '/my/purchases', label: 'Purchases', desc: 'Orders & dues', icon: ShoppingBag, color: 'bg-violet-500' },
   { to: '/my/advances', label: 'Advances', desc: 'Taken & repaid', icon: HandCoins, color: 'bg-amber-500' },

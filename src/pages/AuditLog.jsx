@@ -3,11 +3,9 @@ import { useData } from '../state/DataContext.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import DatePicker from '../components/DatePicker.jsx'
 import Pagination from '../components/Pagination.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../utils/reportDoc.js'
 import { exportDateStamp } from '../utils/listReportExport.js'
 
 export default function AuditLog() {
@@ -100,8 +98,7 @@ export default function AuditLog() {
  return [{ id: '', name: 'All Users' }, ...list]
  }, [authUsers, rows])
 
- const openPrintPreview = async () => {
- try {
+ const buildAuditLogReport = () => {
  const periodFrom = from || 'All'
  const periodTo = to || 'All'
  const filterNote = type ? `Type: ${type}` : userId ? 'Filtered by user' : q ? `Search: ${q}` : 'None'
@@ -121,6 +118,7 @@ export default function AuditLog() {
  r.action || r.message || '-',
  ]),
  })
+ const fileName = `Audit-Log-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Audit Log',
@@ -130,7 +128,13 @@ export default function AuditLog() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Audit-Log-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildAuditLogReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }
@@ -155,30 +159,10 @@ export default function AuditLog() {
  toast.success('CSV exported successfully')
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF()
- doc.setFontSize(16)
- doc.text('Audit Log Report', 14, 16)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 14, 24)
- if (from || to) {
- doc.text(`Period: ${from || 'All'} to ${to || 'All'}`, 14, 30)
- }
- const body = rows.map(r => [
- r.at ? format(new Date(r.at), 'yyyy-MM-dd HH:mm:ss') : '-',
- r.type || '',
- r.userName || r.user || '-',
- (r.action || r.message || '-').substring(0, 60)
- ])
- autoTable(doc, {
- head: [['Time','Type','User','Action']],
- body,
- startY: from || to ? 34 : 28,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255 }
- })
- doc.save(`audit_log_${exportDateStamp()}.pdf`)
+ const { html, fileName } = buildAuditLogReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

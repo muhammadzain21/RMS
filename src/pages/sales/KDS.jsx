@@ -11,6 +11,7 @@ import {
 import DatePicker from '../../components/DatePicker.jsx'
 import { previewHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '../../utils/reportDoc'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
+import { groupItemsByCategory } from './utils.js'
 
 const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
@@ -212,19 +213,58 @@ export default function KDS() {
   }, [state.staff])
 
   const getItemName = (it) => {
-    if (it?.custom?.name) return it.custom.name
     const m = menuById[it?.itemId]
-    return m?.name || it?.name || 'Unknown Item'
+    const size = String(it?.mods?.size || it?.size || '').trim().toUpperCase()
+    const flvs = Array.isArray(it?.mods?.flavours) ? it.mods.flavours : []
+    if (flvs.length) {
+      const names = flvs.map(fid => menuById[fid]?.name).filter(Boolean)
+      const title = names.join(' + ') || it?.custom?.name || m?.name || it?.name || 'Unknown Item'
+      return size ? `${title} (${size})` : title
+    }
+    const base = it?.custom?.name || m?.name || it?.name || 'Unknown Item'
+    return size ? `${base} (${size})` : base
   }
 
   const getItemMods = (it) => {
     const mods = []
-    if (it?.mods?.size) mods.push(`Size: ${it.mods.size}`)
-    if (Array.isArray(it?.mods?.flavours) && it.mods.flavours.length) {
-      const names = it.mods.flavours.map(fid => menuById[fid]?.name).filter(Boolean)
-      if (names.length) mods.push(`Flavours: ${names.join(', ')}`)
-    }
+    // Size / flavours already folded into the display name (same as KOT)
+    if (it?.mods?.notes) mods.push(String(it.mods.notes))
     return mods
+  }
+
+  const renderKotItems = (kotItems, qtyBtnClass = 'bg-slate-500') => {
+    const groups = groupItemsByCategory(kotItems || [], state.menu || [], state.categories || [])
+    return groups.map((g) => {
+      const showHead = g.showHeader !== false && !!String(g.categoryName || '').trim()
+      return (
+        <div key={g.key} className={showHead ? 'space-y-1' : undefined}>
+          {showHead ? (
+            <div className="text-[11px] font-extrabold uppercase tracking-wide text-amber-700 dark:text-amber-300 pt-0.5">
+              {g.categoryName}:
+            </div>
+          ) : null}
+          {g.items.map(({ it }, idx) => {
+            const name = getItemName(it)
+            const mods = getItemMods(it)
+            return (
+              <div key={`${g.key}-${idx}`} className={`flex items-start gap-2 ${showHead ? 'pl-1' : ''}`}>
+                <span className={`flex-shrink-0 w-5 h-5 rounded ${qtyBtnClass} text-white text-[10px] font-bold flex items-center justify-center mt-0.5`}>
+                  {it.qty || 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm leading-tight ${showHead ? 'font-medium text-gray-600 dark:text-gray-300' : 'font-medium text-gray-700 dark:text-gray-200'}`}>{name}</p>
+                  {mods.length > 0 && (
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                      {mods.join(' · ')}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )
+    })
   }
 
   const waiterName = (id) => staffById[id]?.name || '-'
@@ -534,27 +574,9 @@ export default function KDS() {
                           </div>
                         </div>
 
-                        {/* Items list */}
+                        {/* Items list — deal categories grouped like KOT / bill */}
                         <div className="px-3 py-2 space-y-1.5">
-                          {(kot.items || []).map((it, idx) => {
-                            const name = getItemName(it)
-                            const mods = getItemMods(it)
-                            return (
-                              <div key={idx} className="flex items-start gap-2">
-                                <span className={`flex-shrink-0 w-5 h-5 rounded ${c.btn} text-white text-[10px] font-bold flex items-center justify-center mt-0.5`}>
-                                  {it.qty || 1}
-                                </span>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200 leading-tight">{name}</p>
-                                  {mods.length > 0 && (
-                                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                                      {mods.join(' · ')}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })}
+                          {renderKotItems(kot.items, c.btn)}
                         </div>
 
                         {/* Customer / delivery details */}

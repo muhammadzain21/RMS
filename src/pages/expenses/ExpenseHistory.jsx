@@ -3,10 +3,8 @@ import { useData } from '../../state/DataContext.jsx'
 import { useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
@@ -21,30 +19,36 @@ export default function ExpenseHistory() {
   const rows = useMemo(() => state.expenses.filter(e => (!date || e.date===date) && (!cat || e.category===cat)), [state.expenses, date, cat])
   const totalAmount = useMemo(() => rows.reduce((a, e) => a + Number(e.amount || 0), 0), [rows])
 
+  const buildReportHtml = () => {
+    const fileName = `Expense-History-${date || 'all'}.pdf`
+    const body =
+      reportSummary([
+        { label: 'Total amount', amount: `PKR ${totalAmount.toLocaleString()}` },
+        { label: 'Entries', amount: String(rows.length) },
+      ]) +
+      reportSec('Expenses') +
+      reportTable({
+        headers: ['Date', 'Category', 'Description', { t: 'Amount (PKR)', align: 'r' }],
+        numbered: true,
+        rows: rows.map(e => [e.date, e.category, e.description || '-', { v: Number(e.amount || 0).toLocaleString(), align: 'r' }]),
+        emptyText: 'No expenses match filters',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Expense History',
+      reportLabel: 'Expense Report',
+      reportNo: `Rpt #: EX-${date || 'all'}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date filter', date || 'All']],
+      metaRight: [['Category', cat || 'All'], ['Records', String(rows.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([
-          { label: 'Total amount', amount: `PKR ${totalAmount.toLocaleString()}` },
-          { label: 'Entries', amount: String(rows.length) },
-        ]) +
-        reportSec('Expenses') +
-        reportTable({
-          headers: ['Date', 'Category', 'Description', { t: 'Amount (PKR)', align: 'r' }],
-          numbered: true,
-          rows: rows.map(e => [e.date, e.category, e.description || '-', { v: Number(e.amount || 0).toLocaleString(), align: 'r' }]),
-          emptyText: 'No expenses match filters',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Expense History',
-        reportLabel: 'Expense Report',
-        reportNo: `Rpt #: EX-${date || 'all'}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date filter', date || 'All']],
-        metaRight: [['Category', cat || 'All'], ['Records', String(rows.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Expense-History-${date || 'all'}.pdf`)
+      const { html, fileName } = buildReportHtml()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch (err) {
       console.error(err)
@@ -52,23 +56,11 @@ export default function ExpenseHistory() {
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('p', 'pt', 'a4')
-      doc.setFontSize(16)
-      doc.text(state?.settings?.companyName || 'Expense History', 40, 32)
-      doc.setFontSize(11)
-      doc.text(`Total: PKR ${totalAmount.toLocaleString()} · ${rows.length} entries`, 40, 48)
-      doc.autoTable({
-        head: [['Date', 'Category', 'Description', 'Amount (PKR)']],
-        body: rows.map(e => [e.date, e.category, e.description || '-', Number(e.amount || 0).toLocaleString()]),
-        startY: 60,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`expenses_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported successfully')
+      const { html, fileName } = buildReportHtml()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch (err) {
       console.error(err)
       toast.error('Failed to export PDF')
@@ -97,7 +89,8 @@ export default function ExpenseHistory() {
 
   return (
     <div className="space-y-4">
-      <h1 className="page-title">Expenses</h1>
+      <h1 className="page-title">Expenses (legacy view)</h1>
+      <p className="text-sm font-medium text-[var(--color-text-muted)]">For vouchers, approval, and head management, use the main <strong>Expenses</strong> page in the sidebar.</p>
       <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl card card-pad">
         <div className="flex gap-3 flex-shrink-0">
           <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>

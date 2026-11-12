@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { useData } from '../../../state/DataContext.jsx';
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../../utils/reportDoc.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../../utils/reportDoc.js';
 import AddAdvanceDialog from '../components/AddAdvanceDialog.jsx';
 import DatePicker from '../../../components/DatePicker.jsx'
 
@@ -92,54 +90,60 @@ export default function AdvancesTab({
 
   const money = (n) => `${Number(n || 0).toLocaleString()} PKR`;
 
+  const buildAdvancesReport = () => {
+    const fileName = `Staff-Advances-${month}-${view}.pdf`;
+    const isRegister = view === 'register';
+    const body =
+      reportSummary([
+        { label: 'Issued', amount: money(kpis.issued) },
+        { label: 'Recovered', amount: money(kpis.recovered) },
+        { label: 'Outstanding', amount: money(kpis.outstanding) },
+        { label: 'Staff with balance', amount: String(kpis.openStaff) },
+      ]) +
+      (isRegister
+        ? reportSec(`Advance register — ${month} (${monthAdvances.length})`) +
+          reportTable({
+            headers: ['Date', 'Staff', 'Type', 'Note', { t: 'Amount', align: 'r' }],
+            numbered: true,
+            rows: monthAdvances.map(a => [
+              a.date || '-',
+              a.staffName || staffName(a.staffId),
+              a.type || 'issue',
+              a.notes || '-',
+              { v: `${(a.type || 'issue') === 'issue' ? '+' : '−'} ${Number(a.amount || 0).toLocaleString()} PKR`, align: 'r' },
+            ]),
+            emptyText: 'No advance records',
+          })
+        : reportSec(`Staff balances (${filteredBalances.length})`) +
+          reportTable({
+            headers: ['Staff', 'Position', { t: 'Salary', align: 'r' }, { t: 'Limit', align: 'r' }, { t: 'Outstanding', align: 'r' }, { t: 'Available', align: 'r' }],
+            numbered: true,
+            rows: filteredBalances.map(b => [
+              b.name,
+              b.position || '—',
+              { v: money(b.salary), align: 'r' },
+              { v: money(b.advanceLimit), align: 'r' },
+              { v: money(b.outstanding), align: 'r' },
+              { v: money(b.available), align: 'r' },
+            ]),
+            emptyText: 'No balances',
+          }));
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: isRegister ? 'Staff Advances Register' : 'Staff Advance Balances',
+      reportLabel: 'Staff Advances Report',
+      reportNo: `Rpt #: ADV-${month}-${view}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Month', month], ['View', view]],
+      metaRight: [['Staff filter', filterStaffId ? staffName(filterStaffId) : 'All'], ['Records', String(isRegister ? monthAdvances.length : filteredBalances.length)]],
+      body,
+    });
+    return { html, fileName };
+  };
+
   const openPrintPreview = async () => {
     try {
-      const isRegister = view === 'register';
-      const body =
-        reportSummary([
-          { label: 'Issued', amount: money(kpis.issued) },
-          { label: 'Recovered', amount: money(kpis.recovered) },
-          { label: 'Outstanding', amount: money(kpis.outstanding) },
-          { label: 'Staff with balance', amount: String(kpis.openStaff) },
-        ]) +
-        (isRegister
-          ? reportSec(`Advance register — ${month} (${monthAdvances.length})`) +
-            reportTable({
-              headers: ['Date', 'Staff', 'Type', 'Note', { t: 'Amount', align: 'r' }],
-              numbered: true,
-              rows: monthAdvances.map(a => [
-                a.date || '-',
-                a.staffName || staffName(a.staffId),
-                a.type || 'issue',
-                a.notes || '-',
-                { v: `${(a.type || 'issue') === 'issue' ? '+' : '−'} ${Number(a.amount || 0).toLocaleString()} PKR`, align: 'r' },
-              ]),
-              emptyText: 'No advance records',
-            })
-          : reportSec(`Staff balances (${filteredBalances.length})`) +
-            reportTable({
-              headers: ['Staff', 'Position', { t: 'Salary', align: 'r' }, { t: 'Limit', align: 'r' }, { t: 'Outstanding', align: 'r' }, { t: 'Available', align: 'r' }],
-              numbered: true,
-              rows: filteredBalances.map(b => [
-                b.name,
-                b.position || '—',
-                { v: money(b.salary), align: 'r' },
-                { v: money(b.advanceLimit), align: 'r' },
-                { v: money(b.outstanding), align: 'r' },
-                { v: money(b.available), align: 'r' },
-              ]),
-              emptyText: 'No balances',
-            }));
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: isRegister ? 'Staff Advances Register' : 'Staff Advance Balances',
-        reportLabel: 'Staff Advances Report',
-        reportNo: `Rpt #: ADV-${month}-${view}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Month', month], ['View', view]],
-        metaRight: [['Staff filter', filterStaffId ? staffName(filterStaffId) : 'All'], ['Records', String(isRegister ? monthAdvances.length : filteredBalances.length)]],
-        body,
-      });
-      await previewHtmlReport(html, `Staff-Advances-${month}-${view}.pdf`);
+      const { html, fileName } = buildAdvancesReport();
+      await previewHtmlReport(html, fileName);
       toast?.success('Print preview opened');
     } catch (err) {
       console.error(err);
@@ -147,43 +151,11 @@ export default function AdvancesTab({
     }
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('p', 'pt', 'a4');
-      doc.setFontSize(14);
-      doc.text(state?.settings?.companyName || 'Staff Advances', 40, 32);
-      doc.setFontSize(10);
-      doc.text(`${month} · ${view}`, 40, 46);
-      if (view === 'register') {
-        doc.autoTable({
-          head: [['Date', 'Staff', 'Type', 'Note', 'Amount (PKR)']],
-          body: monthAdvances.map(a => [
-            a.date || '-',
-            a.staffName || staffName(a.staffId),
-            a.type || 'issue',
-            a.notes || '-',
-            Number(a.amount || 0).toLocaleString(),
-          ]),
-          startY: 54,
-          styles: { fontSize: 8, cellPadding: 4 },
-          headStyles: { fillColor: [20, 184, 166], textColor: 255, fontStyle: 'bold' },
-          margin: { left: 40, right: 40 },
-        });
-      } else {
-        doc.autoTable({
-          head: [['Staff', 'Position', 'Salary', 'Limit', 'Outstanding', 'Available']],
-          body: filteredBalances.map(b => [
-            b.name, b.position || '—', Number(b.salary || 0).toLocaleString(), Number(b.advanceLimit || 0).toLocaleString(),
-            Number(b.outstanding || 0).toLocaleString(), Number(b.available || 0).toLocaleString(),
-          ]),
-          startY: 54,
-          styles: { fontSize: 8, cellPadding: 4 },
-          headStyles: { fillColor: [20, 184, 166], textColor: 255, fontStyle: 'bold' },
-          margin: { left: 40, right: 40 },
-        });
-      }
-      doc.save(`staff-advances-${month}-${view}.pdf`);
-      toast?.success('PDF exported successfully');
+      const { html, fileName } = buildAdvancesReport();
+      await downloadHtmlReport(html, fileName);
+      toast?.success('PDF downloaded');
     } catch (err) {
       console.error(err);
       toast?.error('Failed to export PDF');

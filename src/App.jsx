@@ -31,11 +31,13 @@ import MyPurchases from './pages/my/MyPurchases.jsx'
 import MyAdvances from './pages/my/MyAdvances.jsx'
 import MyEarnings from './pages/my/MyEarnings.jsx'
 import MySalary from './pages/my/MySalary.jsx'
+import MyRider from './pages/my/MyRider.jsx'
 import ExpenseNew from './pages/expenses/ExpenseNew.jsx'
 import ExpenseHistory from './pages/expenses/ExpenseHistory.jsx'
 import RiderList from './pages/riders/RiderList.jsx'
 import RiderAssign from './pages/riders/RiderAssign.jsx'
 import RiderDaily from './pages/riders/RiderDaily.jsx'
+import RiderLiveMap from './pages/riders/RiderLiveMap.jsx'
 import ProfitLoss from './pages/ProfitLoss.jsx'
 import Settings from './pages/settings/Settings.jsx'
 import BackupSecurity from './pages/settings/BackupSecurity.jsx'
@@ -122,6 +124,8 @@ function App() {
           <Route path="earnings" element={<MyEarnings />} />
           <Route path="salary" element={<MySalary />} />
         </Route>
+        {/* Rider PWA page — install on phone; share GPS after depart */}
+        <Route path="rider" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><MyRider /></ProtectedRoute>} />
 
         <Route path="inventory" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryList /></ProtectedRoute>} />
         <Route path="inventory/new" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryForm /></ProtectedRoute>} />
@@ -195,6 +199,7 @@ function App() {
 
 
         <Route path="riders" element={<ProtectedRoute roles={["Admin","Manager"]}><RiderList /></ProtectedRoute>} />
+        <Route path="riders/live" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><RiderLiveMap /></ProtectedRoute>} />
         <Route path="riders/assign" element={<ProtectedRoute roles={["Admin","Manager"]}><RiderAssign /></ProtectedRoute>} />
         <Route path="riders/daily" element={<ProtectedRoute roles={["Admin","Manager"]}><RiderDaily /></ProtectedRoute>} />
 

@@ -3,13 +3,11 @@ import { useMemo, useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function ReturnHistory() {
@@ -101,22 +99,39 @@ export default function ReturnHistory() {
  ) },
  ]
 
- const exportPDF = () => {
- try {
- const doc = new jsPDF()
- doc.setFontSize(16)
- doc.text('Return History', 14, 16)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 14, 24)
- const body = rows.map(r => [r.date, r.billNo, r.customer, `PKR ${Number(r.refund).toLocaleString()}`, r.paymentMethod, r.reason])
- doc.autoTable({ 
- head: [['Date','Bill No','Customer','Refund','Payment','Reason']], 
- body,
- startY: 30,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255 }
+ const buildReturnHistoryReport = () => {
+ const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
+ const totalRefund = rows.reduce((a, r) => a + Number(r.refund || 0), 0)
+ const periodFrom = fromDate || '—'
+ const periodTo = toDate || '—'
+ const body =
+ reportSummary([
+ { label: 'Total Refunds', amount: money(totalRefund) },
+ { label: 'Record Count', amount: String(rows.length) },
+ ]) +
+ reportSec(`Returns (${rows.length})`) +
+ reportTable({
+ headers: ['Date', 'Bill No', 'Customer', { t: 'Refund', align: 'r' }, 'Payment', 'Reason', 'Items'],
+ numbered: true,
+ rows: rows.map(r => [r.date, r.billNo, r.customer, { v: money(r.refund), align: 'r' }, r.paymentMethod, r.reason, r.itemsText]),
  })
- doc.save(`returns-${exportDateStamp()}.pdf`)
+ const fileName = `Return-History-${exportDateStamp()}.pdf`
+ const html = wrapReportDoc({
+ settings: state?.settings || {},
+ title: 'Return History',
+ reportLabel: 'Returns Report',
+ reportNo: `Rpt #: RET-${format(new Date(), 'yyyyMMdd-HHmm')}`,
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaRight: [['Records', String(rows.length)]],
+ body,
+ })
+ return { html, fileName }
+ }
+
+ const exportPDF = async () => {
+ try {
+ const { html, fileName } = buildReturnHistoryReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)
@@ -146,31 +161,8 @@ export default function ReturnHistory() {
 
  const openPrintPreview = async () => {
  try {
- const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
- const totalRefund = rows.reduce((a, r) => a + Number(r.refund || 0), 0)
- const periodFrom = fromDate || '—'
- const periodTo = toDate || '—'
- const body =
- reportSummary([
- { label: 'Total Refunds', amount: money(totalRefund) },
- { label: 'Record Count', amount: String(rows.length) },
- ]) +
- reportSec(`Returns (${rows.length})`) +
- reportTable({
- headers: ['Date', 'Bill No', 'Customer', { t: 'Refund', align: 'r' }, 'Payment', 'Reason', 'Items'],
- numbered: true,
- rows: rows.map(r => [r.date, r.billNo, r.customer, { v: money(r.refund), align: 'r' }, r.paymentMethod, r.reason, r.itemsText]),
- })
- const html = wrapReportDoc({
- settings: state?.settings || {},
- title: 'Return History',
- reportLabel: 'Returns Report',
- reportNo: `Rpt #: RET-${format(new Date(), 'yyyyMMdd-HHmm')}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
- metaRight: [['Records', String(rows.length)]],
- body,
- })
- await previewHtmlReport(html, `Return-History-${exportDateStamp()}.pdf`)
+ const { html, fileName } = buildReturnHistoryReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }

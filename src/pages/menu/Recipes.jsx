@@ -8,9 +8,7 @@ import { useUserBusy } from '../../hooks/useUserBusy.js'
 import Pagination from '../../components/Pagination.jsx'
 import { Plus, X, Copy, ClipboardPaste } from 'lucide-react'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 function blankIngredient() {
@@ -346,8 +344,8 @@ export default function Recipes() {
     ]
   })
 
- const openPrintPreview = async () => {
- try {
+ const buildReportHtml = () => {
+ const fileName = `Recipes-${exportDateStamp()}.pdf`
  const body =
  reportSummary([
  { label: 'Recipes listed', amount: String(filteredList.length) },
@@ -384,7 +382,13 @@ export default function Recipes() {
  metaRight: [['Records', String(filteredList.length)]],
  body,
  })
- await previewHtmlReport(html, `Recipes-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildReportHtml()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -392,23 +396,11 @@ export default function Recipes() {
  }
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Recipes', 40, 32)
- doc.setFontSize(10)
- doc.text(`${filteredList.length} recipes`, 40, 46)
- doc.autoTable({
-        head: [['Menu Item', 'Category', 'Scope', 'Ingredients', 'Count', 'Sell price', 'Goods cost', 'Margin %']],
- body: recipeReportRows(),
- startY: 54,
- styles: { fontSize: 7, cellPadding: 3 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`recipes_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
+ const { html, fileName } = buildReportHtml()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded')
  } catch (e) {
  console.error(e)
  toast.error('Failed to export PDF')

@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { useData } from '../../../state/DataContext.jsx';
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../../utils/reportDoc.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../../utils/reportDoc.js';
 import SalarySlipDialog from '../components/SalarySlipDialog.jsx';
 import DatePicker from '../../../components/DatePicker.jsx'
 
@@ -254,43 +252,49 @@ export default function PayrollTab({
     }
   }
 
+  const buildPayrollReport = () => {
+    const fileName = `Payroll-${month}-${tab}.pdf`;
+    const body =
+      reportSummary([
+        { label: 'Period', amount: month },
+        { label: 'Tab', amount: tab },
+        { label: 'Rows', amount: String(tabRows.length) },
+        { label: 'Net payroll (all)', amount: `${money(totals.net)} PKR` },
+      ]) +
+      reportSec(`Payroll — ${tab} (${tabRows.length})`) +
+      reportTable({
+        headers: ['Employee', 'Position', { t: 'Basic', align: 'r' }, { t: 'Extras', align: 'r' }, { t: 'Gross', align: 'r' }, { t: 'Deduct.', align: 'r' }, { t: 'Advance', align: 'r' }, { t: 'Net Pay', align: 'r' }, 'Status'],
+        numbered: true,
+        rows: tabRows.map(r => [
+          r.staffName,
+          r.position || '',
+          { v: money(r.basicSalary), align: 'r' },
+          { v: money(extrasOf(r)), align: 'r' },
+          { v: money(r.grossPay), align: 'r' },
+          { v: money(deductOf(r)), align: 'r' },
+          { v: money(r.advanceDeducted), align: 'r' },
+          { v: money(r.netPay), align: 'r', cls: 'pos' },
+          statusLabel(r.status),
+        ]),
+        emptyText: 'No payroll rows',
+      });
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Payroll Report',
+      reportLabel: 'Payroll Report',
+      reportNo: `Rpt #: PAY-${month}-${tab}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', month], ['View', tab]],
+      metaRight: [['Records', String(tabRows.length)], ['Net (tab)', `${money(tabRows.reduce((s, r) => s + Number(r.netPay || 0), 0))} PKR`]],
+      body,
+    });
+    return { html, fileName };
+  };
+
   const openPrintPreview = async () => {
     if (!tabRows.length) { toast?.error('No payroll rows to print'); return; }
     try {
-      const body =
-        reportSummary([
-          { label: 'Period', amount: month },
-          { label: 'Tab', amount: tab },
-          { label: 'Rows', amount: String(tabRows.length) },
-          { label: 'Net payroll (all)', amount: `${money(totals.net)} PKR` },
-        ]) +
-        reportSec(`Payroll — ${tab} (${tabRows.length})`) +
-        reportTable({
-          headers: ['Employee', 'Position', { t: 'Basic', align: 'r' }, { t: 'Extras', align: 'r' }, { t: 'Gross', align: 'r' }, { t: 'Deduct.', align: 'r' }, { t: 'Advance', align: 'r' }, { t: 'Net Pay', align: 'r' }, 'Status'],
-          numbered: true,
-          rows: tabRows.map(r => [
-            r.staffName,
-            r.position || '',
-            { v: money(r.basicSalary), align: 'r' },
-            { v: money(extrasOf(r)), align: 'r' },
-            { v: money(r.grossPay), align: 'r' },
-            { v: money(deductOf(r)), align: 'r' },
-            { v: money(r.advanceDeducted), align: 'r' },
-            { v: money(r.netPay), align: 'r', cls: 'pos' },
-            statusLabel(r.status),
-          ]),
-          emptyText: 'No payroll rows',
-        });
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Payroll Report',
-        reportLabel: 'Payroll Report',
-        reportNo: `Rpt #: PAY-${month}-${tab}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', month], ['View', tab]],
-        metaRight: [['Records', String(tabRows.length)], ['Net (tab)', `${money(tabRows.reduce((s, r) => s + Number(r.netPay || 0), 0))} PKR`]],
-        body,
-      });
-      await previewHtmlReport(html, `Payroll-${month}-${tab}.pdf`);
+      const { html, fileName } = buildPayrollReport();
+      await previewHtmlReport(html, fileName);
       toast?.success('Print preview opened');
     } catch (err) {
       console.error(err);
@@ -298,27 +302,12 @@ export default function PayrollTab({
     }
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     if (!tabRows.length) { toast?.error('No payroll rows to export'); return; }
     try {
-      const doc = new jsPDF('l', 'pt', 'a4');
-      doc.setFontSize(14);
-      doc.text(state?.settings?.companyName || 'Payroll', 40, 32);
-      doc.setFontSize(10);
-      doc.text(`${month} · ${tab} · ${tabRows.length} rows`, 40, 46);
-      doc.autoTable({
-        head: [['Employee', 'Position', 'Basic', 'Extras', 'Gross', 'Deduct.', 'Advance', 'Purchases', 'Net Pay', 'Status']],
-        body: tabRows.map(r => [
-          r.staffName, r.position || '', money(r.basicSalary), money(extrasOf(r)), money(r.grossPay),
-          money(deductOf(r)), money(r.advanceDeducted), money(r.purchaseDeducted), money(r.netPay), statusLabel(r.status),
-        ]),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      });
-      doc.save(`payroll-${month}-${tab}.pdf`);
-      toast?.success('PDF exported successfully');
+      const { html, fileName } = buildPayrollReport();
+      await downloadHtmlReport(html, fileName);
+      toast?.success('PDF downloaded');
     } catch (err) {
       console.error(err);
       toast?.error('Failed to export PDF');

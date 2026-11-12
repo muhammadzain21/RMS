@@ -185,6 +185,8 @@ router.post('/', async (req, res) => {
         await StaffPurchase.create({
           staffId: staffDoc._id,
           staffName: staffDoc.name || payload.staffName || '',
+          // Finance stays on the selling branch even if staff belongs to another branch
+          branchId: String(saved.branchId || doc.branchId || ''),
           saleId: String(saved._id),
           billNo,
           date: dateStr,

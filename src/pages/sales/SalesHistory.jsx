@@ -5,10 +5,8 @@ import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { printSaleReceiptUtil } from './printUtils.js'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import OrderViewDialog from './components/OrderViewDialog.jsx'
@@ -422,64 +420,7 @@ export default function SalesHistory() {
  ) },
  ]
 
- const exportPDF = () => {
- try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(16)
- doc.text('Sales History', 40, 32)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 40, 48)
- if (fromDate || toDate) {
- doc.text(`Period: ${fromDate || '...'} to ${toDate || '...'}`, 40, 60)
- }
- const body = rows.map(r => [
- r.date,
- r.billNo,
- r.customer,
- r.orderType,
- r.tableNo,
- r.waiterName,
- r.riderName,
- `PKR ${Number(r.saleTotal).toLocaleString()}`,
- `PKR ${Number(r.netAmount).toLocaleString()}`,
- r.paymentMethod,
- r.status,
- r.deliveryDate
- ])
- doc.autoTable({
- head: [['Date','Bill#','Customer','Order Type','Table','Waiter','Rider','Sale Total','Net Amount','Payment','Status','Delivery']],
- body,
- startY: fromDate || toDate ? 72 : 60,
- styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak', halign: 'left' },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 9, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- tableWidth: 'auto'
- })
- doc.save(`sales_${exportDateStamp(fromDate, toDate, businessDate)}.pdf`)
- toast.success('PDF exported successfully')
- } catch (err) {
- console.error('PDF export error:', err)
- toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
- }
- }
-
- const exportCSV = () => {
- const headers = ['Date','Bill Number','Customer','Order Type','Table','Waiter','Rider','Sale Total (PKR)','Net Amount (PKR)','Payment Mode','Status','Delivery Date']
- const lines = rows.map(r => [r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.netAmount,r.paymentMethod,r.status,r.deliveryDate]
- .map(v => '"' + String(v ?? '').replaceAll('"','""') + '"').join(',')).join('\n')
- const csv = headers.join(',') + '\n' + lines
- const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = `sales_${exportDateStamp(fromDate, toDate, businessDate)}.csv`
- a.click()
- URL.revokeObjectURL(url)
- toast.success('CSV exported successfully')
- }
-
- const openPrintPreview = async () => {
- try {
+ const buildSalesHistoryReport = () => {
  const money = (n) => 'PKR ' + Math.round(Number(n || 0)).toLocaleString()
  const body =
  reportSummary([
@@ -513,6 +454,7 @@ export default function SalesHistory() {
  ]),
  emptyText: 'No sales found',
  })
+ const fileName = `Sales-History-${fromDate || 'all'}-${toDate || 'all'}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Sales History',
@@ -528,7 +470,39 @@ export default function SalesHistory() {
  ],
  body,
  })
- await previewHtmlReport(html, `Sales-History-${fromDate || 'all'}-${toDate || 'all'}.pdf`)
+ return { html, fileName }
+ }
+
+ const exportPDF = async () => {
+ try {
+ const { html, fileName } = buildSalesHistoryReport()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF exported successfully')
+ } catch (err) {
+ console.error('PDF export error:', err)
+ toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+ }
+ }
+
+ const exportCSV = () => {
+ const headers = ['Date','Bill Number','Customer','Order Type','Table','Waiter','Rider','Sale Total (PKR)','Net Amount (PKR)','Payment Mode','Status','Delivery Date']
+ const lines = rows.map(r => [r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.netAmount,r.paymentMethod,r.status,r.deliveryDate]
+ .map(v => '"' + String(v ?? '').replaceAll('"','""') + '"').join(',')).join('\n')
+ const csv = headers.join(',') + '\n' + lines
+ const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+ const url = URL.createObjectURL(blob)
+ const a = document.createElement('a')
+ a.href = url
+ a.download = `sales_${exportDateStamp(fromDate, toDate, businessDate)}.csv`
+ a.click()
+ URL.revokeObjectURL(url)
+ toast.success('CSV exported successfully')
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildSalesHistoryReport()
+ await previewHtmlReport(html, fileName)
  } catch (err) {
  console.error('Print preview failed:', err)
  toast.error('Print preview failed')

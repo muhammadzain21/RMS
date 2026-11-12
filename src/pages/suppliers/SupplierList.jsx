@@ -10,9 +10,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import DataTable from '../../components/DataTable.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function SupplierList() {
@@ -106,9 +104,9 @@ export default function SupplierList() {
    r.status || 'Active',
  ])
 
- const openPrintPreview = async () => {
- try {
+ const buildReportHtml = async () => {
  const list = await fetchFilteredSuppliers()
+ const fileName = `Suppliers-${exportDateStamp()}.pdf`
  const body =
  reportSummary([{ label: 'Suppliers', amount: String(list.length) }]) +
  reportSec(`Suppliers (${list.length})`) +
@@ -133,7 +131,13 @@ export default function SupplierList() {
  metaRight: [['Records', String(list.length)]],
  body,
  })
- await previewHtmlReport(html, `Suppliers-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = await buildReportHtml()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -143,22 +147,9 @@ export default function SupplierList() {
 
  const exportPDF = async () => {
  try {
- const list = await fetchFilteredSuppliers()
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Suppliers', 40, 32)
- doc.setFontSize(10)
- doc.text(`${list.length} suppliers`, 40, 46)
- doc.autoTable({
- head: [['Name', 'Company', 'Phone', 'Address', 'Status']],
- body: supplierReportRows(list),
- startY: 54,
- styles: { fontSize: 7, cellPadding: 3 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`suppliers_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
+ const { html, fileName } = await buildReportHtml()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded')
  } catch (e) {
  console.error(e)
  toast.error('Failed to export PDF')

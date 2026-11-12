@@ -13,9 +13,14 @@ function packageMetaForItem(it, state) {
   const categories = state?.categories || []
   const m = menu.find(x => String(x.id) === String(it.itemId))
   const catName = resolveItemCategoryName(m, it)
+  if (!catName) return null
   const cat = findCategoryByName(categories, catName)
   const pkg = getCategoryPackagePrice(cat, it)
-  if (!(pkg > 0) || !catName) return null
+  // Same rule as KOT/bill: category package price OR min/max = deal grouping
+  const isDeal = pkg > 0
+    || Number(cat?.minItems || 0) > 0
+    || Number(cat?.maxItems || 0) > 0
+  if (!isDeal) return null
   return {
     key: categoryKeyOf(cat, catName) || `name:${catName.toLowerCase()}`,
     name: cat?.name || catName,
@@ -125,7 +130,15 @@ export default function VoidPreview({
 
   const itemName = (it) => {
     const m = (state?.menu || []).find(x => String(x.id) === String(it.itemId))
-    return m ? m.name : (it.custom?.name || it.name || '')
+    const size = String(it?.mods?.size || it?.size || '').trim().toUpperCase()
+    const flvs = Array.isArray(it?.mods?.flavours) ? it.mods.flavours : []
+    if (flvs.length) {
+      const names = flvs.map(fid => (state?.menu || []).find(x => String(x.id) === String(fid))?.name).filter(Boolean)
+      const title = names.join(' + ') || (it.custom?.name || m?.name || it.name || '')
+      return size ? `${title} (${size})` : title
+    }
+    const base = m ? m.name : (it.custom?.name || it.name || '')
+    return size ? `${base} (${size})` : base
   }
 
   return (
@@ -168,8 +181,10 @@ export default function VoidPreview({
                   <div key={g.key} className="py-2 space-y-1 bg-amber-50/60 dark:bg-amber-950/20 -mx-1 px-1 rounded">
                     <div className="grid grid-cols-12 items-center gap-1">
                       <div className="col-span-6 min-w-0">
-                        <div className="font-semibold truncate">{g.name} (deal)</div>
-                        <div className="text-[10px] text-amber-700 dark:text-amber-300">Void all items together · price {g.packagePrice}</div>
+                        <div className="font-semibold truncate">{g.name}:</div>
+                        <div className="text-[10px] text-amber-700 dark:text-amber-300">
+                          Void all items together{g.packagePrice > 0 ? ` · deal ${g.packagePrice}` : ''}
+                        </div>
                       </div>
                       <div className="text-right col-span-2">{totalQty}</div>
                       <div className="col-span-4 flex items-center justify-end">

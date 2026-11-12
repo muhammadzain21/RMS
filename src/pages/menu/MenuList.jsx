@@ -7,9 +7,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { Plus, X } from 'lucide-react'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, exportDateStamp } from '../../utils/listReportExport.js'
 import { parseSpreadsheetFile, exportMenuSpreadsheet, rowsToMenuImportPayload } from '../../utils/spreadsheetIo.js'
 
@@ -264,17 +262,8 @@ export default function MenuList() {
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [token, activeBranchId])
 
- const menuReportRows = () => filteredItems.map(r => [
-   Number(r.sortOrder || 0),
-   r.name || '',
-   r.category || '',
-   Number(r.price || 0),
-   Number(r.discount || 0),
-   r.active ? 'Yes' : 'No',
- ])
-
- const openPrintPreview = async () => {
- try {
+ const buildReportHtml = () => {
+ const fileName = `Menu-List-${exportDateStamp()}.pdf`
  const body =
  reportSummary([
  { label: 'Menu items', amount: String(filteredItems.length) },
@@ -303,7 +292,13 @@ export default function MenuList() {
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })
- await previewHtmlReport(html, `Menu-List-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildReportHtml()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -311,23 +306,11 @@ export default function MenuList() {
  }
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Menu List', 40, 32)
- doc.setFontSize(10)
- doc.text(`${filteredItems.length} items${search.trim() ? ` · search: ${search.trim()}` : ''}`, 40, 46)
- doc.autoTable({
- head: [['Order', 'Name', 'Category', 'Price (PKR)', 'Discount %', 'Active']],
- body: menuReportRows(),
- startY: 54,
- styles: { fontSize: 8, cellPadding: 4 },
- headStyles: { fillColor: [249, 115, 22], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`menu_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
+ const { html, fileName } = buildReportHtml()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded')
  } catch (e) {
  console.error(e)
  toast.error('Failed to export PDF')

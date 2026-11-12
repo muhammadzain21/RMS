@@ -15,6 +15,19 @@ export function authRequired(req, res, next) {
   }
 }
 
+/** Attach req.user when a valid Bearer token is present; never 401. */
+export function authOptional(req, _res, next) {
+  const header = req.headers.authorization || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null
+  if (!token) return next()
+  try {
+    req.user = jwt.verify(token, JWT_SECRET)
+  } catch {
+    /* ignore invalid token — caller may still allow unauthenticated reads */
+  }
+  return next()
+}
+
 export function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' })
@@ -30,6 +43,7 @@ export function signToken(user) {
     id: user._id?.toString?.() || user.id,
     username: user.username,
     role: user.role,
+    staffId: user.staffId ? String(user.staffId) : '',
     homeBranchId: user.homeBranchId || '',
     branchIds: Array.isArray(user.branchIds) ? user.branchIds : [],
     isHq: !!(user.isHq || user.role === 'Admin' || user.role === 'SuperAdmin'),

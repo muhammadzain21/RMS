@@ -12,6 +12,7 @@ import {
   Receipt, TrendingUp, ShieldCheck, Lock, ScrollText,
   Fingerprint, ChefHat, Database, UserCheck, Home, ShoppingBag,
   Headphones, Inbox, Building2, PackagePlus, Package, HardDrive, Landmark,
+  MapPinned,
 } from 'lucide-react'
 
 export const dashboardItem = { path: '/', label: 'Dashboard', icon: LayoutDashboard, order: 1 }
@@ -26,6 +27,7 @@ export const myWorkNavItems = [
   { path: '/my/advances', label: 'Advances', icon: HandCoins, order: 1.53, section: 'My Work' },
   { path: '/my/earnings', label: 'Earnings', icon: TrendingUp, order: 1.54, section: 'My Work' },
   { path: '/my/salary', label: 'Salary', icon: FileText, order: 1.55, section: 'My Work' },
+  { path: '/rider', label: 'Rider delivery', icon: Bike, order: 1.56, section: 'My Work' },
 ]
 
 const salesSection = {
@@ -72,7 +74,8 @@ const operationsSection = {
  { path: '/menu/categories', label: 'Categories', icon: FolderTree, order: 22 },
  { path: '/menu/recipes', label: 'Recipes', icon: FlaskConical, order: 23 },
  { path: '/sales/consumption', label: 'Consumption', icon: BarChart3, order: 24 },
- { path: '/riders', label: 'Riders', icon: Bike, order: 25 },
+ { path: '/riders', label: 'Riders', icon: Bike, order: 25, end: true },
+ { path: '/riders/live', label: 'Rider Live Map', icon: MapPinned, order: 25.2 },
  ]
 }
 

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { BarChart3, Package, FolderTree, Receipt, Hash, ChevronDown } from 'lucide-react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
@@ -10,7 +8,7 @@ import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import StatsCard from '../../components/StatsCard.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { resolveItemCategoryName, findCategoryByName, getCategoryPackagePrice, categoryKeyOf } from './utils.js'
 
@@ -239,67 +237,72 @@ export default function SalesSummary() {
 
   const clearSelection = () => setSelectedKeys(new Set())
 
+  const buildSalesSummaryReport = () => {
+    const isItems = mode === 'items'
+    const body =
+      reportSummary([
+        { label: 'Mode', amount: isItems ? 'Item-wise' : 'Category-wise' },
+        { label: 'From', amount: fromDate || '—' },
+        { label: 'To', amount: toDate || '—' },
+        { label: 'Rows', amount: String(filteredRows.length) },
+        { label: 'Qty sold', amount: String(totals.qty) },
+        { label: 'Sales amount', amount: fmtMoney(totals.amount) },
+        { label: 'Bills', amount: String(totals.bills) },
+      ]) +
+      reportSec(`${isItems ? 'Item' : 'Category'} sales (${filteredRows.length})`) +
+      reportTable({
+        headers: isItems
+          ? ['Item', 'Category', { t: 'Qty', align: 'r' }, { t: 'Amount', align: 'r' }, { t: 'Avg', align: 'r' }, { t: 'Bills', align: 'r' }, { t: '%', align: 'r' }]
+          : ['Category', { t: 'Items', align: 'r' }, { t: 'Qty', align: 'r' }, { t: 'Amount', align: 'r' }, { t: 'Avg', align: 'r' }, { t: 'Bills', align: 'r' }, { t: '%', align: 'r' }],
+        numbered: true,
+        rows: filteredRows.map(r => {
+          const pct = totals.amount > 0 ? (Number(r.amount || 0) / totals.amount) * 100 : 0
+          return isItems
+            ? [
+              r.name,
+              r.category || '—',
+              { v: r.qty, align: 'r' },
+              { v: fmtMoney(r.amount), align: 'r' },
+              { v: fmtMoney(r.avgPrice), align: 'r' },
+              { v: r.bills, align: 'r' },
+              { v: fmtPct(pct), align: 'r' },
+            ]
+            : [
+              r.name,
+              { v: r.items, align: 'r' },
+              { v: r.qty, align: 'r' },
+              { v: fmtMoney(r.amount), align: 'r' },
+              { v: fmtMoney(r.avgPrice), align: 'r' },
+              { v: r.bills, align: 'r' },
+              { v: fmtPct(pct), align: 'r' },
+            ]
+        }),
+        emptyText: 'No sales in range',
+      })
+    const fileName = `Sales-Summary-${exportDateStamp(fromDate, toDate)}.pdf`
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: isItems ? 'Item-wise Sales' : 'Category-wise Sales',
+      reportLabel: 'Sales Summary',
+      reportNo: `Rpt #: SS-${exportDateStamp(fromDate, toDate)}`,
+      metaLeft: [
+        ['From', fromDate || '—'],
+        ['To', toDate || '—'],
+        ['Filter', selectedKeys.size ? `${selectedKeys.size} selected` : 'All'],
+      ],
+      metaRight: [
+        ['Rows', String(filteredRows.length)],
+        ['Amount', fmtMoney(totals.amount)],
+      ],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const isItems = mode === 'items'
-      const body =
-        reportSummary([
-          { label: 'Mode', amount: isItems ? 'Item-wise' : 'Category-wise' },
-          { label: 'From', amount: fromDate || '—' },
-          { label: 'To', amount: toDate || '—' },
-          { label: 'Rows', amount: String(filteredRows.length) },
-          { label: 'Qty sold', amount: String(totals.qty) },
-          { label: 'Sales amount', amount: fmtMoney(totals.amount) },
-          { label: 'Bills', amount: String(totals.bills) },
-        ]) +
-        reportSec(`${isItems ? 'Item' : 'Category'} sales (${filteredRows.length})`) +
-        reportTable({
-          headers: isItems
-            ? ['Item', 'Category', { t: 'Qty', align: 'r' }, { t: 'Amount', align: 'r' }, { t: 'Avg', align: 'r' }, { t: 'Bills', align: 'r' }, { t: '%', align: 'r' }]
-            : ['Category', { t: 'Items', align: 'r' }, { t: 'Qty', align: 'r' }, { t: 'Amount', align: 'r' }, { t: 'Avg', align: 'r' }, { t: 'Bills', align: 'r' }, { t: '%', align: 'r' }],
-          numbered: true,
-          rows: filteredRows.map(r => {
-            const pct = totals.amount > 0 ? (Number(r.amount || 0) / totals.amount) * 100 : 0
-            return isItems
-              ? [
-                r.name,
-                r.category || '—',
-                { v: r.qty, align: 'r' },
-                { v: fmtMoney(r.amount), align: 'r' },
-                { v: fmtMoney(r.avgPrice), align: 'r' },
-                { v: r.bills, align: 'r' },
-                { v: fmtPct(pct), align: 'r' },
-              ]
-              : [
-                r.name,
-                { v: r.items, align: 'r' },
-                { v: r.qty, align: 'r' },
-                { v: fmtMoney(r.amount), align: 'r' },
-                { v: fmtMoney(r.avgPrice), align: 'r' },
-                { v: r.bills, align: 'r' },
-                { v: fmtPct(pct), align: 'r' },
-              ]
-          }),
-          emptyText: 'No sales in range',
-        })
-
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: isItems ? 'Item-wise Sales' : 'Category-wise Sales',
-        reportLabel: 'Sales Summary',
-        reportNo: `Rpt #: SS-${exportDateStamp(fromDate, toDate)}`,
-        metaLeft: [
-          ['From', fromDate || '—'],
-          ['To', toDate || '—'],
-          ['Filter', selectedKeys.size ? `${selectedKeys.size} selected` : 'All'],
-        ],
-        metaRight: [
-          ['Rows', String(filteredRows.length)],
-          ['Amount', fmtMoney(totals.amount)],
-        ],
-        body,
-      })
-      await previewHtmlReport(html, `Sales-Summary-${exportDateStamp(fromDate, toDate)}.pdf`)
+      const { html, fileName } = buildSalesSummaryReport()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch (e) {
       console.error(e)
@@ -307,30 +310,10 @@ export default function SalesSummary() {
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const isItems = mode === 'items'
-      const doc = new jsPDF('p', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Sales Summary', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${isItems ? 'Item-wise' : 'Category-wise'} · ${fromDate} → ${toDate}`, 40, 46)
-      doc.autoTable({
-        head: [isItems
-          ? ['Item', 'Category', 'Qty', 'Amount', 'Avg', 'Bills', '%']
-          : ['Category', 'Items', 'Qty', 'Amount', 'Avg', 'Bills', '%']],
-        body: filteredRows.map(r => {
-          const pct = totals.amount > 0 ? (Number(r.amount || 0) / totals.amount) * 100 : 0
-          return isItems
-            ? [r.name, r.category || '—', r.qty, fmtMoney(r.amount), fmtMoney(r.avgPrice), r.bills, fmtPct(pct)]
-            : [r.name, r.items, r.qty, fmtMoney(r.amount), fmtMoney(r.avgPrice), r.bills, fmtPct(pct)]
-        }),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`sales_summary_${mode}_${exportDateStamp(fromDate, toDate)}.pdf`)
+      const { html, fileName } = buildSalesSummaryReport()
+      await downloadHtmlReport(html, fileName)
       toast.success('PDF exported')
     } catch (e) {
       console.error(e)

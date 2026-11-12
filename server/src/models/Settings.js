@@ -51,11 +51,19 @@ const SettingsSchema = new mongoose.Schema({
   // Printing preferences
   // KOT and Void slips use the same printer
   kotPrinterName: { type: String, default: '' },
+  // Optional LAN IP for millisecond ESC/POS KOT (TCP 9100). If empty, resolved from Windows printer port.
+  kotPrinterIp: { type: String, default: '' },
   // Bill slip and Customer Bill use the same printer
   billPrinterName: { type: String, default: '' },
+  billPrinterIp: { type: String, default: '' },
   tables: { type: [String], default: [] },
   modifiers: { type: [ModifierCfgSchema], default: [] },
   billingFooter: { type: String, default: '' },
+  // Bill slip: bank / Raast payment QR (customer scans to pay)
+  printBankQrOnBill: { type: Boolean, default: false },
+  bankQrLabel: { type: String, default: 'Scan to pay' },
+  bankQrPayload: { type: String, default: '' }, // IBAN, account #, Raast ID, or payment URL
+  bankQrImage: { type: String, default: '' }, // optional uploaded QR image (data URL)
   // Security: key required to delete a sale (plain text)
   salesDeleteKey: { type: String, default: '' },
   // POS tile layout: number of tiles per row for category and item grids

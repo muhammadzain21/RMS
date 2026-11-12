@@ -3,11 +3,9 @@ import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import DatePicker from '../../components/DatePicker.jsx'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
@@ -176,8 +174,7 @@ export default function AdvanceBooking() {
  }
  }
 
- const openPrintPreview = async () => {
- try {
+ const buildAdvanceBookingReport = () => {
  const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
  const periodFrom = from || '—'
  const periodTo = to || '—'
@@ -202,6 +199,7 @@ export default function AdvanceBooking() {
  r.userName || '-',
  ]),
  })
+ const fileName = `Advance-Bookings-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Advance Bookings',
@@ -211,7 +209,13 @@ export default function AdvanceBooking() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Advance-Bookings-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildAdvanceBookingReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }
@@ -232,24 +236,10 @@ export default function AdvanceBooking() {
  toast.success('CSV exported successfully')
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(16)
- doc.text('Advance Bookings', 40, 32)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 40, 48)
- const body = rows.map(r => [r.date, r.time || '-', r.customer || '-', r.phone || '-', `PKR ${Number(r.deposit).toLocaleString()}`, r.status, r.note || '-', r.userName || '-', r.id])
- autoTable(doc, {
- head: [['Date','Time','Customer','Phone','Deposit','Status','Note','User','Entry ID']],
- body,
- startY: 60,
- styles: { fontSize: 9 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255 },
- foot: [['Totals', '', '', '', `PKR ${totalDeposits.toLocaleString()}`, '', '', '', '']],
- footStyles: { fillColor: [245,245,245] },
- })
- doc.save(`advance_bookings_${exportDateStamp()}.pdf`)
+ const { html, fileName } = buildAdvanceBookingReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

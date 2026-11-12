@@ -75,6 +75,10 @@ export default function Settings() {
  address: s.address || '',
  billingFooter: s.billingFooter || '',
  logo: s.logo || '',
+ printBankQrOnBill: Boolean(s.printBankQrOnBill),
+ bankQrLabel: s.bankQrLabel || 'Scan to pay',
+ bankQrPayload: s.bankQrPayload || '',
+ bankQrImage: s.bankQrImage || '',
  })
  const [system, setSystem] = useState({
  taxRate: s.taxRate ?? 0,
@@ -82,7 +86,9 @@ export default function Settings() {
  businessDayCutoffHour: s.businessDayCutoffHour ?? 4,
  showPersonalPayment: Boolean(s.showPersonalPayment),
  kotPrinterName: s.kotPrinterName || '',
+ kotPrinterIp: s.kotPrinterIp || '',
  billPrinterName: s.billPrinterName || '',
+ billPrinterIp: s.billPrinterIp || '',
  })
 
  const [cloudSync, setCloudSync] = useState(() => {
@@ -166,6 +172,10 @@ export default function Settings() {
  address: ns.address || '',
  billingFooter: ns.billingFooter || '',
  logo: ns.logo || '',
+ printBankQrOnBill: Boolean(ns.printBankQrOnBill),
+ bankQrLabel: ns.bankQrLabel || 'Scan to pay',
+ bankQrPayload: ns.bankQrPayload || '',
+ bankQrImage: ns.bankQrImage || '',
  })
  setSystem({
  taxRate: ns.taxRate ?? 0,
@@ -173,7 +183,9 @@ export default function Settings() {
  businessDayCutoffHour: ns.businessDayCutoffHour ?? 4,
  showPersonalPayment: Boolean(ns.showPersonalPayment),
  kotPrinterName: ns.kotPrinterName || '',
+ kotPrinterIp: ns.kotPrinterIp || '',
  billPrinterName: ns.billPrinterName || '',
+ billPrinterIp: ns.billPrinterIp || '',
  })
  setSellFields({
  ...defaultSellFields(),
@@ -298,6 +310,13 @@ export default function Settings() {
  reader.readAsDataURL(file)
  }
 
+ const onBankQrImageChange = (file) => {
+ if (!file) return
+ const reader = new FileReader()
+ reader.onload = () => setCompany(prev => ({ ...prev, bankQrImage: String(reader.result) }))
+ reader.readAsDataURL(file)
+ }
+
  return (
  <div className="space-y-4 w-full">
  {/* Header */}
@@ -357,7 +376,79 @@ export default function Settings() {
  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors"
  ></button></div>
  )}
- </div></div></CardBody></Card><div className="flex justify-end"><PrimaryButton onClick={saveCompany} icon="" disabled={isAllBranches}>Save Restaurant Settings</PrimaryButton></div></div>
+ </div></div></CardBody></Card>
+
+ <Card><CardHeader
+ title="Bank payment QR on bill"
+ subtitle="Upload the official QR from your bank / Raast app — a plain IBAN string is not a valid payment QR"
+ icon=""
+ /><CardBody>
+ <div className="flex items-start gap-3 p-4 bg-slate-50 dark:bg-slate-900/20 border border-slate-200 dark:border-slate-700 rounded-lg mb-4">
+ <input
+ type="checkbox"
+ id="printBankQrOnBill"
+ checked={Boolean(company.printBankQrOnBill)}
+ onChange={e => setCompany(v => ({ ...v, printBankQrOnBill: e.target.checked }))}
+ className="mt-1 w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+ />
+ <div>
+ <label htmlFor="printBankQrOnBill" className="font-medium text-gray-900 dark:text-white cursor-pointer">
+ Print bank QR on bill slip
+ </label>
+ <p className="text-sm text-gray-600 dark:text-gray-400">
+ When on, the uploaded bank QR (and IBAN text) print above the receipt footer.
+ </p>
+ </div>
+ </div>
+ <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-3 py-2 text-sm text-amber-900 dark:text-amber-100 mb-4">
+ Meezan / Raast payment apps only accept the <b>official QR image</b> from the bank app. Saving only <code className="text-xs">PK56MEZN…</code> cannot create a working pay QR.
+ </div>
+ <div className="pt-1 mb-4">
+ <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Upload bank QR image (required for scan-to-pay)</label>
+ <div className="flex items-center gap-4">
+ <div className="relative">
+ <input type="file" accept="image/*" className="hidden" id="bank-qr-upload" onChange={e => onBankQrImageChange(e.target.files?.[0])} />
+ <label
+ htmlFor="bank-qr-upload"
+ className="inline-flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+ >
+ Choose QR image
+ </label>
+ </div>
+ {company.bankQrImage ? (
+ <div className="relative">
+ <img src={company.bankQrImage} alt="Bank QR preview" className="h-20 w-20 object-contain rounded-lg border border-gray-200 dark:border-gray-600 bg-white p-1" />
+ <button
+ type="button"
+ onClick={() => setCompany(v => ({ ...v, bankQrImage: '' }))}
+ className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors"
+ >×</button>
+ </div>
+ ) : null}
+ </div>
+ <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Open Meezan / your bank app → Share / Save QR → upload that PNG/JPG here.</p>
+ </div>
+ <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+ <InputGroup label="QR label" helpText="Shown above the QR on the bill">
+ <input
+ className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+ value={company.bankQrLabel || ''}
+ onChange={e => setCompany(v => ({ ...v, bankQrLabel: e.target.value }))}
+ placeholder="Scan to pay"
+ />
+ </InputGroup>
+ <InputGroup label="IBAN / account (printed as text)" helpText="Shown under the QR for manual transfer — not used to generate the QR">
+ <input
+ className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+ value={company.bankQrPayload || ''}
+ onChange={e => setCompany(v => ({ ...v, bankQrPayload: e.target.value }))}
+ placeholder="PK56MEZN0009080107925324"
+ />
+ </InputGroup>
+ </div>
+ </CardBody></Card>
+
+ <div className="flex justify-end"><PrimaryButton onClick={saveCompany} icon="" disabled={isAllBranches}>Save Restaurant Settings</PrimaryButton></div></div>
  )}
 
  {/* System Settings */}
@@ -403,7 +494,7 @@ export default function Settings() {
  When enabled, cashiers can mark orders as Personal (no payment collected). Off by default.
  </p></div></div></CardBody></Card><Card><CardHeader
  title="Printer Configuration"
- subtitle="Configure printers for KOT/void slips and customer bills"
+ subtitle="KOT and Void use the same printer. Set the Windows name and/or LAN IP for silent Print from the preview."
  icon=""
  /><CardBody><div className="grid grid-cols-1 lg:grid-cols-2 gap-5"><InputGroup label="KOT / Void Printer"><select
  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
@@ -415,7 +506,13 @@ export default function Settings() {
  {p.name || p.deviceName}{p.isDefault ? ' (Default)' : ''}
  </option>
  ))}
- </select></InputGroup><InputGroup label="Bill / Customer Bill Printer"><select
+ </select></InputGroup><InputGroup label="KOT Printer IP (fast print)"><input
+ type="text"
+ className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+ value={system.kotPrinterIp || ''}
+ onChange={e => setSystem(v => ({ ...v, kotPrinterIp: e.target.value.trim() }))}
+ placeholder="192.168.18.142"
+ /><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Shared by KOT + Void. Must be the printer’s real LAN IP (ping it first). Wrong IP causes a timeout — yours previously worked at 192.168.18.142, not .42.</p></InputGroup><InputGroup label="Bill / Customer Bill Printer"><select
  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
  value={system.billPrinterName}
  onChange={e => setSystem(v => ({ ...v, billPrinterName: e.target.value }))}

@@ -12,6 +12,7 @@ import ridersRouter from './routes/riders.js'
 import salesRouter from './routes/sales.js'
 import suppliersRouter from './routes/suppliers.js'
 import riderCashRouter from './routes/riderCash.js'
+import riderTrackingRouter from './routes/riderTracking.js'
 import expensesRouter from './routes/expenses.js'
 import authRouter from './routes/auth.js'
 import usersRouter from './routes/users.js'
@@ -119,6 +120,7 @@ app.use('/api/sales', salesRouter)
 app.use('/api/expenses', expensesRouter)
 app.use('/api/suppliers', suppliersRouter)
 app.use('/api/rider-cash', riderCashRouter)
+app.use('/api/rider-tracking', riderTrackingRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/users', usersRouter)
 app.use('/api/roles', rolesRouter)

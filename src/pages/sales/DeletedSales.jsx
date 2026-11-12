@@ -4,11 +4,9 @@ import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function DeletedSales() {
@@ -136,54 +134,7 @@ export default function DeletedSales() {
  ) },
  ]
 
- const exportPDF = () => {
- try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(16)
- doc.text('Deleted Sales History', 40, 32)
- doc.setFontSize(10)
- doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 40, 48)
- const body = rows.map(r => [
- r.deletedAt,
- r.deletedDate,
- r.deletedBy,
- r.date,
- r.billNo,
- r.customer,
- r.orderType,
- `PKR ${Number(r.saleTotal).toLocaleString()}`,
- `PKR ${Number(r.netAmount).toLocaleString()}`,
- r.paymentMethod
- ])
- doc.autoTable({ 
- head: [['Deleted At','Deleted Date','Deleted By','Sale Date','Bill#','Customer','Order Type','Sale Total','Net Amount','Payment']], 
- body,
- startY: 60,
- styles: { 
- fontSize: 8,
- cellPadding: 4,
- overflow: 'linebreak',
- halign: 'left'
- },
- headStyles: { 
- fillColor: [239, 68, 68], 
- textColor: 255,
- fontSize: 9,
- fontStyle: 'bold'
- },
- margin: { left: 40, right: 40 },
- tableWidth: 'auto'
- })
- doc.save(`deleted_sales_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
- } catch (err) {
- console.error('PDF export error:', err)
- toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
- }
- }
-
- const openPrintPreview = async () => {
- try {
+ const buildDeletedSalesReport = () => {
  const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
  const totalNet = rows.reduce((a, r) => a + Number(r.netAmount || 0), 0)
  const periodFrom = fromDate || '—'
@@ -204,6 +155,7 @@ export default function DeletedSales() {
  r.paymentMethod,
  ]),
  })
+ const fileName = `Deleted-Sales-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Deleted Sales History',
@@ -213,7 +165,24 @@ export default function DeletedSales() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Deleted-Sales-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const exportPDF = async () => {
+ try {
+ const { html, fileName } = buildDeletedSalesReport()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF exported successfully')
+ } catch (err) {
+ console.error('PDF export error:', err)
+ toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+ }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildDeletedSalesReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }

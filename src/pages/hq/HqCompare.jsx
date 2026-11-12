@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { ShoppingCart, Receipt, Wallet, TrendingUp } from 'lucide-react'
 import DatePicker from '../../components/DatePicker.jsx'
 import DataTable from '../../components/DataTable.jsx'
@@ -11,7 +9,7 @@ import StatCard from '../../components/StatCard.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 
 function api() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -74,64 +72,58 @@ export default function HqCompare() {
     r.callCenterFulfilled ?? 0,
   ])
 
+  const buildCompareReport = () => {
+    const fileName = `Branch-Compare-${exportDateStamp()}.pdf`
+    const body =
+      reportSummary([
+        { label: 'Sales', amount: fmt(data?.totals?.salesTotal) },
+        { label: 'Bills', amount: fmt(data?.totals?.bills) },
+        { label: 'Expenses', amount: fmt(data?.totals?.expenses) },
+        { label: 'Net', amount: fmt(data?.totals?.netApprox) },
+      ]) +
+      reportSec(`Branch Compare (${filtered.length})`) +
+      reportTable({
+        headers: ['Branch', 'Bills', 'Sales', 'Avg ticket', 'Expenses', 'Net', 'CC pending', 'CC done'],
+        numbered: true,
+        rows: filtered.map(r => [
+          `${r.name} (${r.code})`,
+          fmt(r.bills),
+          fmt(r.salesTotal),
+          fmt(r.avgTicket),
+          fmt(r.expenses),
+          fmt(r.netApprox),
+          fmt(r.callCenterPending),
+          fmt(r.callCenterFulfilled),
+        ]),
+        emptyText: 'No branch data',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Branch Compare',
+      reportLabel: 'HQ Compare',
+      reportNo: `Rpt #: CMP-${exportDateStamp()}`,
+      metaLeft: [['From', from], ['To', to], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+      metaRight: [['Branches', String(filtered.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([
-          { label: 'Sales', amount: fmt(data?.totals?.salesTotal) },
-          { label: 'Bills', amount: fmt(data?.totals?.bills) },
-          { label: 'Expenses', amount: fmt(data?.totals?.expenses) },
-          { label: 'Net', amount: fmt(data?.totals?.netApprox) },
-        ]) +
-        reportSec(`Branch Compare (${filtered.length})`) +
-        reportTable({
-          headers: ['Branch', 'Bills', 'Sales', 'Avg ticket', 'Expenses', 'Net', 'CC pending', 'CC done'],
-          numbered: true,
-          rows: filtered.map(r => [
-            `${r.name} (${r.code})`,
-            fmt(r.bills),
-            fmt(r.salesTotal),
-            fmt(r.avgTicket),
-            fmt(r.expenses),
-            fmt(r.netApprox),
-            fmt(r.callCenterPending),
-            fmt(r.callCenterFulfilled),
-          ]),
-          emptyText: 'No branch data',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Branch Compare',
-        reportLabel: 'HQ Compare',
-        reportNo: `Rpt #: CMP-${exportDateStamp()}`,
-        metaLeft: [['From', from], ['To', to], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
-        metaRight: [['Branches', String(filtered.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Branch-Compare-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildCompareReport()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Branch Compare', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${from} → ${to} · ${filtered.length} branches`, 40, 46)
-      doc.autoTable({
-        head: [['Branch', 'Bills', 'Sales', 'Avg', 'Expenses', 'Net', 'CC pend', 'CC done']],
-        body: reportRows(filtered),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`branch_compare_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported')
+      const { html, fileName } = buildCompareReport()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch {
       toast.error('PDF export failed')
     }

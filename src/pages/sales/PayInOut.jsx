@@ -3,14 +3,12 @@ import { format } from 'date-fns'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { exportDateStamp } from '../../utils/listReportExport.js'
 
 export default function PayInOut() {
@@ -140,8 +138,7 @@ export default function PayInOut() {
  }
  }
 
- const openPrintPreview = async () => {
- try {
+ const buildPayInOutReport = () => {
  const money = (n) => 'PKR ' + Number(n || 0).toLocaleString()
  const periodFrom = from || '—'
  const periodTo = to || '—'
@@ -165,6 +162,7 @@ export default function PayInOut() {
  r.userName || '-',
  ]),
  })
+ const fileName = `Pay-In-Out-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
  settings: state?.settings || {},
  title: 'Pay In / Pay Out',
@@ -174,7 +172,13 @@ export default function PayInOut() {
  metaRight: [['Records', String(rows.length)]],
  body,
  })
- await previewHtmlReport(html, `Pay-In-Out-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildPayInOutReport()
+ await previewHtmlReport(html, fileName)
  } catch {
  toast.error('Print preview failed')
  }
@@ -193,18 +197,10 @@ export default function PayInOut() {
  URL.revokeObjectURL(url)
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF()
- doc.text('Pay In / Pay Out', 14, 16)
- autoTable(doc, {
- startY: 20,
- head: [[ 'Date','Type','Category','Amount','Note','User' ]],
- body: rows.map(r => [ r.date, r.type, r.category, `PKR ${Number(r.amount).toLocaleString()}`, r.note||'-', r.userName||'-' ]),
- foot: [[ '', '', 'Totals', `IN: PKR ${totals.IN.toLocaleString()}`, `OUT: PKR ${totals.OUT.toLocaleString()}`, `NET: PKR ${totals.NET.toLocaleString()}` ]],
- footStyles: { fillColor: [245,245,245] },
- })
- doc.save('pay_in_out.pdf')
+ const { html, fileName } = buildPayInOutReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF exported successfully')
  } catch (err) {
  console.error('PDF export error:', err)

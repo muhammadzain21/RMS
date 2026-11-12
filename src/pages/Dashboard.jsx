@@ -18,14 +18,12 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useData } from '../state/DataContext.jsx'
 import DatePicker from '../components/DatePicker.jsx'
 import PageHero from '../components/ui/PageHero.jsx'
 import { createLineTotal } from './sales/utils.js'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../utils/reportDoc.js'
 
 const PIE_COLORS = ['#3b82f6', '#6366f1', '#0ea5e9', '#10b981', '#f59e0b']
 
@@ -487,10 +485,10 @@ export default function Dashboard() {
     ]
   )
 
-  const openPrint = async () => {
-    try {
-      const p = exportPayload
-      const body =
+  const buildReportHtml = () => {
+    const p = exportPayload
+    const fileName = `Dashboard-${p.date}.pdf`
+    const body =
         reportSummary([
           { label: 'Date', amount: p.date },
           { label: 'Total orders', amount: String(p.totalOrders) },
@@ -548,52 +546,32 @@ export default function Dashboard() {
           emptyText: 'No attendance for this date',
         })
 
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'POS Dashboard',
-        reportLabel: 'Dashboard Summary',
-        reportNo: `Rpt #: DB-${p.date}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Business date', p.date]],
-        metaRight: [['Branch', p.companyName]],
-        body,
-      })
-      await previewHtmlReport(html, `Dashboard-${p.date}.pdf`)
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'POS Dashboard',
+      reportLabel: 'Dashboard Summary',
+      reportNo: `Rpt #: DB-${p.date}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Business date', p.date]],
+      metaRight: [['Branch', p.companyName]],
+      body,
+    })
+    return { html, fileName }
+  }
+
+  const openPrint = async () => {
+    try {
+      const { html, fileName } = buildReportHtml()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
     }
   }
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     try {
-      const p = exportPayload
-      const doc = new jsPDF()
-      doc.setFontSize(14)
-      doc.text(`${p.companyName} — Dashboard`, 14, 16)
-      doc.setFontSize(10)
-      doc.text(`Date: ${p.date}`, 14, 23)
-      autoTable(doc, {
-        startY: 28,
-        head: [['Metric', 'Value']],
-        body: [
-          ['Total orders', p.totalOrders],
-          ['Completed', p.completedCount],
-          ['Pending', p.pendingCount],
-          ['Sale total', fmt(p.salesSummary.total)],
-          ['Paid amount', fmt(p.salesSummary.paid)],
-          ['Expense', fmt(p.salesSummary.expense)],
-        ],
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [15, 45, 92] },
-      })
-      autoTable(doc, {
-        startY: doc.lastAutoTable.finalY + 8,
-        head: [['Payment type', 'Amount']],
-        body: p.paymentRows.map(r => [r.type, fmt(r.amount)]),
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [15, 45, 92] },
-      })
-      doc.save(`dashboard_${p.date}.pdf`)
+      const { html, fileName } = buildReportHtml()
+      await downloadHtmlReport(html, fileName)
       toast.success('PDF downloaded')
     } catch {
       toast.error('PDF export failed')

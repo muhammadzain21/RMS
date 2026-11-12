@@ -44,7 +44,7 @@ const initialState = () => {
     advanceBookings: [],
     payInOuts: [],
     dayCloses: [],
-    settings: { modifiers: {}, tables: [], billingFooter: '', companyName: 'Restaurant POS', useBusinessDayForToday: true, kotPrinterName: '', billPrinterName: '' },
+    settings: { modifiers: {}, tables: [], billingFooter: '', companyName: 'Restaurant POS', useBusinessDayForToday: true, kotPrinterName: '', kotPrinterIp: '', billPrinterName: '', billPrinterIp: '', printBankQrOnBill: false, bankQrLabel: 'Scan to pay', bankQrPayload: '', bankQrImage: '' },
     staffSettings: { standardCheckIn: '09:00', standardCheckOut: '18:00', lateThresholdMinutes: 15, bonusPerDay: 0, deductionPerAbsent: 0, deductionPerLate: 0 },
     demands: [],
   }

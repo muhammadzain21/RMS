@@ -7,9 +7,7 @@ import { useConfirm } from '../components/useConfirm.jsx'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useBranch } from '../state/BranchContext.jsx'
 import { useData } from '../state/DataContext.jsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../utils/reportDoc.js'
 import { exportDateStamp } from '../utils/listReportExport.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
@@ -236,36 +234,42 @@ export default function DataManager() {
     return Array.from(keys).slice(0, 5)
   }
 
+  const buildDataManagerReport = async () => {
+    const exportRows = await fetchFilteredRows()
+    const cols = buildExportCols(exportRows)
+    const body =
+      reportSummary([
+        { label: 'Collection', amount: collection },
+        { label: 'Matching docs', amount: String(total) },
+        { label: 'Exported rows', amount: String(exportRows.length) },
+      ]) +
+      reportSec('Documents') +
+      reportTable({
+        headers: ['Date', ...cols.map(c => c), 'ID'],
+        numbered: true,
+        rows: exportRows.map(r => [docDate(r), ...cols.map(k => fmtVal(r[k])), String(r._id || '')]),
+        emptyText: 'No documents match filters',
+      })
+    const fileName = `DataManager-${collection}.pdf`
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Data Manager Export',
+      reportLabel: 'Data Export',
+      reportNo: `Col: ${collection}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', from || '—'], ['To', to || '—']],
+      metaRight: [['Search', q.trim() || '—'], ['Rows', String(exportRows.length)]],
+      body,
+      footNote: exportRows.length < total ? `Showing first ${exportRows.length} of ${total} matching documents (cap 5000).` : '',
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     if (!collection) { toast.error('Select a collection'); return }
     try {
       toast.loading('Preparing export…', { id: 'dm-export' })
-      const exportRows = await fetchFilteredRows()
-      const cols = buildExportCols(exportRows)
-      const body =
-        reportSummary([
-          { label: 'Collection', amount: collection },
-          { label: 'Matching docs', amount: String(total) },
-          { label: 'Exported rows', amount: String(exportRows.length) },
-        ]) +
-        reportSec('Documents') +
-        reportTable({
-          headers: ['Date', ...cols.map(c => c), 'ID'],
-          numbered: true,
-          rows: exportRows.map(r => [docDate(r), ...cols.map(k => fmtVal(r[k])), String(r._id || '')]),
-          emptyText: 'No documents match filters',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Data Manager Export',
-        reportLabel: 'Data Export',
-        reportNo: `Col: ${collection}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', from || '—'], ['To', to || '—']],
-        metaRight: [['Search', q.trim() || '—'], ['Rows', String(exportRows.length)]],
-        body,
-        footNote: exportRows.length < total ? `Showing first ${exportRows.length} of ${total} matching documents (cap 5000).` : '',
-      })
-      await previewHtmlReport(html, `DataManager-${collection}.pdf`)
+      const { html, fileName } = await buildDataManagerReport()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened', { id: 'dm-export' })
     } catch (err) {
       toast.error(String(err?.message || 'Print preview failed'), { id: 'dm-export' })
@@ -276,22 +280,8 @@ export default function DataManager() {
     if (!collection) { toast.error('Select a collection'); return }
     try {
       toast.loading('Preparing PDF…', { id: 'dm-pdf' })
-      const exportRows = await fetchFilteredRows()
-      const cols = buildExportCols(exportRows)
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(`Data Manager — ${collection}`, 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${exportRows.length} row(s) · ${from || '…'} to ${to || '…'}`, 40, 48)
-      autoTable(doc, {
-        head: [['Date', ...cols, 'ID']],
-        body: exportRows.map(r => [docDate(r), ...cols.map(k => fmtVal(r[k])), String(r._id || '')]),
-        startY: 56,
-        styles: { fontSize: 7, cellPadding: 3 },
-        headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`datamanager_${collection}_${exportDateStamp()}.pdf`)
+      const { html, fileName } = await buildDataManagerReport()
+      await downloadHtmlReport(html, fileName)
       toast.success('PDF downloaded', { id: 'dm-pdf' })
     } catch (err) {
       toast.error(String(err?.message || 'PDF export failed'), { id: 'dm-pdf' })

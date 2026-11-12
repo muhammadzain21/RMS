@@ -6,10 +6,8 @@ import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import { Plus, X } from 'lucide-react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { format } from 'date-fns'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -145,8 +143,8 @@ export default function RiderList() {
  .catch(() => toast.error('Export failed'))
  }
 
- const openPrintPreview = async () => {
- try {
+ const buildRiderCashReport = () => {
+ const fileName = `Rider-Cash-${fromDate || 'all'}-${toDate || 'all'}.pdf`
  const body =
  reportSummary([
  { label: 'Total deliveries', amount: String(totals.deliveries) },
@@ -178,39 +176,23 @@ export default function RiderList() {
  metaRight: [['Rider filter', filterRider ? (riders.find(x => x.id === filterRider)?.name || filterRider) : 'All'], ['Settled', settledFilter]],
  body,
  })
- await previewHtmlReport(html, `Rider-Cash-${fromDate || 'all'}-${toDate || 'all'}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildRiderCashReport()
+ await previewHtmlReport(html, fileName)
+ toast.success('Print preview opened')
  } catch {
  toast.error('Failed to open print preview')
  }
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF()
- doc.setFontSize(14)
- doc.text('Rider Cash Records', 14, 16)
- doc.setFontSize(10)
- doc.setTextColor(90, 90, 90)
- doc.text(`Period: ${fromDate || '-'} to ${toDate || '-'}`, 14, 23)
- autoTable(doc, {
- startY: 28,
- head: [['Date','Token No','Rider','Deliveries','Amount','Method','Settled','Note']],
- body: filteredRecords.map(r => [
- r.date || '-',
- r.tokenNo || '-',
- r.riderName || '-',
- Number(r.deliveries || 0),
- `PKR ${Number(r.amount || 0).toLocaleString()}`,
- r.method === 'COD' ? 'Cash on Delivery' : 'Paid to Owner',
- r.settled ? 'Settled' : 'Unsettled',
- r.note || '-'
- ]),
- foot: [['','','Totals', totals.deliveries, `PKR ${Number(totals.amount || 0).toLocaleString()}`, '','','']],
- styles: { fontSize: 8, cellPadding: 4 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 9, fontStyle: 'bold' },
- footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
- })
- doc.save(`rider_cash_${fromDate || 'all'}_to_${toDate || 'all'}.pdf`)
+ const { html, fileName } = buildRiderCashReport()
+ await downloadHtmlReport(html, fileName)
  toast.success('PDF downloaded')
  } catch {
  toast.error('Failed to download PDF')

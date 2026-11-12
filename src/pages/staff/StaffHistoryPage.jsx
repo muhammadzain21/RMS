@@ -5,9 +5,7 @@ import SalarySlipDialog from './components/SalarySlipDialog.jsx';
 import { formatTime12 } from '../../utils/dateUtils.js';
 import { useData } from '../../state/DataContext.jsx';
 import { format } from 'date-fns';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js';
 import DatePicker from '../../components/DatePicker.jsx'
 
 const btnPrint = 'ui-btn ui-btn-print';
@@ -228,49 +226,43 @@ export default function StaffHistoryPage({ staff, API, token, companyName, compa
     }
   }, [tab, st, month, attendance, attSummary, earningRows, earnTotal, deductionRows, dedTotal, slips, slipTotals, advances, advanceBalance, purchaseRows, pendingPurchaseTotal]);
 
+  const buildStaffHistoryReport = () => {
+    const fileName = `Staff-History-${tab}-${month}.pdf`;
+    const body =
+      (tabExport.summary.length ? reportSummary(tabExport.summary) : '') +
+      reportSec(tabExport.tabLabel) +
+      reportTable({
+        headers: tabExport.headers,
+        numbered: true,
+        rows: tabExport.rows,
+        emptyText: `No ${tabExport.tabLabel.toLowerCase()} for ${month}`,
+      });
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: tabExport.title,
+      reportLabel: 'Staff History',
+      reportNo: `Rpt #: SH-${month}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st?.name || '—'], ['Month', month]],
+      metaRight: [['Tab', tabExport.tabLabel], ['Rows', String(tabExport.rows.length)]],
+      body,
+    });
+    return { html, fileName };
+  };
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        (tabExport.summary.length ? reportSummary(tabExport.summary) : '') +
-        reportSec(tabExport.tabLabel) +
-        reportTable({
-          headers: tabExport.headers,
-          numbered: true,
-          rows: tabExport.rows,
-          emptyText: `No ${tabExport.tabLabel.toLowerCase()} for ${month}`,
-        });
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: tabExport.title,
-        reportLabel: 'Staff History',
-        reportNo: `Rpt #: SH-${month}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st?.name || '—'], ['Month', month]],
-        metaRight: [['Tab', tabExport.tabLabel], ['Rows', String(tabExport.rows.length)]],
-        body,
-      });
-      await previewHtmlReport(html, `Staff-History-${tab}-${month}.pdf`);
+      const { html, fileName } = buildStaffHistoryReport();
+      await previewHtmlReport(html, fileName);
       toast.success('Print preview opened');
     } catch {
       toast.error('Print preview failed');
     }
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('p', 'pt', 'a4');
-      doc.setFontSize(14);
-      doc.text(tabExport.title, 40, 32);
-      doc.setFontSize(10);
-      doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, 40, 48);
-      doc.autoTable({
-        head: [tabExport.headers],
-        body: tabExport.rows,
-        startY: 58,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      });
-      doc.save(`staff_history_${tab}_${month}.pdf`);
+      const { html, fileName } = buildStaffHistoryReport();
+      await downloadHtmlReport(html, fileName);
       toast.success('PDF downloaded');
     } catch {
       toast.error('Failed to export PDF');

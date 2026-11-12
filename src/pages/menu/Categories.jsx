@@ -7,9 +7,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { Plus, X } from 'lucide-react'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, exportDateStamp } from '../../utils/listReportExport.js'
 import { parseSpreadsheetFile, exportCategoriesSpreadsheet, rowsToCategoryImportPayload } from '../../utils/spreadsheetIo.js'
 
@@ -213,16 +211,8 @@ export default function Categories() {
  }
  }
 
- const categoryReportRows = () => filteredItems.map(r => [
-   Number(r.sortOrder || 0),
-   r.name || '',
-   r.showOnPos ? 'Yes' : 'No',
-   r.active !== false ? 'Yes' : 'No',
-   Number(r.discount || 0),
- ])
-
- const openPrintPreview = async () => {
- try {
+ const buildReportHtml = () => {
+ const fileName = `Categories-${exportDateStamp()}.pdf`
  const body =
  reportSummary([{ label: 'Categories', amount: String(filteredItems.length) }]) +
  reportSec(`Categories (${filteredItems.length})`) +
@@ -247,7 +237,13 @@ export default function Categories() {
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })
- await previewHtmlReport(html, `Categories-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildReportHtml()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -255,23 +251,11 @@ export default function Categories() {
  }
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF('p', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Categories', 40, 32)
- doc.setFontSize(10)
- doc.text(`${filteredItems.length} categories`, 40, 46)
- doc.autoTable({
- head: [['Order', 'Name', 'Show on POS', 'Active', 'Discount %']],
- body: categoryReportRows(),
- startY: 54,
- styles: { fontSize: 8, cellPadding: 4 },
- headStyles: { fillColor: [147, 51, 234], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`categories_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
+ const { html, fileName } = buildReportHtml()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded')
  } catch (e) {
  console.error(e)
  toast.error('Failed to export PDF')

@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { getLocalDateString } from '../../../utils/dateUtils.js';
 import { useData } from '../../../state/DataContext.jsx';
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../../utils/reportDoc.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../../utils/reportDoc.js';
 
 const btnPrint = 'ui-btn ui-btn-print';
 const btnPdf = 'ui-btn ui-btn-pdf';
@@ -106,55 +104,49 @@ export default function MarkAttendanceTab({
   clockedIn: reportRows.filter(r => r.checkIn !== '-' && r.checkOut === '-').length,
  }), [reportRows]);
 
+ const buildMarkAttendanceReport = () => {
+  const fileName = `Mark-Attendance-${today}.pdf`;
+  const body =
+   reportSummary([
+    { label: 'Active staff', amount: String(activeStaff.length) },
+    { label: 'Marked today', amount: String(stats.marked) },
+    { label: 'On leave', amount: String(stats.leave) },
+    { label: 'Late', amount: String(stats.late) },
+   ]) +
+   reportSec(`Mark attendance — ${today}`) +
+   reportTable({
+    headers: ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out'],
+    numbered: true,
+    rows: reportRows.map(r => [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut]),
+    emptyText: 'No active staff',
+   });
+  const html = wrapReportDoc({
+   settings: state?.settings || settings || {},
+   title: 'Mark Attendance',
+   reportLabel: 'Attendance Report',
+   reportNo: `Rpt #: MA-${today}`,
+   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', today]],
+   metaRight: [['Active staff', String(activeStaff.length)]],
+   body,
+  });
+  return { html, fileName };
+ };
+
  const openPrintPreview = async () => {
   try {
-   const body =
-    reportSummary([
-     { label: 'Active staff', amount: String(activeStaff.length) },
-     { label: 'Marked today', amount: String(stats.marked) },
-     { label: 'On leave', amount: String(stats.leave) },
-     { label: 'Late', amount: String(stats.late) },
-    ]) +
-    reportSec(`Mark attendance — ${today}`) +
-    reportTable({
-     headers: ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out'],
-     numbered: true,
-     rows: reportRows.map(r => [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut]),
-     emptyText: 'No active staff',
-    });
-   const html = wrapReportDoc({
-    settings: state?.settings || settings || {},
-    title: 'Mark Attendance',
-    reportLabel: 'Attendance Report',
-    reportNo: `Rpt #: MA-${today}`,
-    metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', today]],
-    metaRight: [['Active staff', String(activeStaff.length)]],
-    body,
-   });
-   await previewHtmlReport(html, `Mark-Attendance-${today}.pdf`);
+   const { html, fileName } = buildMarkAttendanceReport();
+   await previewHtmlReport(html, fileName);
    toast.success('Print preview opened');
   } catch {
    toast.error('Print preview failed');
   }
  };
 
- const exportPDF = () => {
+ const exportPDF = async () => {
   try {
-   const doc = new jsPDF('p', 'pt', 'a4');
-   doc.setFontSize(16);
-   doc.text(state?.settings?.companyName || 'Mark Attendance', 40, 32);
-   doc.setFontSize(11);
-   doc.text(`Date: ${today} · ${activeStaff.length} active staff`, 40, 48);
-   doc.autoTable({
-    head: [['Staff', 'Position', 'Shift', 'Status', 'Check In', 'Check Out']],
-    body: reportRows.map(r => [r.name, r.position, r.shift, r.status, r.checkIn, r.checkOut]),
-    startY: 58,
-    styles: { fontSize: 8, cellPadding: 4 },
-    headStyles: { fillColor: [20, 184, 166], textColor: 255, fontStyle: 'bold' },
-    margin: { left: 40, right: 40 },
-   });
-   doc.save(`mark-attendance-${today}.pdf`);
-   toast.success('PDF exported');
+   const { html, fileName } = buildMarkAttendanceReport();
+   await downloadHtmlReport(html, fileName);
+   toast.success('PDF downloaded');
   } catch {
    toast.error('Failed to export PDF');
   }

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { ArrowLeft, Wallet, ShoppingCart, ListTree } from 'lucide-react'
 import DatePicker from '../../components/DatePicker.jsx'
 import DataTable from '../../components/DataTable.jsx'
@@ -11,7 +9,7 @@ import Pagination from '../../components/Pagination.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { warehouseApiBase } from './warehouseApi.js'
 import WarehousePaymentModal from './WarehousePaymentModal.jsx'
 
@@ -202,100 +200,89 @@ export default function WarehouseSupplierHistory() {
     ])
   }
 
+  const buildReportHtml = () => {
+    const fileName = `Supplier-History-${supplier?.name || id}-${exportDateStamp()}.pdf`
+    let headers
+    let rows
+    let title
+    if (tab === 'purchases') {
+      title = 'Purchases'
+      headers = ['Date', 'Invoice', 'Items', { t: 'Total', align: 'r' }, { t: 'Paid', align: 'r' }, 'Notes']
+      rows = filteredPurchases.map(p => [
+        p.date || '-',
+        p.invoiceNo || '-',
+        (p.items || []).map(i => `${i.name}×${i.qty}`).join(', ') || '-',
+        { v: money(p.total), align: 'r' },
+        { v: money(p.paidAmount), align: 'r' },
+        p.notes || '-',
+      ])
+    } else if (tab === 'payments') {
+      title = 'Payments'
+      headers = ['Date', 'Method', 'Reference', { t: 'Amount', align: 'r' }, 'Notes']
+      rows = filteredPayments.map(p => [
+        p.date || '-',
+        (p.method || '-').toString(),
+        p.reference || '-',
+        { v: money(p.amount), align: 'r' },
+        p.notes || '-',
+      ])
+    } else {
+      title = 'All activity'
+      headers = ['Date', 'Type', 'Ref', { t: 'Debit', align: 'r' }, { t: 'Credit', align: 'r' }, 'Method', 'Notes']
+      rows = allRows.map(r => [
+        r.date || '-',
+        r.type,
+        r.ref || '-',
+        { v: r.debit ? money(r.debit) : '—', align: 'r' },
+        { v: r.credit ? money(r.credit) : '—', align: 'r' },
+        r.method || '-',
+        r.notes || '-',
+      ])
+    }
+    const body =
+      reportSummary([
+        { label: 'Purchases (period)', amount: money(periodTotals.purchaseTotal) },
+        { label: 'Payments (period)', amount: money(periodTotals.paidTotal) },
+        { label: 'Balance (period)', amount: money(periodTotals.balance) },
+      ]) +
+      reportSec(`${title} (${rows.length})`) +
+      reportTable({ headers, numbered: true, rows, emptyText: 'No records' })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: `Supplier History — ${supplier?.name || id}`,
+      reportLabel: `Warehouse Supplier ${title}`,
+      reportNo: `Rpt #: WSH-${exportDateStamp()}`,
+      metaLeft: [
+        ['Supplier', supplier?.name || id],
+        ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
+        ['From', from || 'All'],
+        ['To', to || 'All'],
+      ],
+      metaRight: [
+        ['Tab', title],
+        ['Records', String(rows.length)],
+        ['Overall due', money(ledger?.balance)],
+      ],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      let headers
-      let rows
-      let title
-      if (tab === 'purchases') {
-        title = 'Purchases'
-        headers = ['Date', 'Invoice', 'Items', { t: 'Total', align: 'r' }, { t: 'Paid', align: 'r' }, 'Notes']
-        rows = filteredPurchases.map(p => [
-          p.date || '-',
-          p.invoiceNo || '-',
-          (p.items || []).map(i => `${i.name}×${i.qty}`).join(', ') || '-',
-          { v: money(p.total), align: 'r' },
-          { v: money(p.paidAmount), align: 'r' },
-          p.notes || '-',
-        ])
-      } else if (tab === 'payments') {
-        title = 'Payments'
-        headers = ['Date', 'Method', 'Reference', { t: 'Amount', align: 'r' }, 'Notes']
-        rows = filteredPayments.map(p => [
-          p.date || '-',
-          (p.method || '-').toString(),
-          p.reference || '-',
-          { v: money(p.amount), align: 'r' },
-          p.notes || '-',
-        ])
-      } else {
-        title = 'All activity'
-        headers = ['Date', 'Type', 'Ref', { t: 'Debit', align: 'r' }, { t: 'Credit', align: 'r' }, 'Method', 'Notes']
-        rows = allRows.map(r => [
-          r.date || '-',
-          r.type,
-          r.ref || '-',
-          { v: r.debit ? money(r.debit) : '—', align: 'r' },
-          { v: r.credit ? money(r.credit) : '—', align: 'r' },
-          r.method || '-',
-          r.notes || '-',
-        ])
-      }
-      const body =
-        reportSummary([
-          { label: 'Purchases (period)', amount: money(periodTotals.purchaseTotal) },
-          { label: 'Payments (period)', amount: money(periodTotals.paidTotal) },
-          { label: 'Balance (period)', amount: money(periodTotals.balance) },
-        ]) +
-        reportSec(`${title} (${rows.length})`) +
-        reportTable({ headers, numbered: true, rows, emptyText: 'No records' })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: `Supplier History — ${supplier?.name || id}`,
-        reportLabel: `Warehouse Supplier ${title}`,
-        reportNo: `Rpt #: WSH-${exportDateStamp()}`,
-        metaLeft: [
-          ['Supplier', supplier?.name || id],
-          ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
-          ['From', from || 'All'],
-          ['To', to || 'All'],
-        ],
-        metaRight: [
-          ['Tab', title],
-          ['Records', String(rows.length)],
-          ['Overall due', money(ledger?.balance)],
-        ],
-        body,
-      })
-      await previewHtmlReport(html, `Supplier-History-${supplier?.name || id}-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildReportHtml()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(`${supplier?.name || 'Supplier'} — History`, 40, 32)
-      doc.setFontSize(10)
-      doc.text(`Period ${from || '…'} to ${to || '…'} · ${activeRows.length} rows`, 40, 46)
-      const head = tab === 'purchases'
-        ? [['Date', 'Invoice', 'Items', 'Total', 'Paid', 'Notes']]
-        : tab === 'payments'
-          ? [['Date', 'Method', 'Reference', 'Amount', 'Notes']]
-          : [['Date', 'Type', 'Ref', 'Debit', 'Credit', 'Method', 'Notes']]
-      doc.autoTable({
-        head,
-        body: reportRows(),
-        startY: 54,
-        styles: { fontSize: 7, cellPadding: 3 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`supplier_history_${id}_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported')
+      const { html, fileName } = buildReportHtml()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch {
       toast.error('PDF export failed')
     }

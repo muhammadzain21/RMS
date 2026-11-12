@@ -3,8 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { computeStaffMonth } from './utils/salaryCalc.js';
-import { buildStaffSummaryPdf } from './utils/printStaffSummary.js';
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js';
 import { formatTime12 } from '../../utils/dateUtils.js';
 import DatePicker from '../../components/DatePicker.jsx'
 
@@ -64,42 +63,48 @@ export default function StaffMonthSummaryPage({
   const counts = calc?.counts || { present: 0, late: 0, leave: 0, absent: 0, earlyOutDays: 0, totalLateMinutes: 0, totalEarlyOutMinutes: 0 };
   const records = calc?.records || [];
 
+  const buildMonthSummaryReport = () => {
+    const fileName = `${st.name}-${month}-summary.pdf`;
+    const body =
+      reportSummary([
+        { label: 'Present (incl. late)', amount: String(counts.present + counts.late) },
+        { label: 'Late', amount: String(counts.late) },
+        { label: 'Leave', amount: String(counts.leave) },
+        { label: 'Absent', amount: String(counts.absent) },
+        { label: 'Base salary', amount: `${calc.base.toLocaleString()} PKR` },
+        { label: 'Net salary due', amount: `${netDue.toLocaleString()} PKR`, cls: 'pos' },
+      ]) +
+      reportSec(`Attendance Records (${records.length} days)`) +
+      reportTable({
+        headers: ['Date', 'Status', 'Check In', 'Check Out', { t: 'Late Min', align: 'r' }, { t: 'Early Out Min', align: 'r' }],
+        numbered: true,
+        rows: records.map(r => [
+          r.date,
+          r.status,
+          r.checkIn ? formatTime12(r.checkIn) : '-',
+          r.checkOut ? formatTime12(r.checkOut) : '-',
+          { v: r.lateMinutes > 0 ? r.lateMinutes : '-', align: 'r' },
+          { v: r.earlyOutMinutes > 0 ? r.earlyOutMinutes : '-', align: 'r' },
+        ]),
+        emptyText: 'No records for this month',
+      });
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: `${st.name} — Monthly Summary`,
+      reportLabel: 'Staff Monthly Summary',
+      reportNo: `Rpt #: SMS-${month}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st.name], ['Month', month]],
+      metaRight: [['Position', st.position || ''], ['Records', String(records.length)]],
+      body,
+    });
+    return { html, fileName };
+  };
+
   const openPrintPreview = async () => {
     if (!calc || !st) { toast.error('No data to print'); return; }
     try {
-      const body =
-        reportSummary([
-          { label: 'Present (incl. late)', amount: String(counts.present + counts.late) },
-          { label: 'Late', amount: String(counts.late) },
-          { label: 'Leave', amount: String(counts.leave) },
-          { label: 'Absent', amount: String(counts.absent) },
-          { label: 'Base salary', amount: `${calc.base.toLocaleString()} PKR` },
-          { label: 'Net salary due', amount: `${netDue.toLocaleString()} PKR`, cls: 'pos' },
-        ]) +
-        reportSec(`Attendance Records (${records.length} days)`) +
-        reportTable({
-          headers: ['Date', 'Status', 'Check In', 'Check Out', { t: 'Late Min', align: 'r' }, { t: 'Early Out Min', align: 'r' }],
-          numbered: true,
-          rows: records.map(r => [
-            r.date,
-            r.status,
-            r.checkIn ? formatTime12(r.checkIn) : '-',
-            r.checkOut ? formatTime12(r.checkOut) : '-',
-            { v: r.lateMinutes > 0 ? r.lateMinutes : '-', align: 'r' },
-            { v: r.earlyOutMinutes > 0 ? r.earlyOutMinutes : '-', align: 'r' },
-          ]),
-          emptyText: 'No records for this month',
-        });
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: `${st.name} — Monthly Summary`,
-        reportLabel: 'Staff Monthly Summary',
-        reportNo: `Rpt #: SMS-${month}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st.name], ['Month', month]],
-        metaRight: [['Position', st.position || ''], ['Records', String(records.length)]],
-        body,
-      });
-      await previewHtmlReport(html, `${st.name}-${month}-summary.pdf`);
+      const { html, fileName } = buildMonthSummaryReport();
+      await previewHtmlReport(html, fileName);
       toast.success('Print preview opened');
     } catch (err) {
       console.error(err);
@@ -107,16 +112,12 @@ export default function StaffMonthSummaryPage({
     }
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     if (!calc || !st) { toast.error('No data to export'); return; }
     try {
-      const doc = buildStaffSummaryPdf({
-        st, calc, counts, records, staffAdvances, staffEarnings,
-        advTotal, extrasSum, manualDeduction, netDue, month,
-        companyName: state?.settings?.companyName,
-      });
-      doc.save(`${st.name || 'staff'}_${month}_summary.pdf`);
-      toast.success('PDF exported successfully');
+      const { html, fileName } = buildMonthSummaryReport();
+      await downloadHtmlReport(html, fileName);
+      toast.success('PDF downloaded');
     } catch (err) {
       console.error(err);
       toast.error('Failed to export PDF');

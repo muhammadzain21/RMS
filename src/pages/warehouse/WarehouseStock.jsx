@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { addDays, format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import { Package, Wallet, AlertTriangle, Ban, CalendarClock } from 'lucide-react'
 import DataTable from '../../components/DataTable.jsx'
 import Pagination from '../../components/Pagination.jsx'
@@ -11,7 +9,7 @@ import { useConfirm } from '../../components/useConfirm.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { btnPrint, btnPdf, btnCsv, btnPrimary, exportDateStamp } from '../../utils/listReportExport.js'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import {
   parseSpreadsheetFile,
   rowsToWarehouseImportPayload,
@@ -140,63 +138,57 @@ export default function WarehouseStock() {
     ((Number(it.qty) || 0) * (Number(it.costPrice) || 0)),
   ])
 
+  const buildReportHtml = () => {
+    const fileName = `Warehouse-Stock-${exportDateStamp()}.pdf`
+    const body =
+      reportSummary([
+        { label: 'SKUs', amount: String(filtered.length) },
+        { label: 'Stock value', amount: stockValue.toLocaleString() },
+      ]) +
+      reportSec(`Inventory (${filtered.length})`) +
+      reportTable({
+        headers: WAREHOUSE_EXPORT_HEADERS,
+        numbered: true,
+        rows: filtered.map(it => [
+          it.name || '-',
+          it.category || '-',
+          String(it.qty ?? '-'),
+          it.unit || '-',
+          Number(it.costPrice || 0).toLocaleString(),
+          Number(it.transferPrice || 0).toLocaleString(),
+          String(it.lowStock ?? 0),
+          supplierNameOf(it) || '-',
+          ((Number(it.qty) || 0) * (Number(it.costPrice) || 0)).toLocaleString(),
+        ]),
+        emptyText: 'No inventory',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Warehouse Inventory',
+      reportLabel: 'Warehouse Stock',
+      reportNo: `Rpt #: WH-${exportDateStamp()}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+      metaRight: [['Records', String(filtered.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([
-          { label: 'SKUs', amount: String(filtered.length) },
-          { label: 'Stock value', amount: stockValue.toLocaleString() },
-        ]) +
-        reportSec(`Inventory (${filtered.length})`) +
-        reportTable({
-          headers: WAREHOUSE_EXPORT_HEADERS,
-          numbered: true,
-          rows: filtered.map(it => [
-            it.name || '-',
-            it.category || '-',
-            String(it.qty ?? '-'),
-            it.unit || '-',
-            Number(it.costPrice || 0).toLocaleString(),
-            Number(it.transferPrice || 0).toLocaleString(),
-            String(it.lowStock ?? 0),
-            supplierNameOf(it) || '-',
-            ((Number(it.qty) || 0) * (Number(it.costPrice) || 0)).toLocaleString(),
-          ]),
-          emptyText: 'No inventory',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Warehouse Inventory',
-        reportLabel: 'Warehouse Stock',
-        reportNo: `Rpt #: WH-${exportDateStamp()}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
-        metaRight: [['Records', String(filtered.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Warehouse-Stock-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildReportHtml()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Warehouse Inventory', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${filtered.length} items`, 40, 46)
-      doc.autoTable({
-        head: [WAREHOUSE_EXPORT_HEADERS],
-        body: reportRows(filtered),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`warehouse_stock_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported')
+      const { html, fileName } = buildReportHtml()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch {
       toast.error('PDF export failed')
     }

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 import DataTable from '../../components/DataTable.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { useConfirm } from '../../components/useConfirm.jsx'
@@ -10,7 +8,7 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { useBranch } from '../../state/BranchContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import BranchModal from './BranchModal.jsx'
 
 function api() {
@@ -84,56 +82,50 @@ export default function BranchesAdmin() {
     b.address || '',
   ])
 
+  const buildBranchesReport = () => {
+    const fileName = `Branches-${exportDateStamp()}.pdf`
+    const body =
+      reportSummary([{ label: 'Branches', amount: String(filtered.length) }]) +
+      reportSec(`Branches (${filtered.length})`) +
+      reportTable({
+        headers: ['Code', 'Name', 'Mode', 'Phone', 'Address'],
+        numbered: true,
+        rows: filtered.map(b => [
+          b.code || '-',
+          b.name || '-',
+          b.mode || '-',
+          b.phone || '-',
+          b.address || '-',
+        ]),
+        emptyText: 'No branches',
+      })
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Branches',
+      reportLabel: 'Branch List',
+      reportNo: `Rpt #: BR-${exportDateStamp()}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+      metaRight: [['Records', String(filtered.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const body =
-        reportSummary([{ label: 'Branches', amount: String(filtered.length) }]) +
-        reportSec(`Branches (${filtered.length})`) +
-        reportTable({
-          headers: ['Code', 'Name', 'Mode', 'Phone', 'Address'],
-          numbered: true,
-          rows: filtered.map(b => [
-            b.code || '-',
-            b.name || '-',
-            b.mode || '-',
-            b.phone || '-',
-            b.address || '-',
-          ]),
-          emptyText: 'No branches',
-        })
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Branches',
-        reportLabel: 'Branch List',
-        reportNo: `Rpt #: BR-${exportDateStamp()}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
-        metaRight: [['Records', String(filtered.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `Branches-${exportDateStamp()}.pdf`)
+      const { html, fileName } = buildBranchesReport()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
     }
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     try {
-      const doc = new jsPDF('l', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(state?.settings?.companyName || 'Branches', 40, 32)
-      doc.setFontSize(10)
-      doc.text(`${filtered.length} branches`, 40, 46)
-      doc.autoTable({
-        head: [['Code', 'Name', 'Mode', 'Phone', 'Address']],
-        body: reportRows(filtered),
-        startY: 54,
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`branches_${exportDateStamp()}.pdf`)
-      toast.success('PDF exported')
+      const { html, fileName } = buildBranchesReport()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF downloaded')
     } catch {
       toast.error('PDF export failed')
     }

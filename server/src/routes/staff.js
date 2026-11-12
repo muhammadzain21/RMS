@@ -46,7 +46,9 @@ router.get('/', async (req, res, next) => {
       };
     }
     const { mergeBranchFilter } = await import('../utils/branchScope.js')
-    query = mergeBranchFilter(req, query)
+    // allBranches=1 → every branch the user can access (Sell staff-purchase picker)
+    const allBranches = String(req.query.allBranches || '') === '1' || String(req.query.allBranches || '').toLowerCase() === 'true'
+    query = mergeBranchFilter(req, query, allBranches ? { allAccessible: true } : undefined)
 
     const [total, rows] = await Promise.all([
       Staff.countDocuments(query),
@@ -59,11 +61,23 @@ router.get('/', async (req, res, next) => {
     const unameByStaff = Object.fromEntries(linkedUsers.map(u => [u.staffId, u.username]))
     const roleByStaff = Object.fromEntries(linkedUsers.map(u => [u.staffId, u.role]))
 
+    // Branch labels for cross-branch pickers
+    let branchNameById = {}
+    try {
+      const Branch = (await import('../models/Branch.js')).default
+      const bids = [...new Set(rows.map(r => String(r.branchId || '')).filter(Boolean))]
+      if (bids.length) {
+        const branches = await Branch.find({ _id: { $in: bids } }).select('name code').lean()
+        branchNameById = Object.fromEntries(branches.map(b => [String(b._id), b.name || b.code || String(b._id)]))
+      }
+    } catch {}
+
     res.json({
       data: rows.map(r => ({
         ...r,
         loginUsername: unameByStaff[String(r._id)] || '',
-        loginRole: roleByStaff[String(r._id)] || ''
+        loginRole: roleByStaff[String(r._id)] || '',
+        branchName: branchNameById[String(r.branchId || '')] || '',
       })),
       total,
       page,

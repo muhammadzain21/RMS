@@ -3,9 +3,7 @@ import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -155,54 +153,50 @@ export default function MyWorkPage() {
     return { title: `${staffName} — ${tabLabel}`, tabLabel, summary: [], headers: [], rows: [] }
   }, [data, tab, month, user?.username])
 
+  const buildMyWorkReport = useCallback(() => {
+    const fileName = `My-Work-${tab}-${month}.pdf`
+    const body =
+      (tabExport.summary.length ? reportSummary(tabExport.summary) : '') +
+      reportSec(tabExport.tabLabel) +
+      reportTable({
+        headers: tabExport.headers,
+        numbered: true,
+        rows: tabExport.rows,
+        emptyText: 'No records for this tab',
+      })
+    const html = wrapReportDoc({
+      settings: appState?.settings || {},
+      title: tabExport.title,
+      reportLabel: 'My Work',
+      reportNo: `Rpt #: MW-${month}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Month', monthName(month)]],
+      metaRight: [['Tab', tabExport.tabLabel], ['Rows', String(tabExport.rows.length)]],
+      body,
+    })
+    return { html, fileName }
+  }, [tabExport, appState?.settings, tab, month])
+
   const openPrintPreview = useCallback(async () => {
     if (state !== 'ready') return
     try {
-      const body =
-        (tabExport.summary.length ? reportSummary(tabExport.summary) : '') +
-        reportSec(tabExport.tabLabel) +
-        reportTable({
-          headers: tabExport.headers,
-          numbered: true,
-          rows: tabExport.rows,
-          emptyText: 'No records for this tab',
-        })
-      const html = wrapReportDoc({
-        settings: appState?.settings || {},
-        title: tabExport.title,
-        reportLabel: 'My Work',
-        reportNo: `Rpt #: MW-${month}`,
-        metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Month', monthName(month)]],
-        metaRight: [['Tab', tabExport.tabLabel], ['Rows', String(tabExport.rows.length)]],
-        body,
-      })
-      await previewHtmlReport(html, `My-Work-${tab}-${month}.pdf`)
+      const { html, fileName } = buildMyWorkReport()
+      await previewHtmlReport(html, fileName)
       toast.success('Print preview opened')
     } catch {
       toast.error('Print preview failed')
     }
-  }, [state, tabExport, appState?.settings, tab, month])
+  }, [state, buildMyWorkReport])
 
-  const exportPDF = useCallback(() => {
+  const exportPDF = useCallback(async () => {
     if (state !== 'ready') return
     try {
-      const doc = new jsPDF('p', 'pt', 'a4')
-      doc.setFontSize(14)
-      doc.text(tabExport.title, 40, 32)
-      doc.autoTable({
-        head: [tabExport.headers],
-        body: tabExport.rows,
-        startY: 48,
-        styles: { fontSize: 8, cellPadding: 4 },
-        headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
-      })
-      doc.save(`my_work_${tab}_${month}.pdf`)
+      const { html, fileName } = buildMyWorkReport()
+      await downloadHtmlReport(html, fileName)
       toast.success('PDF downloaded')
     } catch {
       toast.error('Failed to export PDF')
     }
-  }, [state, tabExport, tab, month])
+  }, [state, buildMyWorkReport])
 
   const exportCSV = useCallback(() => {
     if (state !== 'ready') return

@@ -1,14 +1,15 @@
 import { Router } from 'express'
 import Audit from '../models/Audit.js'
 import Settings from '../models/Settings.js'
-import { authRequired, requireRole } from '../middleware/auth.js'
+import { authRequired, authOptional, requireRole } from '../middleware/auth.js'
 import { assertBranchAccess, resolveBranchId } from '../utils/branchScope.js'
 import { getOrCreateSettings } from '../utils/settingsScope.js'
 
 const router = Router()
 
 // GET current settings for active branch (X-Branch-Id / homeBranch / query)
-router.get('/', async (req, res, next) => {
+// authOptional: global fetch attaches X-Branch-Id; branch checks need req.user
+router.get('/', authOptional, async (req, res, next) => {
   try {
     let branchId = ''
     try { branchId = resolveBranchId(req) || '' } catch { branchId = '' }

@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
 
 import { toast } from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { getLocalDateString } from '../../../utils/dateUtils.js';
 import { useData } from '../../../state/DataContext.jsx';
 import DatePicker from '../../../components/DatePicker.jsx';
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../../utils/reportDoc.js';
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../../utils/reportDoc.js';
 
 const btnPrint = 'ui-btn ui-btn-print';
 const btnPdf = 'ui-btn ui-btn-pdf';
@@ -55,33 +53,39 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
   };
  });
 
+ const buildDailyAttendanceReport = () => {
+  const fileName = `Daily-Attendance-${dailyDate}.pdf`;
+  const body =
+   reportSummary([
+    { label: 'Present (incl. late)', amount: String(stats.present) },
+    { label: 'Late', amount: String(stats.late) },
+    { label: 'Leave', amount: String(stats.leave) },
+    { label: 'Absent', amount: String(stats.absent) },
+    { label: 'Total records', amount: String(daily.length) },
+   ]) +
+   reportSec(`Daily Attendance — ${dailyDate}`) +
+   reportTable({
+    headers: ['Staff', 'Position', 'Status', 'Check In', 'Check Out'],
+    numbered: true,
+    rows: reportRows.map(r => [r.staffName, r.position, r.status, r.checkIn, r.checkOut]),
+    emptyText: 'No attendance records for this date',
+   });
+  const html = wrapReportDoc({
+   settings: state?.settings || {},
+   title: 'Daily Attendance',
+   reportLabel: 'Daily Attendance Report',
+   reportNo: `Rpt #: DA-${dailyDate}`,
+   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', dailyDate]],
+   metaRight: [['Records', String(daily.length)]],
+   body,
+  });
+  return { html, fileName };
+ };
+
  const openPrintPreview = async () => {
   try {
-   const body =
-    reportSummary([
-     { label: 'Present (incl. late)', amount: String(stats.present) },
-     { label: 'Late', amount: String(stats.late) },
-     { label: 'Leave', amount: String(stats.leave) },
-     { label: 'Absent', amount: String(stats.absent) },
-     { label: 'Total records', amount: String(daily.length) },
-    ]) +
-    reportSec(`Daily Attendance — ${dailyDate}`) +
-    reportTable({
-     headers: ['Staff', 'Position', 'Status', 'Check In', 'Check Out'],
-     numbered: true,
-     rows: reportRows.map(r => [r.staffName, r.position, r.status, r.checkIn, r.checkOut]),
-     emptyText: 'No attendance records for this date',
-    });
-   const html = wrapReportDoc({
-    settings: state?.settings || {},
-    title: 'Daily Attendance',
-    reportLabel: 'Daily Attendance Report',
-    reportNo: `Rpt #: DA-${dailyDate}`,
-    metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', dailyDate]],
-    metaRight: [['Records', String(daily.length)]],
-    body,
-   });
-   await previewHtmlReport(html, `Daily-Attendance-${dailyDate}.pdf`);
+   const { html, fileName } = buildDailyAttendanceReport();
+   await previewHtmlReport(html, fileName);
    toast.success('Print preview opened');
   } catch (err) {
    console.error(err);
@@ -89,26 +93,11 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
   }
  };
 
- const exportPDF = () => {
+ const exportPDF = async () => {
   try {
-   const doc = new jsPDF('p', 'pt', 'a4');
-   const company = state?.settings?.companyName || 'Daily Attendance';
-   doc.setFontSize(16);
-   doc.text(company, 40, 32);
-   doc.setFontSize(11);
-   doc.text(`Daily Attendance — ${dailyDate}`, 40, 48);
-   doc.setFontSize(9);
-   doc.text(`Present: ${stats.present} · Late: ${stats.late} · Leave: ${stats.leave} · Absent: ${stats.absent}`, 40, 62);
-   doc.autoTable({
-    head: [['Staff', 'Position', 'Status', 'Check In', 'Check Out']],
-    body: reportRows.map(r => [r.staffName, r.position, r.status, r.checkIn, r.checkOut]),
-    startY: 72,
-    styles: { fontSize: 8, cellPadding: 4 },
-    headStyles: { fillColor: [20, 184, 166], textColor: 255, fontStyle: 'bold' },
-    margin: { left: 40, right: 40 },
-   });
-   doc.save(`daily-attendance-${dailyDate}.pdf`);
-   toast.success('PDF exported successfully');
+   const { html, fileName } = buildDailyAttendanceReport();
+   await downloadHtmlReport(html, fileName);
+   toast.success('PDF downloaded');
   } catch (err) {
    console.error(err);
    toast.error('Failed to export PDF');

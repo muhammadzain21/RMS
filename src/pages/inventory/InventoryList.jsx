@@ -8,9 +8,7 @@ import BranchPurchaseModal from '../../components/BranchPurchaseModal.jsx'
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
 import Pagination from '../../components/Pagination.jsx'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { parseSpreadsheetFile, rowsToInventoryImportPayload, INVENTORY_EXPORT_HEADERS } from '../../utils/spreadsheetIo.js'
 
@@ -187,8 +185,8 @@ export default function InventoryList() {
 
  const tabLabel = { all: 'All Items', in: 'In Stock', low: 'Low Stock', expiring: 'Expiring Soon', out: 'Out of Stock' }[tab] || tab
 
- const openPrintPreview = async () => {
- try {
+ const buildReportHtml = () => {
+ const fileName = `Inventory-${exportDateStamp()}.pdf`
  const totalValue = filteredItems.reduce((a, i) => a + Number(i.qty || 0) * Number(i.price || 0), 0)
  const body =
  reportSummary([
@@ -222,7 +220,13 @@ export default function InventoryList() {
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })
- await previewHtmlReport(html, `Inventory-${exportDateStamp()}.pdf`)
+ return { html, fileName }
+ }
+
+ const openPrintPreview = async () => {
+ try {
+ const { html, fileName } = buildReportHtml()
+ await previewHtmlReport(html, fileName)
  toast.success('Print preview opened')
  } catch (e) {
  console.error(e)
@@ -230,23 +234,11 @@ export default function InventoryList() {
  }
  }
 
- const exportPDF = () => {
+ const exportPDF = async () => {
  try {
- const doc = new jsPDF('l', 'pt', 'a4')
- doc.setFontSize(14)
- doc.text(state?.settings?.companyName || 'Inventory', 40, 32)
- doc.setFontSize(10)
- doc.text(`${tabLabel} · ${filteredItems.length} items`, 40, 46)
- doc.autoTable({
- head: [['Name', 'Category', 'Qty', 'Status', 'Threshold', 'Unit', 'Expiry', 'Price/Unit', 'Value', 'Supplier']],
- body: inventoryReportRows(),
- startY: 54,
- styles: { fontSize: 7, cellPadding: 2 },
- headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
- margin: { left: 40, right: 40 },
- })
- doc.save(`inventory_${exportDateStamp()}.pdf`)
- toast.success('PDF exported successfully')
+ const { html, fileName } = buildReportHtml()
+ await downloadHtmlReport(html, fileName)
+ toast.success('PDF downloaded')
  } catch (e) {
  console.error(e)
  toast.error('Failed to export PDF')
