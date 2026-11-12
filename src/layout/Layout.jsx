@@ -1,9 +1,11 @@
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
+import { MapPin } from 'lucide-react'
 import { useAuth } from '../state/AuthContext.jsx'
 import { useData } from '../state/DataContext.jsx'
 import { useBranch } from '../state/BranchContext.jsx'
+import { useRiderLocation } from '../state/RiderLocationContext.jsx'
 import ErrorBoundary from '../components/ErrorBoundary.jsx'
 import Header from './Header.jsx'
 import Sidebar from './Sidebar.jsx'
@@ -14,6 +16,8 @@ export default function Layout() {
   const { activeBranchId } = useBranch()
   const location = useLocation()
   const brand = state?.settings?.companyName || 'Restaurant POS'
+  const riderShare = useRiderLocation()
+  const sharingLive = Boolean(riderShare?.sharing || riderShare?.reconnecting)
 
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -114,6 +118,20 @@ export default function Layout() {
           </ErrorBoundary>
         </main>
       </div>
+
+      {sharingLive && location.pathname !== '/rider' ? (
+        <NavLink
+          to="/rider"
+          className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] right-4 z-[60] inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-lg shadow-blue-600/30"
+        >
+          <MapPin className="h-3.5 w-3.5" />
+          {riderShare?.minimized
+            ? 'Sharing while minimized…'
+            : riderShare?.reconnecting
+              ? 'GPS reconnecting…'
+              : 'Location sharing on'}
+        </NavLink>
+      ) : null}
 
       {toaster}
     </div>

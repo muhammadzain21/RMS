@@ -7,6 +7,7 @@ import { UIProvider } from './state/UIContext.jsx'
 import { AuthProvider } from './state/AuthContext.jsx'
 import { DataProvider } from './state/DataContext.jsx'
 import { BranchProvider } from './state/BranchContext.jsx'
+import { RiderLocationProvider } from './state/RiderLocationContext.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { setupNativeChrome } from './native/statusBar.js'
 
@@ -182,7 +183,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                   <ErrorBoundary>
                     <DataProvider>
                       <ErrorBoundary>
-                        <App />
+                        <RiderLocationProvider>
+                          <App />
+                        </RiderLocationProvider>
                       </ErrorBoundary>
                     </DataProvider>
                   </ErrorBoundary>
