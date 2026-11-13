@@ -364,12 +364,9 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
       return res.json(toPublic(item, null, branchId || item.branchId))
     }
 
-    // Shared catalog edit only when explicitly requested (editShared / scope=shared).
-    // Admin working in a header branch always writes a BranchMenuOverride — not global.
+    // Shared catalog edit when explicitly requested (editShared / scope=shared).
+    // Admin/Manager can update the shared item for all branches.
     if (editShared) {
-      if (!isAdminActor(req.user)) {
-        return res.status(403).json({ error: 'Only admin can edit the shared catalog' })
-      }
       Object.assign(item, payload)
       item.branchId = ''
       await item.save()
@@ -411,7 +408,8 @@ router.delete('/:id', requireRole('Admin', 'Manager'), async (req, res, next) =>
       branchId = String(req.headers['x-branch-id'] || '').trim()
     }
 
-    const hardDeleteShared = String(req.query.scope || '').toLowerCase() === 'shared' || req.query.hard === '1'
+    // Optional legacy hide-on-branch: ?hide=1 (shared items only)
+    const hideOnBranchOnly = String(req.query.hide || '') === '1'
 
     if (!isSharedItem(item)) {
       if (branchId && String(item.branchId) !== String(branchId) && !isAdminActor(req.user)) {
@@ -423,16 +421,16 @@ router.delete('/:id', requireRole('Admin', 'Manager'), async (req, res, next) =>
       return res.json({ ok: true })
     }
 
-    // Shared item: hide on this branch via override, unless Admin hard-deletes shared catalog
-    if (hardDeleteShared && isAdminActor(req.user)) {
+    // Shared catalog: default is delete for ALL branches (shared across branches)
+    if (!hideOnBranchOnly) {
       await MenuItem.findByIdAndDelete(req.params.id)
       await BranchMenuOverride.deleteMany({ menuItemId: req.params.id })
       await logAudit(req, 'menu', `Deleted shared menu ${req.params.id}`, { id: req.params.id })
-      return res.json({ ok: true })
+      return res.json({ ok: true, deletedShared: true })
     }
 
     if (!branchId) {
-      return res.status(400).json({ error: 'branchId required — select a branch in the header (or hard-delete shared catalog)' })
+      return res.status(400).json({ error: 'branchId required to hide a shared item on one branch' })
     }
 
     await BranchMenuOverride.findOneAndUpdate(

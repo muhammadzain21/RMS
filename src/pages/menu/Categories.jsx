@@ -297,20 +297,24 @@ export default function Categories() {
 
  const onDelete = async (id) => {
  const row = (state.categories || []).find(c => String(c.id) === String(id))
+ const isShared = row?.isShared !== false && !row?.isBranchOnly
  const confirmed = await confirm({
-  title: row?.isBranchOnly || row?.isShared === false ? 'Delete Category' : 'Hide Category',
-  message: row?.isBranchOnly
-   ? 'Delete this branch-only category?'
-   : `Hide this shared category for ${activeBranch?.name || 'this branch'}? (Use admin hard-delete to remove from all branches.)`,
+  title: 'Delete Category',
+  message: isShared
+   ? `Delete “${row?.name || 'this category'}” from the shared catalog for ALL branches?`
+   : 'Delete this branch-only category?',
  })
  if (!confirmed) return
  try {
  setLoading(true)
- const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+ const headers = {
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  ...(activeBranchId ? { 'X-Branch-Id': String(activeBranchId) } : {}),
+ }
  const res = await fetch(`${API}/api/categories/${id}`, { method: 'DELETE', headers })
  const j = await res.json().catch(() => ({}))
  if (!res.ok) throw new Error(j.error || 'Failed')
- toast.success(j.hidden ? `Hidden for ${activeBranch?.name || 'this branch'}` : 'Category deleted')
+ toast.success(isShared ? 'Deleted from all branches' : 'Category deleted')
  await refreshCategories()
  } catch (e) {
  toast.error(e.message || 'Delete failed')
@@ -330,7 +334,7 @@ export default function Categories() {
  className="w-16 px-2 py-1.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white text-sm text-center focus:ring-2 focus:ring-purple-500"
  /></div></div>
  <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
-  Categories are shared across branches. Edit while on a branch to change name/discount/availability for <span className="font-bold">{activeBranch?.name || 'that branch'}</span> only (use Reset to clear a branch override).
+  Categories are shared across branches. Edit while on a branch to change name/discount/availability for <span className="font-bold">{activeBranch?.name || 'that branch'}</span> only (use Reset to clear a branch override). Delete removes a shared category from <span className="font-bold">all branches</span>.
  </p>
 
  <div className="flex items-center gap-3">

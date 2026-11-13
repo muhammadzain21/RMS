@@ -57,6 +57,36 @@ function base64ToPdfBlob(base64) {
   return new Blob([bytes], { type: 'application/pdf' })
 }
 
+async function renderPdfWithHtml2Pdf(html) {
+  const html2pdf = (await import('html2pdf.js')).default
+  const wrap = document.createElement('div')
+  wrap.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;background:#fff;'
+  wrap.innerHTML = html
+  // If full document, use body contents only for html2pdf
+  const bodyMatch = String(html).match(/<body[^>]*>([\s\S]*)<\/body>/i)
+  if (bodyMatch) wrap.innerHTML = bodyMatch[1]
+  const styleMatch = String(html).match(/<style[^>]*>([\s\S]*?)<\/style>/gi)
+  if (styleMatch?.length) {
+    const styleEl = document.createElement('style')
+    styleEl.textContent = styleMatch.map((s) => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
+    wrap.prepend(styleEl)
+  }
+  document.body.appendChild(wrap)
+  try {
+    const worker = html2pdf().set({
+      margin: [10, 10, 10, 10],
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    }).from(wrap)
+    const blob = await worker.outputPdf('blob')
+    return blob
+  } finally {
+    try { wrap.remove() } catch {}
+  }
+}
+
 async function renderReportPdfBlob(html, fileName) {
   const name = sanitizeReportFileName(fileName)
   const base = reportApiBase()
@@ -72,6 +102,7 @@ async function renderReportPdfBlob(html, fileName) {
     })
     const ct = String(res.headers.get('content-type') || '')
     if (res.ok && ct.includes('pdf')) return await res.blob()
+    if (!res.ok) console.warn('[renderReportPdfBlob] server status', res.status)
   } catch (e) {
     console.warn('[renderReportPdfBlob] server', e)
   }
@@ -87,34 +118,104 @@ async function renderReportPdfBlob(html, fileName) {
     console.warn('[renderReportPdfBlob] electron', e)
   }
 
+  // Browser fallback when cloud server has no Chrome/Puppeteer
+  try {
+    return await renderPdfWithHtml2Pdf(html)
+  } catch (e) {
+    console.warn('[renderReportPdfBlob] html2pdf', e)
+  }
+
   throw new Error('Could not render the A4 report PDF')
 }
 
 /**
- * Print preview = the same PDF file as Download, opened in one tab.
+ * Open the system print dialog (Chrome/Edge print preview) from a hidden iframe.
+ * Does not open a new browser tab.
+ */
+function printHtmlViaIframe(html) {
+  return new Promise((resolve, reject) => {
+    try {
+      const prev = document.getElementById('rms-report-print-iframe')
+      try { prev?.remove() } catch {}
+
+      const iframe = document.createElement('iframe')
+      iframe.id = 'rms-report-print-iframe'
+      iframe.setAttribute('title', 'Print')
+      iframe.style.cssText = 'position:fixed;inset:0;width:1px;height:1px;opacity:0;border:0;pointer-events:none;z-index:2147483646;'
+      document.body.appendChild(iframe)
+
+      const doc = iframe.contentDocument || iframe.contentWindow?.document
+      if (!doc) {
+        try { iframe.remove() } catch {}
+        reject(new Error('Print iframe unavailable'))
+        return
+      }
+
+      let cleaned = false
+      const cleanup = () => {
+        if (cleaned) return
+        cleaned = true
+        try { iframe.contentWindow?.removeEventListener('afterprint', cleanup) } catch {}
+        try { window.removeEventListener('focus', onFocusCleanup) } catch {}
+        try { iframe.remove() } catch {}
+      }
+      const onFocusCleanup = () => { setTimeout(cleanup, 400) }
+
+      let payload = String(html || '')
+      if (!/<html[\s>]/i.test(payload)) {
+        payload = `<!doctype html><html><head><meta charset="utf-8"></head><body>${payload}</body></html>`
+      }
+
+      doc.open()
+      doc.write(payload)
+      doc.close()
+
+      try { iframe.contentWindow?.addEventListener('afterprint', cleanup) } catch {}
+      try { window.addEventListener('focus', onFocusCleanup) } catch {}
+
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus()
+          iframe.contentWindow?.print()
+          resolve(true)
+        } catch (err) {
+          cleanup()
+          reject(err)
+        }
+        setTimeout(cleanup, 120000)
+      }, 250)
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
+
+/**
+ * Print = system print preview (no new tab).
+ * Electron prefers the native print-html path when available.
  */
 export async function previewHtmlReport(html, fileName) {
-  const previewWin = window.open('', '_blank')
   try {
-    const blob = await renderReportPdfBlob(html, fileName)
-    const url = URL.createObjectURL(blob)
-    if (previewWin) {
-      previewWin.location.href = url
-      try { previewWin.focus() } catch {}
-    } else {
-      window.open(url, '_blank')
+    const api = (typeof window !== 'undefined') ? window.pdfPreview : null
+    if (api && typeof api.printHtml === 'function') {
+      const r = await api.printHtml(html, sanitizeReportFileName(fileName))
+      if (r && r.ok) return true
     }
-    setTimeout(() => { try { URL.revokeObjectURL(url) } catch {} }, 120000)
+  } catch (e) {
+    console.warn('[previewHtmlReport] electron', e)
+  }
+
+  try {
+    await printHtmlViaIframe(html)
     return true
   } catch (e) {
-    try { previewWin?.close() } catch {}
     console.warn('[previewHtmlReport]', e)
     throw e
   }
 }
 
 /**
- * Download the same A4 PDF that Print preview shows.
+ * Download A4 PDF (server Chromium when available, else browser html2pdf fallback).
  */
 export async function downloadHtmlReport(html, fileName) {
   const name = sanitizeReportFileName(fileName)

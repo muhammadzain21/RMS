@@ -286,20 +286,19 @@ router.delete('/:id', requireRole('Admin', 'Manager'), async (req, res, next) =>
       return res.json({ ok: true })
     }
 
-    const hard = String(req.query.scope || '').toLowerCase() === 'shared' || req.query.hard === '1'
-    if (hard) {
-      if (!isAdminActor(req.user)) {
-        return res.status(403).json({ error: 'Only admin can hard-delete shared categories' })
-      }
+    // Optional legacy hide-on-branch: ?hide=1 (shared categories only)
+    const hideOnBranchOnly = String(req.query.hide || '') === '1'
+
+    // Shared catalog: default is delete for ALL branches
+    if (!hideOnBranchOnly) {
       await BranchCategoryOverride.deleteMany({ categoryId: existing._id })
       await existing.deleteOne()
-      await logAudit(req, 'category', `Hard-deleted shared category ${req.params.id}`, { id: req.params.id })
-      return res.json({ ok: true })
+      await logAudit(req, 'category', `Deleted shared category ${req.params.id}`, { id: req.params.id })
+      return res.json({ ok: true, deletedShared: true })
     }
 
-    // Soft-hide for this branch via override
     if (!branchId) {
-      return res.status(400).json({ error: 'Select a branch to hide this shared category, or hard-delete as admin' })
+      return res.status(400).json({ error: 'Select a branch to hide this shared category on one branch' })
     }
     await BranchCategoryOverride.findOneAndUpdate(
       { branchId: String(branchId), categoryId: existing._id },
