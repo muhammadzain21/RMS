@@ -26,7 +26,7 @@ const STATUS_CHIP = {
   completed: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
 }
 const STATUS_LABEL = {
-  ordered: 'Ordered', new: 'KOT Sent', preparing: 'Preparing', ready: 'Ready', completed: 'Served', paid: 'Paid',
+  ordered: 'Ordered', new: 'KOT Sent', preparing: 'Preparing', ready: 'Ready', completed: 'Complete', paid: 'Paid',
 }
 
 function fmtTime(v) {

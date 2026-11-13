@@ -135,6 +135,43 @@ export function computeCategoryAwareDiscount(items, menu = [], categories = [], 
   return disc
 }
 
+/** Current qty in cart for a category (excludes flavour helper lines). */
+export function countCategoryQtyInCart(items, menu = [], categories = [], categoryName) {
+  const target = String(categoryName || '').trim().toLowerCase()
+  if (!target) return 0
+  let qty = 0
+  for (const it of (items || [])) {
+    if (it?.mods && (it.mods.underDeal || it.mods.pizzaFlavour)) continue
+    const m = (menu || []).find(x => String(x.id) === String(it.itemId))
+    const catName = resolveItemCategoryName(m, it)
+    if (String(catName || '').trim().toLowerCase() !== target) continue
+    qty += Number(it.qty || 0)
+  }
+  return qty
+}
+
+/**
+ * Block adding to cart when category maxItems would be exceeded.
+ * addQty = how many units are about to be added (default 1).
+ */
+export function canAddItemToCart(items, menu = [], categories = [], itemId, addQty = 1) {
+  const m = (menu || []).find(x => String(x.id) === String(itemId))
+  if (!m) return { ok: true }
+  const catName = resolveItemCategoryName(m)
+  const cat = findCategoryByName(categories, catName)
+  const max = Number(cat?.maxItems || 0)
+  if (max <= 0) return { ok: true }
+  const current = countCategoryQtyInCart(items, menu, categories, catName)
+  const next = current + Number(addQty || 0)
+  if (next > max) {
+    return {
+      ok: false,
+      message: `${cat.name || catName}: max ${max} item${max === 1 ? '' : 's'} allowed (already ${current})`,
+    }
+  }
+  return { ok: true }
+}
+
 /** Validate min/max item qty per category before KOT. */
 export function validateCategorySelectionLimits(items, menu = [], categories = []) {
   const counts = new Map() // key -> { name, qty, min, max }

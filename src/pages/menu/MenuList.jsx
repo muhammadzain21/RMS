@@ -378,7 +378,7 @@ export default function MenuList() {
  }
  }
 
- const onDelete = async (rowOrId) => {
+ const onDelete = async (rowOrId, { fromEditDialog = false } = {}) => {
  const row = typeof rowOrId === 'object' ? rowOrId : items.find(r => r.id === rowOrId)
  const id = row?.id || rowOrId
  const isShared = row?.isShared !== false && !row?.isBranchOnly
@@ -389,7 +389,7 @@ export default function MenuList() {
   : 'Delete this branch-only menu item?'
 
  const confirmed = await confirm({ title: 'Delete Menu Item', message })
- if (!confirmed) return
+ if (!confirmed) return false
 
  try {
  setLoading(true)
@@ -401,10 +401,15 @@ export default function MenuList() {
  const body = await res.json().catch(() => ({}))
  if (!res.ok) throw new Error(body.error || `Delete failed (${res.status})`)
  dispatch({ type: 'DELETE_MENU', payload: { id } })
+ if (fromEditDialog) {
+  setEditRows((prev) => prev.filter((r) => String(r.id) !== String(id)))
+ }
  toast.success(isShared ? 'Deleted from all branches' : 'Menu item deleted')
  await refreshMenu()
+ return true
  } catch (e) {
  toast.error(e?.message || 'Delete failed')
+ return false
  } finally {
  setLoading(false)
  }
@@ -470,6 +475,7 @@ export default function MenuList() {
  loading={loading}
  onClose={() => { setShowEditDialog(false); setEditRows([]); setEditingCategory('') }}
  onSubmit={onSubmit}
+ onDeleteRow={(row) => onDelete(row, { fromEditDialog: true })}
 />
 <MenuAddDialog
  open={showAddDialog}

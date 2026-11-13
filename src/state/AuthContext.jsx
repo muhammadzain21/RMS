@@ -125,36 +125,54 @@ export function AuthProvider({ children }) {
       const data = await res.json().catch(() => ({}))
       return { res, data }
     }
+    const local = 'http://localhost:5000'
+    const resetToLocal = () => {
+      try {
+        if (typeof window.setAPIBase === 'function') window.setAPIBase(local)
+        else {
+          localStorage.setItem('server_url', local)
+          window.API_BASE = local
+          window.dispatchEvent(new CustomEvent('server_url_changed', { detail: local }))
+        }
+      } catch {}
+    }
+    const tryLocalFallback = async (currentBase) => {
+      const current = String(currentBase || '').replace(/\/+$/, '')
+      if (current === local || /localhost|127\.0\.0\.1/i.test(current)) return null
+      const isDev = !!import.meta.env.DEV
+      if (!isDev) return null
+      try {
+        const retry = await tryLogin(local)
+        if (retry.res.ok) {
+          resetToLocal()
+          return retry
+        }
+      } catch {}
+      return null
+    }
     try {
       let base = getAPI()
-      let { res, data } = await tryLogin(base)
-      // Electron DEV only: if no intentional remote URL and local works, fall back once.
-      // Never overwrite a user-saved LAN/online URL from the Administrator panel.
-      if (!res.ok) {
-        const local = 'http://localhost:5000'
-        const current = String(base || '').replace(/\/+$/, '')
-        let saved = ''
-        try { saved = String(localStorage.getItem('server_url') || '').replace(/\/+$/, '') } catch {}
-        const isElectron = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent)
-        const isDev = !!import.meta.env.DEV
-        const userPinnedRemote = saved && saved !== local && !/localhost|127\.0\.0\.1/i.test(saved)
-        if (isElectron && isDev && !userPinnedRemote && current !== local) {
-          try {
-            const retry = await tryLogin(local)
-            if (retry.res.ok) {
-              base = local
-              res = retry.res
-              data = retry.data
-              try {
-                if (typeof window.setAPIBase === 'function') window.setAPIBase(local)
-                else {
-                  localStorage.setItem('server_url', local)
-                  window.API_BASE = local
-                  window.dispatchEvent(new CustomEvent('server_url_changed', { detail: local }))
-                }
-              } catch {}
-            }
-          } catch {}
+      let res
+      let data
+      try {
+        ;({ res, data } = await tryLogin(base))
+      } catch {
+        // Online/LAN URL unreachable (CORS, DNS, offline) — snap back to local in DEV
+        const fallback = await tryLocalFallback(base)
+        if (fallback) {
+          base = local
+          res = fallback.res
+          data = fallback.data
+        } else {
+          throw new Error('Cannot reach server')
+        }
+      }
+      if (res && !res.ok) {
+        const fallback = await tryLocalFallback(base)
+        if (fallback) {
+          base = local
+          res = fallback.res
+          data = fallback.data
         }
       }
       if (res.ok && data?.token && data?.user) {

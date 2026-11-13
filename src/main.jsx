@@ -167,7 +167,35 @@ setupNativeChrome()
         }
       } catch {}
     }
-    pullClientConfig(strip(g.API_BASE) || guessBase)
+    // DEV: if a saved online/LAN URL is unreachable, snap back to local so offline keeps working
+    const ensureLocalWhenRemoteDown = async () => {
+      if (!import.meta.env.DEV) return
+      const current = strip(g.API_BASE || savedBase)
+      if (!current || isLocal(current)) {
+        pullClientConfig(current || guessBase)
+        return
+      }
+      const local = 'http://localhost:5000'
+      let remoteOk = false
+      try {
+        const r = await orig(`${current}/api/health`, { cache: 'no-store' })
+        remoteOk = !!r?.ok
+      } catch {}
+      if (remoteOk) {
+        pullClientConfig(current)
+        return
+      }
+      try {
+        const l = await orig(`${local}/api/health`, { cache: 'no-store' })
+        if (l?.ok) {
+          g.setAPIBase(local)
+          pullClientConfig(local)
+          return
+        }
+      } catch {}
+      pullClientConfig(current || guessBase)
+    }
+    ensureLocalWhenRemoteDown()
   }catch{}
 })()
 

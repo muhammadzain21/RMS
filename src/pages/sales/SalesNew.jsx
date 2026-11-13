@@ -7,6 +7,7 @@ import {
   computeCategoryAwareSubtotal,
   computeCategoryAwareDiscount,
   validateCategorySelectionLimits,
+  canAddItemToCart,
   resolvePersistUnitPrice,
   findCategoryByName,
   resolveItemCategoryName,
@@ -97,6 +98,11 @@ export default function SalesNew() {
   // Cart state
   const [items, setItems] = useState([]) // [{itemId, qty, mods?, custom?}]
   const addToCart = (itemId) => {
+    const check = canAddItemToCart(items, menu, state.categories || [], itemId, 1)
+    if (!check.ok) {
+      toast.error(check.message || 'Category max items reached')
+      return
+    }
     setItems(prev => {
       const idx = prev.findIndex(it => it.itemId === itemId)
       return idx >= 0
@@ -105,9 +111,18 @@ export default function SalesNew() {
     })
   }
   const updateItem = (idx, patch) => setItems(prev => prev.map((it,i)=> i===idx ? { ...it, ...patch } : it))
-  const incQty = (idx) => setItems(prev => prev.map((it, i) => (
-    i === idx ? { ...it, qty: Number(it?.qty || 0) + 1 } : it
-  )))
+  const incQty = (idx) => {
+    const line = items[idx]
+    if (!line) return
+    const check = canAddItemToCart(items, menu, state.categories || [], line.itemId, 1)
+    if (!check.ok) {
+      toast.error(check.message || 'Category max items reached')
+      return
+    }
+    setItems(prev => prev.map((it, i) => (
+      i === idx ? { ...it, qty: Number(it?.qty || 0) + 1 } : it
+    )))
+  }
   const decQty = (idx) => setItems(prev => prev.map((it, i) => (
     i === idx ? { ...it, qty: Math.max(1, Number(it?.qty || 1) - 1) } : it
   )))

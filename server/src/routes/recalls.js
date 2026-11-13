@@ -75,6 +75,7 @@ router.get('/', async (req, res, next) => {
         { tokenNo: rx },
         { tableNo: rx },
         { orderType: rx },
+        { remarks: rx },
         { 'customer.name': rx },
         { 'customer.phone': rx },
         { 'customer.address': rx },

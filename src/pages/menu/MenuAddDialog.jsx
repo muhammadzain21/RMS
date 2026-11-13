@@ -53,7 +53,7 @@ export default function MenuAddDialog({
       className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-3"
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.() }}
     >
-      <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-[95vw] max-h-[90vh] overflow-y-auto p-4 sm:p-5">
+      <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-5">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Add Menu Items</h3>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">
@@ -67,11 +67,11 @@ export default function MenuAddDialog({
 
         <form onSubmit={onSubmit} className="space-y-3">
           <div className="overflow-x-auto rounded-xl border border-orange-200 dark:border-orange-700">
-            <table className="min-w-[1180px] w-full text-sm">
+            <table className="min-w-[900px] w-full text-sm">
               <thead className="bg-orange-50 dark:bg-orange-950/40">
                 <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-orange-800 dark:text-orange-200">
-                  <th className="p-1.5 min-w-[280px] w-[32%]">Name</th>
-                  <th className="p-1.5 min-w-[160px] w-[16%]">Category</th>
+                  <th className="p-1.5 min-w-[140px] w-[16%]">Name</th>
+                  <th className="p-1.5 min-w-[140px] w-[14%]">Category</th>
                   <th className="p-1.5 w-24">Price</th>
                   <th className="p-1.5 w-28">Foodpanda</th>
                   <th className="p-1.5 w-24">Discount</th>

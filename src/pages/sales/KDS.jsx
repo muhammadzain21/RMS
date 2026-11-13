@@ -12,6 +12,7 @@ import DatePicker from '../../components/DatePicker.jsx'
 import { previewHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '../../utils/reportDoc'
 import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import { groupItemsByCategory } from './utils.js'
+import { playKdsAlert } from './kdsSounds.js'
 
 const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
@@ -94,10 +95,9 @@ export default function KDS() {
   const [loading, setLoading] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(true)
-  const [lastNewCount, setLastNewCount] = useState(0)
   // Mobile: show one kanban column at a time
   const [mobileCol, setMobileCol] = useState('active')
-  const audioRef = useRef(null)
+  const knownActiveIdsRef = useRef(null) // null = first load (don't beep)
 
   useEffect(() => {
     if (!dateTouched && businessDate) setSelectedDate(businessDate)
@@ -126,24 +126,35 @@ export default function KDS() {
           ? list.filter(k => String(k.date || '').slice(0, 10) === String(selectedDate))
           : list
         setKots(filtered)
-        const activeCount = filtered.filter(k => ACTIVE_STATUSES.has(k.status || 'new')).length
-        if (activeCount > lastNewCount && lastNewCount > 0 && soundOn) {
-          playBell()
+        const activeIds = new Set(
+          filtered
+            .filter((k) => ACTIVE_STATUSES.has(k.status || 'new'))
+            .map((k) => String(k.id || k._id))
+        )
+        const prev = knownActiveIdsRef.current
+        if (prev) {
+          let newOrders = 0
+          let completedOrders = 0
+          for (const id of activeIds) {
+            if (!prev.has(id)) newOrders++
+          }
+          for (const id of prev) {
+            if (!activeIds.has(id)) completedOrders++
+          }
+          if (soundOn) {
+            if (newOrders > 0) playKdsAlert('new')
+            else if (completedOrders > 0) playKdsAlert('completed')
+          }
         }
-        setLastNewCount(activeCount)
+        knownActiveIdsRef.current = activeIds
       }
     } catch {}
     if (!silent) setLoading(false)
-  }, [authHeaders, selectedDate, lastNewCount, soundOn])
+  }, [authHeaders, selectedDate, soundOn])
 
-  const playBell = useCallback(() => {
-    try {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0
-        audioRef.current.play().catch(() => {})
-      }
-    } catch {}
-  }, [])
+  useEffect(() => {
+    knownActiveIdsRef.current = null
+  }, [selectedDate])
 
   useEffect(() => {
     loadKots()
@@ -179,6 +190,17 @@ export default function KDS() {
             completedAt: status === 'completed' ? new Date().toISOString() : null,
           }
         }))
+        if (status === 'completed') {
+          try {
+            const sid = String(id)
+            if (knownActiveIdsRef.current?.has(sid)) {
+              const next = new Set(knownActiveIdsRef.current)
+              next.delete(sid)
+              knownActiveIdsRef.current = next
+            }
+          } catch {}
+          if (soundOn) playKdsAlert('completed')
+        }
       } else {
         toast.error('Failed to update order status')
       }
@@ -351,11 +373,6 @@ export default function KDS() {
 
   return (
     <div className="min-h-[calc(100dvh-4rem)] flex flex-col bg-gray-100 dark:bg-gray-950 -mx-4 sm:mx-0">
-      {/* Hidden audio element for bell sound */}
-      <audio ref={audioRef} preload="auto">
-        <source src="data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQ==" type="audio/wav" />
-      </audio>
-
       {/* Header bar */}
       <div className="flex-shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-3 py-2 sm:px-4 sm:py-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -399,7 +416,14 @@ export default function KDS() {
 
             {/* Sound toggle */}
             <button
-              onClick={() => setSoundOn(s => !s)}
+              onClick={() => {
+                const next = !soundOn
+                setSoundOn(next)
+                // Unlock audio/speech on user gesture (browser autoplay policy)
+                if (next) {
+                  try { playKdsAlert('new') } catch {}
+                }
+              }}
               title={soundOn ? 'Sound on' : 'Sound off'}
               className={`w-10 h-10 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center transition-colors ${soundOn ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}
             >

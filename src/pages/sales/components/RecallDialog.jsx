@@ -9,7 +9,7 @@ const ORDER_STATUS_CHIP = {
   completed: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
 }
 const ORDER_STATUS_LABEL = {
-  ordered: 'Ordered', new: 'KOT Sent', preparing: 'Preparing', ready: 'Ready', completed: 'Served',
+  ordered: 'Ordered', new: 'KOT Sent', preparing: 'Preparing', ready: 'Ready', completed: 'Complete',
 }
 
 export default function RecallDialog({
@@ -99,7 +99,8 @@ export default function RecallDialog({
  String(r.customer?.name||'').toLowerCase().includes(q) ||
  String(r.customer?.address||'').toLowerCase().includes(q) ||
  String(r.tableNo||'').toLowerCase().includes(q) ||
- String(r.orderType||'').toLowerCase().includes(q)
+ String(r.orderType||'').toLowerCase().includes(q) ||
+ String(r.remarks||'').toLowerCase().includes(q)
  )
  }
  return list
@@ -116,7 +117,7 @@ export default function RecallDialog({
 
  if (!open) return null
  return (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="w-full max-w-6xl max-h-[85vh] bg-white dark:bg-gray-900 border rounded-xl p-4 flex flex-col"><div className="flex items-start justify-between gap-3"><div><div className="text-xl font-semibold dark:text-gray-100">Select Order</div><div className="text-xs text-gray-500 dark:text-gray-400">Recall, pay, or print customer bill</div></div><button onClick={onClose} className="text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"></button></div><div className="mt-3 grid grid-cols-12 gap-3 items-end"><div className="col-span-12 sm:col-span-4"><div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Choose Waiters:</div><select value={waiterFilter} onChange={e=>setWaiterFilter(e.target.value)} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 dark:border-gray-600"><option value="">All Waiters</option>
+ <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="w-full max-w-7xl max-h-[85vh] bg-white dark:bg-gray-900 border rounded-xl p-4 flex flex-col"><div className="flex items-start justify-between gap-3"><div><div className="text-xl font-semibold dark:text-gray-100">Select Order</div><div className="text-xs text-gray-500 dark:text-gray-400">Recall, pay, or print customer bill</div></div><button onClick={onClose} className="text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"></button></div><div className="mt-3 grid grid-cols-12 gap-3 items-end"><div className="col-span-12 sm:col-span-4"><div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Choose Waiters:</div><select value={waiterFilter} onChange={e=>setWaiterFilter(e.target.value)} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 dark:border-gray-600"><option value="">All Waiters</option>
  {(staff||[]).map(w => (
  <option key={w.id} value={w.id}>{w.name}</option>
  ))}
@@ -133,13 +134,15 @@ export default function RecallDialog({
  {showLoading && (
  <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 z-10 flex items-center justify-center"><span className="text-gray-500">Loading...</span></div>
  )}
- <table className="min-w-full text-sm"><thead><tr className="text-left bg-gray-50 dark:bg-gray-800 sticky top-0"><th className="px-3 py-2 dark:text-gray-300">ORDER TIME</th><th className="px-3 py-2 dark:text-gray-300">TOKEN NO</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER NAME</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER ADDRESS</th><th className="px-3 py-2 dark:text-gray-300">WAITER</th><th className="px-3 py-2 dark:text-gray-300">TABLE</th><th className="px-3 py-2 dark:text-gray-300">FLOOR</th><th className="px-3 py-2 dark:text-gray-300">ORDER TYPE</th><th className="px-3 py-2 dark:text-gray-300">STATUS</th><th className="px-3 py-2 dark:text-gray-300">RECALL</th><th className="px-3 py-2 dark:text-gray-300">PAY</th><th className="px-3 py-2 dark:text-gray-300">TOTAL AMOUNT</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER BILL</th></tr></thead><tbody>
+ <table className="min-w-full text-sm"><thead><tr className="text-left bg-gray-50 dark:bg-gray-800 sticky top-0"><th className="px-3 py-2 dark:text-gray-300">ORDER TIME</th><th className="px-3 py-2 dark:text-gray-300">TOKEN NO</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER NAME</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER ADDRESS</th><th className="px-3 py-2 dark:text-gray-300">WAITER</th><th className="px-3 py-2 dark:text-gray-300">TABLE / FLOOR</th><th className="px-3 py-2 dark:text-gray-300">ORDER TYPE</th><th className="px-3 py-2 dark:text-gray-300">REMARKS</th><th className="px-3 py-2 dark:text-gray-300">STATUS</th><th className="px-3 py-2 dark:text-gray-300">RECALL</th><th className="px-3 py-2 dark:text-gray-300">PAY</th><th className="px-3 py-2 dark:text-gray-300">TOTAL AMOUNT</th><th className="px-3 py-2 dark:text-gray-300">CUSTOMER BILL</th></tr></thead><tbody>
  {filtered.map((r) => (
- <tr key={r.id} className="border-t dark:border-gray-700"><td className="px-3 py-2 dark:text-gray-300">{r.createdAt ? new Date(r.createdAt).toLocaleString() : '-'}</td><td className="px-3 py-2 font-medium text-blue-600 dark:text-blue-400">{r.tokenNo || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.customer?.name || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.customer?.address || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.waiterName || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.tableNo || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{(() => {
- if (!r.tableNo) return '-'
- const tableObj = tables.find(t => (t.name || t.label || t.code || String(t)) === r.tableNo)
- return tableObj?.floor || '-'
- })()}</td><td className="px-3 py-2 dark:text-gray-300">{r.orderType || '-'}</td><td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ORDER_STATUS_CHIP[r.orderStatus] || ORDER_STATUS_CHIP.ordered}`}>{ORDER_STATUS_LABEL[r.orderStatus] || 'Ordered'}</span></td><td className="px-3 py-2"><button className="px-2 py-1 rounded bg-blue-600 text-white" onClick={()=>onRecall(r)} title="Recall">⟲</button></td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-green-600 text-white text-xs font-medium" onClick={()=>onPay(r)} title="Pay">Pay</button></td><td className="px-3 py-2 dark:text-gray-300">{Number(r.totalAmount||0).toLocaleString()}</td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-sky-600 text-white text-xs font-medium" onClick={()=>onCustomerBill(r)} title="Customer Bill">Bill</button></td></tr>
+ <tr key={r.id} className="border-t dark:border-gray-700"><td className="px-3 py-2 dark:text-gray-300">{r.createdAt ? new Date(r.createdAt).toLocaleString() : '-'}</td><td className="px-3 py-2 font-medium text-blue-600 dark:text-blue-400">{r.tokenNo || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.customer?.name || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.customer?.address || '-'}</td><td className="px-3 py-2 dark:text-gray-300">{r.waiterName || '-'}</td><td className="px-3 py-2 dark:text-gray-300 whitespace-nowrap">{(() => {
+ const tableNo = r.tableNo || ''
+ if (!tableNo) return '-'
+ const tableObj = tables.find(t => (t.name || t.label || t.code || String(t)) === tableNo)
+ const floor = tableObj?.floor
+ return floor ? `${tableNo} · ${floor}` : tableNo
+ })()}</td><td className="px-3 py-2 dark:text-gray-300">{r.orderType || '-'}</td><td className="px-3 py-2 dark:text-gray-300 max-w-[180px]"><span className="line-clamp-2" title={r.remarks || ''}>{r.remarks || '—'}</span></td><td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ORDER_STATUS_CHIP[r.orderStatus] || ORDER_STATUS_CHIP.ordered}`}>{ORDER_STATUS_LABEL[r.orderStatus] || 'Ordered'}</span></td><td className="px-3 py-2"><button className="px-2 py-1 rounded bg-blue-600 text-white" onClick={()=>onRecall(r)} title="Recall">⟲</button></td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-green-600 text-white text-xs font-medium" onClick={()=>onPay(r)} title="Pay">Pay</button></td><td className="px-3 py-2 dark:text-gray-300">{Number(r.totalAmount||0).toLocaleString()}</td><td className="px-3 py-2"><button className="px-3 py-1 rounded bg-sky-600 text-white text-xs font-medium" onClick={()=>onCustomerBill(r)} title="Customer Bill">Bill</button></td></tr>
  ))}
  {!showLoading && hasLoaded && filtered.length === 0 && (
  <tr><td className="px-3 py-8 text-center text-gray-500 dark:text-gray-400" colSpan={13}>No recalled orders</td></tr>
