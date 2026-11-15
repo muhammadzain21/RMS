@@ -27,6 +27,23 @@ import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport
 
 const PIE_COLORS = ['#3b82f6', '#6366f1', '#0ea5e9', '#10b981', '#f59e0b']
 
+const ORDER_STATUS_CHIP = {
+  ordered: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
+  new: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  preparing: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  ready: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  completed: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  held: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+}
+const ORDER_STATUS_LABEL = {
+  ordered: 'Ordered',
+  new: 'KOT Sent',
+  preparing: 'Preparing',
+  ready: 'Ready',
+  completed: 'Kitchen Done',
+  held: 'Held',
+}
+
 function num(v) {
   return Number(v || 0)
 }
@@ -215,6 +232,43 @@ export default function Dashboard() {
   const completedCount = daySales.length
   const pendingCount = pendingRecalls.length + pendingHelds.length
   const totalOrders = completedCount + pendingCount
+
+  // Open recalls + helds currently in progress (unpaid / not settled)
+  const currentOrders = useMemo(() => {
+    const recalls = (Array.isArray(state.recalls) ? state.recalls : [])
+      .filter(r => {
+        const tok = String(r.tokenNo || '')
+        if (tok && saleTokenSet.has(tok)) return false
+        return true
+      })
+      .map(r => ({
+        kind: 'recall',
+        id: String(r.id || r._id || ''),
+        createdAt: Number(r.createdAt || 0),
+        date: r.date || tsToDateStr(r.createdAt),
+        tokenNo: r.tokenNo || '',
+        orderType: r.orderType || '',
+        tableNo: r.tableNo || '',
+        waiterName: r.waiterName || '',
+        customer: r.customer?.name || '',
+        status: r.orderStatus || 'ordered',
+        total: num(r.totalAmount),
+      }))
+    const helds = (Array.isArray(state.helds) ? state.helds : []).map(h => ({
+      kind: 'held',
+      id: String(h.id || h._id || ''),
+      createdAt: Number(h.createdAt || 0),
+      date: tsToDateStr(h.createdAt),
+      tokenNo: h.tokenNo || '',
+      orderType: h.orderType || '',
+      tableNo: h.tableNo || '',
+      waiterName: h.waiterName || '',
+      customer: h.customer?.name || '',
+      status: 'held',
+      total: heldTotal(h, lineTotal),
+    }))
+    return [...recalls, ...helds].sort((a, b) => b.createdAt - a.createdAt)
+  }, [state.recalls, state.helds, saleTokenSet, lineTotal])
 
   const customerStats = useMemo(() => {
     const beforeKeys = new Set()
@@ -669,6 +723,50 @@ export default function Dashboard() {
           <StatCard key={card.title} {...card} />
         ))}
       </div>
+
+      <Panel title={`Current Orders (${currentOrders.length})`} icon={Clock}>
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                {['Time', 'Token', 'Type', 'Table', 'Waiter', 'Customer', 'Status', 'Amount'].map(h => (
+                  <th key={h} className={h === 'Amount' ? 'text-right' : ''}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {currentOrders.map(o => (
+                <tr key={`${o.kind}-${o.id}`}>
+                  <td className="whitespace-nowrap text-xs">
+                    {o.createdAt ? format(new Date(o.createdAt), 'HH:mm') : '—'}
+                    {o.date && o.date !== selectedDate ? (
+                      <span className="ml-1 text-[var(--color-text-muted)]">({o.date})</span>
+                    ) : null}
+                  </td>
+                  <td className="font-semibold text-blue-600 dark:text-blue-400">{o.tokenNo || '—'}</td>
+                  <td>{o.orderType || '—'}</td>
+                  <td>{o.tableNo || '—'}</td>
+                  <td>{o.waiterName || '—'}</td>
+                  <td className="max-w-[10rem] truncate">{o.customer || '—'}</td>
+                  <td>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ORDER_STATUS_CHIP[o.status] || ORDER_STATUS_CHIP.ordered}`}>
+                      {ORDER_STATUS_LABEL[o.status] || o.status || 'Ordered'}
+                    </span>
+                  </td>
+                  <td className="text-right font-semibold">{fmt(o.total)}</td>
+                </tr>
+              ))}
+              {currentOrders.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center text-[var(--color-text-muted)] py-8">
+                    No open recalls or in-process orders
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {customerCards.map(card => (

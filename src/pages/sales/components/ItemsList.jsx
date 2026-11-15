@@ -6,11 +6,48 @@ export default function ItemsList({
  onAdd, // legacy
  addToCart, // preferred
  tilesPerRow = 4,
+ subcategories = [],
+ onSelectSubcategory,
 }) {
  const gridStyle = { gridTemplateColumns: `repeat(${tilesPerRow}, minmax(0, 1fr))` }
+ const showingSubs = !selectedCategory && Array.isArray(subcategories) && subcategories.length > 0
+
  return (
  <div className="h-[26vh] min-h-[140px] lg:h-auto lg:flex-1 lg:min-h-0 border rounded-lg bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-gray-900 dark:border-gray-600 p-2 overflow-y-auto shadow-sm">
- {selectedCategory ? (
+ {showingSubs ? (
+ <div className="grid gap-2" style={gridStyle}>
+ {subcategories.map((cat, i) => {
+ const name = String(cat?.name || '')
+ const imageUrl = cat?.imageUrl || ''
+ return (
+ <div key={cat.id || cat._id || i} className="flex flex-col items-center gap-0.5">
+ <button
+ type="button"
+ onClick={() => onSelectSubcategory?.(cat)}
+ className="w-full h-[80px] sm:h-[92px] md:h-[104px] rounded-lg border-2 border-sky-200 hover:border-sky-400 hover:bg-sky-50 dark:bg-gray-800 dark:border-sky-700 dark:hover:bg-sky-900/40 shadow-sm transition-all duration-150 hover:shadow-md hover:scale-105 active:scale-95 overflow-hidden p-1"
+ title={name}
+ >
+ {imageUrl ? (
+ <img
+ src={imageUrl}
+ alt={name}
+ className="w-full h-full object-cover"
+ onError={(e) => { e.target.style.display = 'none' }}
+ />
+ ) : (
+ <div className="w-full h-full flex items-center justify-center font-bold text-xs sm:text-sm md:text-base leading-tight text-center break-words text-sky-900 dark:text-sky-100">
+ {name}
+ </div>
+ )}
+ </button>
+ {imageUrl && (
+ <span className="font-bold text-xs sm:text-sm md:text-base leading-tight break-words text-center text-sky-900 dark:text-sky-100 w-full">{name}</span>
+ )}
+ </div>
+ )
+ })}
+ </div>
+ ) : selectedCategory ? (
  itemsInCategory.length > 0 ? (
  <div className="grid gap-2" style={gridStyle}>
  {itemsInCategory.map(m => {

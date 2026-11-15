@@ -152,6 +152,9 @@ function normalizeBody(body, req, { isCreate = false } = {}) {
     description,
     accountHead,
   }
+  if (body.imageUrl !== undefined) {
+    out.imageUrl = String(body.imageUrl || '')
+  }
   if (isCreate) {
     out.userId = String(req.user?.id || req.user?._id || '')
     out.userName = who(req)
@@ -159,6 +162,7 @@ function normalizeBody(body, req, { isCreate = false } = {}) {
     out.approvedBy = ''
     out.approvedByUserId = ''
     out.approvedAt = undefined
+    if (out.imageUrl === undefined) out.imageUrl = String(body.imageUrl || '')
   }
   if (body.branchId) out.branchId = String(body.branchId)
   return out

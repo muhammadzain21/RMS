@@ -111,6 +111,38 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       })
     }
 
+    // All expenses for this business date must be approved before day close
+    const Expense = (await import('../models/Expense.js')).default
+    const pendingExpenseFilter = {
+      date,
+      branchId: branchIdForClose,
+      $or: [
+        { status: 'pending' },
+        { status: { $exists: false } },
+        { status: null },
+        { status: '' },
+      ],
+    }
+    const pendingExpenseCount = await Expense.countDocuments(pendingExpenseFilter)
+    if (pendingExpenseCount > 0) {
+      const pendingSamples = await Expense.find(pendingExpenseFilter)
+        .select('date amount expenseHead category status')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean()
+      return res.status(400).json({
+        error: `Approve ${pendingExpenseCount} pending expense(s) before day close`,
+        code: 'PENDING_EXPENSES',
+        count: pendingExpenseCount,
+        expenses: pendingSamples.map(e => ({
+          id: String(e._id),
+          date: e.date,
+          amount: e.amount,
+          head: e.expenseHead || e.category || '',
+        })),
+      })
+    }
+
     const rec = await DayClose.create(stampBranchId(req, {
       date,
       openingCash: Number(body.openingCash||0),

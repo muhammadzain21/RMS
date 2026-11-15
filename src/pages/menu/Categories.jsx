@@ -18,7 +18,7 @@ export default function Categories() {
  const { confirm, ConfirmDialog } = useConfirm()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
- const [form, setForm] = useState({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0, price: 0, minItems: 0, maxItems: 0 })
+ const [form, setForm] = useState({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0, price: 0, minItems: 0, maxItems: 0, parentCategoryId: '', bundleItems: [], bundleSlots: [] })
  const [editingId, setEditingId] = useState(null)
  const [editingMeta, setEditingMeta] = useState(null)
  const [loading, setLoading] = useState(false)
@@ -72,13 +72,19 @@ export default function Categories() {
  const pages = Math.ceil(filteredItems.length / limit) || 1
  const paginatedItems = filteredItems.slice((page - 1) * limit, page * limit)
 
- const blankRow = () => ({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0, price: 0, minItems: 0, maxItems: 0 })
+ const blankRow = () => ({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0, price: 0, minItems: 0, maxItems: 0, parentCategoryId: '', bundleItems: [], bundleSlots: [] })
  const reset = () => {
  setEditingId(null)
  setEditingMeta(null)
- setForm({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0, price: 0, minItems: 0, maxItems: 0 })
+ setForm({ name: '', showOnPos: true, active: true, imageUrl: '', sortOrder: 0, discount: 0, price: 0, minItems: 0, maxItems: 0, parentCategoryId: '', bundleItems: [], bundleSlots: [] })
  setMultiRows([])
  setShowDialog(false)
+ }
+ const menuItems = state.menu || []
+ const parentOptions = useMemo(() => (items || []).filter(c => String(c.id) !== String(editingId || '')), [items, editingId])
+ const catNameById = (id) => {
+  const c = (items || []).find(x => String(x.id || x._id) === String(id))
+  return c?.name || ''
  }
  const onEdit = (row) => {
  setEditingId(row.id)
@@ -98,6 +104,20 @@ export default function Categories() {
  price: Number(row.price || 0),
  minItems: Number(row.minItems || 0),
  maxItems: Number(row.maxItems || 0),
+ parentCategoryId: String(row.parentCategoryId || ''),
+ bundleItems: Array.isArray(row.bundleItems) ? row.bundleItems.map(b => ({
+  itemId: String(b.itemId || ''),
+  name: String(b.name || ''),
+  qty: Number(b.qty || 1),
+  maxQty: Number(b.maxQty || 0),
+ })) : [],
+ bundleSlots: Array.isArray(row.bundleSlots) ? row.bundleSlots.map(s => ({
+  categoryId: String(s.categoryId || ''),
+  categoryName: String(s.categoryName || ''),
+  label: String(s.label || ''),
+  minItems: Number(s.minItems || 0),
+  maxItems: Number(s.maxItems || 0),
+ })) : [],
  })
  setShowDialog(true)
  }
@@ -364,6 +384,109 @@ export default function Categories() {
  {form.imageUrl && (
  <div className="mt-2"><img src={form.imageUrl} alt="Category preview" className="h-20 w-auto rounded-lg border-2 border-purple-200 dark:border-purple-700 shadow-sm" /></div>
  )}
+ <div>
+  <label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1.5">Main category (parent)</label>
+  <select
+   className="w-full px-4 py-2.5 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500"
+   value={form.parentCategoryId || ''}
+   onChange={e => setForm(v => ({ ...v, parentCategoryId: e.target.value }))}
+  >
+   <option value="">— None (top-level / main) —</option>
+   {parentOptions.map(c => (
+    <option key={c.id} value={c.id}>{c.name}</option>
+   ))}
+  </select>
+  <p className="mt-1 text-[10px] text-slate-500">e.g. Deal1’s parent = Deal. Linked categories like Small Pizzas stay top-level so they remain sellable alone.</p>
+ </div>
+ <div className="rounded-xl border-2 border-emerald-200 dark:border-emerald-800 p-3 space-y-3 bg-emerald-50/40 dark:bg-emerald-950/20">
+  <div className="text-sm font-bold text-emerald-800 dark:text-emerald-200">Deal composition (optional)</div>
+  <p className="text-[10px] text-slate-500">Included menu items + linked subcategory slots with min/max. POS opens a builder; bill uses this category’s Package Price.</p>
+  <div className="space-y-2">
+   <div className="flex items-center justify-between">
+    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Included items</span>
+    <button type="button" className="text-xs font-semibold text-emerald-700" onClick={() => setForm(v => ({ ...v, bundleItems: [...(v.bundleItems || []), { itemId: '', name: '', qty: 1, maxQty: 0 }] }))}>+ Add item</button>
+   </div>
+   {(form.bundleItems || []).map((row, idx) => (
+    <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+     <div className="col-span-12 sm:col-span-6">
+      <label className="text-[10px] font-semibold text-slate-500">Menu item</label>
+      <select
+       className="w-full px-2 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800"
+       value={row.itemId}
+       onChange={e => {
+        const id = e.target.value
+        const m = menuItems.find(x => String(x.id) === String(id))
+        setForm(v => ({
+         ...v,
+         bundleItems: v.bundleItems.map((r, i) => i === idx ? { ...r, itemId: id, name: m?.name || '' } : r),
+        }))
+       }}
+      >
+       <option value="">Select…</option>
+       {menuItems.filter(m => m.active !== false).map(m => (
+        <option key={m.id} value={m.id}>{m.name}{m.category ? ` (${m.category})` : ''}</option>
+       ))}
+      </select>
+     </div>
+     <div className="col-span-4 sm:col-span-2">
+      <label className="text-[10px] font-semibold text-slate-500">Qty</label>
+      <input type="number" min={1} className="w-full px-2 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800" value={row.qty} onChange={e => setForm(v => ({ ...v, bundleItems: v.bundleItems.map((r, i) => i === idx ? { ...r, qty: e.target.value } : r) }))} />
+     </div>
+     <div className="col-span-4 sm:col-span-2">
+      <label className="text-[10px] font-semibold text-slate-500">Max qty</label>
+      <input type="number" min={0} className="w-full px-2 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800" value={row.maxQty} onChange={e => setForm(v => ({ ...v, bundleItems: v.bundleItems.map((r, i) => i === idx ? { ...r, maxQty: e.target.value } : r) }))} />
+     </div>
+     <div className="col-span-4 sm:col-span-2">
+      <button type="button" className="w-full py-2 text-xs text-rose-600 border rounded-lg" onClick={() => setForm(v => ({ ...v, bundleItems: v.bundleItems.filter((_, i) => i !== idx) }))}>Remove</button>
+     </div>
+    </div>
+   ))}
+  </div>
+  <div className="space-y-2">
+   <div className="flex items-center justify-between">
+    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Linked subcategory slots</span>
+    <button type="button" className="text-xs font-semibold text-emerald-700" onClick={() => setForm(v => ({ ...v, bundleSlots: [...(v.bundleSlots || []), { categoryId: '', categoryName: '', label: '', minItems: 1, maxItems: 1 }] }))}>+ Add slot</button>
+   </div>
+   {(form.bundleSlots || []).map((row, idx) => (
+    <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+     <div className="col-span-12 sm:col-span-4">
+      <label className="text-[10px] font-semibold text-slate-500">Category</label>
+      <select
+       className="w-full px-2 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800"
+       value={row.categoryId}
+       onChange={e => {
+        const id = e.target.value
+        setForm(v => ({
+         ...v,
+         bundleSlots: v.bundleSlots.map((r, i) => i === idx ? { ...r, categoryId: id, categoryName: catNameById(id) } : r),
+        }))
+       }}
+      >
+       <option value="">Select…</option>
+       {parentOptions.map(c => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+       ))}
+      </select>
+     </div>
+     <div className="col-span-6 sm:col-span-3">
+      <label className="text-[10px] font-semibold text-slate-500">Label</label>
+      <input className="w-full px-2 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800" placeholder="Small pizzas" value={row.label} onChange={e => setForm(v => ({ ...v, bundleSlots: v.bundleSlots.map((r, i) => i === idx ? { ...r, label: e.target.value } : r) }))} />
+     </div>
+     <div className="col-span-3 sm:col-span-1">
+      <label className="text-[10px] font-semibold text-slate-500">Min</label>
+      <input type="number" min={0} className="w-full px-2 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800" value={row.minItems} onChange={e => setForm(v => ({ ...v, bundleSlots: v.bundleSlots.map((r, i) => i === idx ? { ...r, minItems: e.target.value } : r) }))} />
+     </div>
+     <div className="col-span-3 sm:col-span-1">
+      <label className="text-[10px] font-semibold text-slate-500">Max</label>
+      <input type="number" min={0} className="w-full px-2 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800" value={row.maxItems} onChange={e => setForm(v => ({ ...v, bundleSlots: v.bundleSlots.map((r, i) => i === idx ? { ...r, maxItems: e.target.value } : r) }))} />
+     </div>
+     <div className="col-span-12 sm:col-span-3">
+      <button type="button" className="w-full py-2 text-xs text-rose-600 border rounded-lg" onClick={() => setForm(v => ({ ...v, bundleSlots: v.bundleSlots.filter((_, i) => i !== idx) }))}>Remove slot</button>
+     </div>
+    </div>
+   ))}
+  </div>
+ </div>
  {isAdminUser && editingMeta?.isShared && (
   <label className="inline-flex items-center gap-2 text-sm font-medium text-sky-800 dark:text-sky-200">
    <input type="checkbox" className="w-4 h-4 text-purple-500 rounded focus:ring-purple-500" checked={applyToAllBranches} onChange={e => setApplyToAllBranches(e.target.checked)} />
@@ -386,6 +509,7 @@ export default function Categories() {
  </div>
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
  <div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">Name</label><input placeholder="Category Name" className="w-full px-3 py-2 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-purple-500 transition-all" value={row.name} onChange={e=>setMultiRows(multiRows.map((r,i)=> i===idx?{...r,name:e.target.value}:r))} /></div>
+ <div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">Main category (parent)</label><select className="w-full px-3 py-2 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-purple-500" value={row.parentCategoryId || ''} onChange={e=>setMultiRows(multiRows.map((r,i)=> i===idx?{...r,parentCategoryId:e.target.value}:r))}><option value="">— None (top-level) —</option>{(items || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
  <div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">Sort Order</label><input type="number" placeholder="0" className="w-full px-3 py-2 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-purple-500 transition-all" value={row.sortOrder} onChange={e=>setMultiRows(multiRows.map((r,i)=> i===idx?{...r,sortOrder:e.target.value}:r))} /></div>
  <div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">Discount (%)</label><input type="number" min="0" max="100" placeholder="0" className="w-full px-3 py-2 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-purple-500 transition-all" value={row.discount} onChange={e=>setMultiRows(multiRows.map((r,i)=> i===idx?{...r,discount:e.target.value}:r))} /></div>
  <div><label className="block text-xs font-semibold text-purple-700 dark:text-purple-300 mb-1">Category Price</label><input type="number" min="0" step="1" placeholder="0" className="w-full px-3 py-2 border-2 border-purple-200 dark:border-purple-700 rounded-lg bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-purple-500 transition-all" value={row.price} onChange={e=>setMultiRows(multiRows.map((r,i)=> i===idx?{...r,price:e.target.value}:r))} /></div>
@@ -414,18 +538,18 @@ export default function Categories() {
  </div></div>
 )}
 
- <div className="border-2 border-purple-200 dark:border-purple-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Image</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Display on POS</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Active</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Min/Max</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Discount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Scope</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <div className="border-2 border-purple-200 dark:border-purple-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Name</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Parent</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Image</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Display on POS</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Active</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Price</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Min/Max</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Deal</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Discount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Scope</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedItems.map(r => (
- <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-600 dark:text-gray-400">{Number(r.sortOrder||0)}</td><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td><td className="p-3">
+ <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-600 dark:text-gray-400">{Number(r.sortOrder||0)}</td><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td><td className="p-3 text-xs text-gray-600 dark:text-gray-300">{r.parentCategoryId ? (catNameById(r.parentCategoryId) || '—') : <span className="text-gray-400">Main</span>}</td><td className="p-3">
  {r.imageUrl ? (
  <img src={r.imageUrl} alt={r.name} className="h-10 w-auto rounded border border-gray-200 dark:border-gray-600" />
  ) : (
  <span className="text-gray-400 text-xs">—</span>
  )}
- </td><td className="p-3">{r.showOnPos ? <span className="text-green-600 dark:text-green-400"> Yes</span> : <span className="text-gray-400"> No</span>}</td><td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td><td className="p-3">{Number(r.price||0) > 0 ? <span className="font-semibold text-emerald-700 dark:text-emerald-300">{Number(r.price)}</span> : <span className="text-gray-400 text-xs">Items</span>}</td><td className="p-3 text-xs text-gray-600 dark:text-gray-300">{(Number(r.minItems||0) > 0 || Number(r.maxItems||0) > 0) ? `${Number(r.minItems||0) || '—'} / ${Number(r.maxItems||0) || '—'}` : <span className="text-gray-400">—</span>}</td><td className="p-3">{Number(r.discount||0) > 0 ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200">{Number(r.discount)}%</span> : <span className="text-gray-400 text-xs">—</span>}</td><td className="p-3">{r.isBranchOnly ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800">Branch only</span> : r.hasOverride ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Branch override</span> : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">Shared</span>}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2 flex-wrap"><button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Edit</button>{r.hasOverride && (<button disabled={loading} onClick={()=>resetOverride(r)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-50">Reset</button>)}<button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
+ </td><td className="p-3">{r.showOnPos ? <span className="text-green-600 dark:text-green-400"> Yes</span> : <span className="text-gray-400"> No</span>}</td><td className="p-3">{r.active ? <span className="text-green-600 dark:text-green-400">Yes</span> : <span className="text-gray-400">No</span>}</td><td className="p-3">{Number(r.price||0) > 0 ? <span className="font-semibold text-emerald-700 dark:text-emerald-300">{Number(r.price)}</span> : <span className="text-gray-400 text-xs">Items</span>}</td><td className="p-3 text-xs text-gray-600 dark:text-gray-300">{(Number(r.minItems||0) > 0 || Number(r.maxItems||0) > 0) ? `${Number(r.minItems||0) || '—'} / ${Number(r.maxItems||0) || '—'}` : <span className="text-gray-400">—</span>}</td><td className="p-3 text-xs">{(Array.isArray(r.bundleItems) && r.bundleItems.length) || (Array.isArray(r.bundleSlots) && r.bundleSlots.length) ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">{(r.bundleItems?.length || 0)} item / {(r.bundleSlots?.length || 0)} slot</span> : <span className="text-gray-400">—</span>}</td><td className="p-3">{Number(r.discount||0) > 0 ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200">{Number(r.discount)}%</span> : <span className="text-gray-400 text-xs">—</span>}</td><td className="p-3">{r.isBranchOnly ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800">Branch only</span> : r.hasOverride ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Branch override</span> : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">Shared</span>}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2 flex-wrap"><button disabled={loading} onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Edit</button>{r.hasOverride && (<button disabled={loading} onClick={()=>resetOverride(r)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-50">Reset</button>)}<button disabled={loading} onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-rose-400 to-rose-500 text-white text-sm font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50">Delete</button></div></td></tr>
  ))}
  {!filteredItems.length && (
- <tr><td colSpan={10} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No categories found</div></td></tr>
+ <tr><td colSpan={12} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No categories found</div></td></tr>
  )}
  </tbody></table></div>
 

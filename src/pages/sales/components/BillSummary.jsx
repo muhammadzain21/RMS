@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import BankPaymentDialog, { bankChannelLabel } from './BankPaymentDialog.jsx'
+import BankPaymentDialog from './BankPaymentDialog.jsx'
 import CardPaymentDialog from './CardPaymentDialog.jsx'
 import StaffPaymentDialog from './StaffPaymentDialog.jsx'
 
@@ -113,16 +113,16 @@ export default function BillSummary({
   ].filter(v => !v).length
 
   return (
-    <div className="border-2 border-amber-200 rounded-lg p-2 space-y-2 bg-gradient-to-br from-amber-50/60 to-white dark:from-amber-950/30 dark:to-gray-900 dark:border-amber-800 shadow-sm lg:overflow-y-auto lg:min-h-0 lg:flex-shrink-0">
+    <div className="border-2 border-amber-200 rounded-lg p-1.5 space-y-1 bg-gradient-to-br from-amber-50/60 to-white dark:from-amber-950/30 dark:to-gray-900 dark:border-amber-800 shadow-sm lg:min-h-0 lg:flex-shrink-0 overflow-hidden">
       {/* Order Type buttons row */}
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1">
         {ORDER_TYPES.map((t)=> (
           <button
             key={t}
             type="button"
             disabled={orderTypeDisabled}
             onClick={()=>{ if (!orderTypeDisabled) setOrderType(t) }}
-            className={`flex-1 min-w-[80px] px-2 py-2 rounded-lg border-2 text-xs font-semibold transition-all duration-150 ${
+            className={`flex-1 min-w-[80px] px-2 py-1.5 rounded-lg border-2 text-xs font-semibold transition-all duration-150 ${
               orderTypeDisabled ? 'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400' : (
                 t==='Dine-in' ? (orderType===t ? 'bg-gradient-to-br from-sky-500 to-sky-600 text-white border-sky-400 shadow-md scale-105' : 'bg-white border-sky-200 text-sky-700 hover:bg-sky-50 dark:bg-gray-800 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-900/30') :
                 t==='Take-away' ? (orderType===t ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-white border-amber-400 shadow-md scale-105' : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-50 dark:bg-gray-800 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/30') :
@@ -134,7 +134,7 @@ export default function BillSummary({
         ))}
       </div>
       {/* Payment Method buttons row */}
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1">
         {[
           {key:'cash',label:'Cash',active:'from-emerald-500 to-emerald-600',border:'border-emerald-400',inactive:'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900/30'},
           {key:'bank',label:'Bank',active:'from-blue-500 to-blue-600',border:'border-blue-400',inactive:'border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30'},
@@ -146,7 +146,7 @@ export default function BillSummary({
             key={pm.key}
             type="button"
             onClick={()=> selectMethod(pm.key)}
-            className={`flex-1 min-w-[70px] px-2 py-2 rounded-lg border-2 text-xs font-semibold transition-all duration-150 ${
+            className={`flex-1 min-w-[70px] px-2 py-1.5 rounded-lg border-2 text-xs font-semibold transition-all duration-150 ${
               paymentMethod===pm.key
                 ? `bg-gradient-to-br ${pm.active} text-white ${pm.border} shadow-md scale-105`
                 : `bg-white ${pm.inactive}`
@@ -161,7 +161,7 @@ export default function BillSummary({
           onClick={()=> setShowBankDialog(true)}
           className="w-full flex items-center justify-between rounded-lg border-2 border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/30 px-3 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
         >
-          <span>{`${bankChannelLabel(bankChannel) || 'Set bank details'}${bankLast4 ? ` ····${bankLast4}` : ''}`}</span>
+          <span>{bankLast4 ? `Bank ····${bankLast4}` : 'Set bank last 4 digits (optional)'}</span>
           <span className="text-[10px] underline">Edit</span>
         </button>
       )}

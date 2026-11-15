@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 
+// Kept for historical label lookup (old sales may still store a channel key).
 export const BANK_CHANNELS = [
   { key: 'bank_account', label: 'Bank Account' },
   { key: 'jazzcash', label: 'JazzCash' },
@@ -13,8 +14,7 @@ export const BANK_CHANNELS = [
 
 export const bankChannelLabel = (key) => BANK_CHANNELS.find(c => c.key === String(key || '').toLowerCase())?.label || key || ''
 
-// Modal shown when the Bank payment method is selected. Requires the
-// destination channel + optional last 4 digits of the sender's account.
+// Modal shown when the Bank payment method is selected — optional last 4 digits only.
 export default function BankPaymentDialog({
   open,
   channel,
@@ -22,24 +22,21 @@ export default function BankPaymentDialog({
   onConfirm,
   onCancel,
 }) {
-  const [ch, setCh] = useState(channel || 'bank_account')
   const [digits, setDigits] = useState(last4 || '')
   const [err, setErr] = useState('')
 
   useEffect(() => {
     if (open) {
-      setCh(channel || 'bank_account')
       setDigits(last4 || '')
       setErr('')
     }
-  }, [open, channel, last4])
+  }, [open, last4])
 
   if (!open) return null
 
   const confirm = () => {
-    if (!ch) { setErr('Select where the payment was received'); return }
     if (digits && !/^\d{4}$/.test(digits)) { setErr('Last 4 digits must be exactly 4 digits (or leave empty)'); return }
-    onConfirm({ channel: ch, last4: digits })
+    onConfirm({ channel: channel || '', last4: digits })
   }
 
   return (
@@ -47,25 +44,7 @@ export default function BankPaymentDialog({
       <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border-2 border-blue-200 dark:border-blue-800 shadow-2xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Bank Payment Details</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Select where the payment was received and enter the sender's last 4 digits for verification.</p>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Received In</div>
-          <div className="grid grid-cols-2 gap-2">
-            {BANK_CHANNELS.map(c => (
-              <button
-                key={c.key}
-                type="button"
-                onClick={() => setCh(c.key)}
-                className={`px-2 py-2 rounded-lg border-2 text-xs font-semibold transition-all ${
-                  ch === c.key
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-md'
-                    : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50 dark:bg-gray-800 dark:text-blue-300 dark:border-blue-700 dark:hover:bg-blue-900/30'
-                }`}
-              >{c.label}</button>
-            ))}
-          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Optionally enter the sender&apos;s last 4 digits for verification.</p>
         </div>
 
         <label className="block">

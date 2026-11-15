@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import {
   RefreshCw, Wallet, Moon, ArrowLeftRight, Receipt,
-  Calculator, TrendingUp, ArrowDownLeft,
+  TrendingUp, ArrowDownLeft,
   Printer, FileText, ClipboardList, CreditCard, Landmark, Bike, Users,
 } from 'lucide-react'
 import { useAuth } from '../../state/AuthContext.jsx'
@@ -14,6 +14,7 @@ import DatePicker from '../../components/DatePicker.jsx'
 import PageHero from '../../components/ui/PageHero.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
 import { THERMAL_SLIP_CSS, PROFESSIONAL_SLIP_CSS, openSlipPreviewDialog } from './printUtils.js'
+import OrderViewDialog from './components/OrderViewDialog.jsx'
 
 function api() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -69,12 +70,7 @@ function SectionTable({ title, icon: Icon, headers, rows, footer }) {
         </span>
       </div>
       <div className="overflow-x-auto -mx-1 px-1">
-        <table className="w-full min-w-[640px] table-fixed text-sm">
-          <colgroup>
-            {headers.map((h, i) => (
-              <col key={h.key || i} style={{ width: h.width || undefined }} />
-            ))}
-          </colgroup>
+        <table className="w-full min-w-[1100px] text-sm">
           <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
             <tr>
               {headers.map(h => (
@@ -94,11 +90,11 @@ function SectionTable({ title, icon: Icon, headers, rows, footer }) {
                   <td
                     key={j}
                     className={`px-3 py-2.5 font-semibold text-slate-800 dark:text-slate-100 ${
-                      c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : 'truncate'
+                      c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : 'whitespace-nowrap'
                     }`}
                     title={typeof (c?.v ?? c) === 'string' ? (c?.v ?? c) : undefined}
                   >
-                    {c?.v ?? c}
+                    {c?.node ?? c?.v ?? c}
                   </td>
                 ))}
               </tr>
@@ -127,28 +123,83 @@ function SectionTable({ title, icon: Icon, headers, rows, footer }) {
 }
 
 const SALE_HEADERS = [
-  { key: 't', label: 'Time', width: '12%' },
-  { key: 'tok', label: 'Token', width: '18%' },
-  { key: 'ot', label: 'Order type', width: '28%' },
-  { key: 'a', label: 'Amount', align: 'r', width: '42%' },
+  { key: 'date', label: 'Date' },
+  { key: 'bill', label: 'Bill Number' },
+  { key: 'cust', label: 'Customer' },
+  { key: 'ot', label: 'Order Type' },
+  { key: 'table', label: 'Table' },
+  { key: 'waiter', label: 'Waiter' },
+  { key: 'rider', label: 'Rider' },
+  { key: 'saleTotal', label: 'Sale Total', align: 'r' },
+  { key: 'net', label: 'Net Amount', align: 'r' },
+  { key: 'pm', label: 'Payment Mode' },
+  { key: 'status', label: 'Status' },
+  { key: 'dd', label: 'Delivery Date' },
+  { key: 'actions', label: 'Actions' },
 ]
 
-function mapSaleRows(list) {
-  return (list || []).map(r => [
-    timeLabel(r.at),
-    r.tokenNo || r.billNo || '—',
-    r.orderType || '—',
-    { v: `PKR ${money(r.total)}`, align: 'r' },
-  ])
+function billLabel(r, fallbackDate) {
+  if (r?.tokenNo) return `${r.date || fallbackDate || ''}_${r.tokenNo}`
+  if (r?.billNo) return String(r.billNo).startsWith('BILL-') ? r.billNo : `BILL-${r.billNo}`
+  return '—'
+}
+
+function mapSaleRows(list, { date, staff = [], onView } = {}) {
+  return (list || []).map(r => {
+    const orderType = r.orderType || '—'
+    const waiter = orderType === 'Dine-in'
+      ? (r.waiterName
+        || (r.waiterId ? (staff.find(s => String(s.id) === String(r.waiterId))?.name || '') : '')
+        || '—')
+      : '—'
+    const rider = orderType === 'Delivery' ? (r.riderName || '—') : '—'
+    const table = orderType === 'Dine-in' ? (r.tableNo || '—') : '—'
+    return [
+      r.date || date || timeLabel(r.at),
+      billLabel(r, date),
+      r.customer || '—',
+      orderType,
+      table,
+      waiter,
+      rider,
+      { v: `PKR ${money(r.saleTotal ?? r.total)}`, align: 'r' },
+      { v: `PKR ${money(r.netAmount ?? r.total)}`, align: 'r' },
+      r.paymentMethod || '—',
+      {
+        v: r.status || 'Paid',
+        node: (
+          <span className="px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+            {r.status || 'Paid'}
+          </span>
+        ),
+      },
+      r.deliveryDate || r.date || date || '—',
+      {
+        v: 'View',
+        node: (
+          <button
+            type="button"
+            onClick={() => onView?.(r)}
+            className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600"
+            title="View Order Details"
+          >
+            View
+          </button>
+        ),
+      },
+    ]
+  })
 }
 
 function saleFooter(list) {
-  const total = (list || []).reduce((s, r) => s + Number(r.total || 0), 0)
+  const saleTotal = (list || []).reduce((s, r) => s + Number((r.saleTotal ?? r.total) || 0), 0)
+  const netTotal = (list || []).reduce((s, r) => s + Number((r.netAmount ?? r.total) || 0), 0)
   return [
     { v: 'Total' },
-    '',
-    '',
-    { v: `PKR ${money(total)}`, align: 'r' },
+    '', '', '', '', '', '',
+    { v: `PKR ${money(saleTotal)}`, align: 'r' },
+    { v: `PKR ${money(netTotal)}`, align: 'r' },
+    '', '', '', '',
   ]
 }
 
@@ -158,6 +209,9 @@ export default function MyShift() {
   const [date, setDate] = useState(businessDate || format(new Date(), 'yyyy-MM-dd'))
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [viewSale, setViewSale] = useState(null)
+  const staff = state?.staff || []
+  const menu = state?.menu || []
 
   useEffect(() => {
     if (businessDate && !date) setDate(businessDate)
@@ -201,10 +255,29 @@ export default function MyShift() {
     { title: 'Foodpanda', value: `PKR ${money(summary.salesFoodpanda)}`, icon: Bike, iconColor: 'bg-pink-500' },
     { title: 'Staff', value: `PKR ${money(summary.salesStaff)}`, icon: Users, iconColor: 'bg-violet-500' },
     { title: 'Pay In', value: `PKR ${money(summary.payIn)}`, icon: ArrowDownLeft, iconColor: 'bg-cyan-500' },
+    { title: 'Pay Out', value: `PKR ${money(summary.payOut)}`, icon: Receipt, iconColor: 'bg-rose-500' },
     { title: 'Expenses', value: `PKR ${money(summary.expenses)}`, icon: Receipt, iconColor: 'bg-amber-500' },
     { title: 'Expected drawer', value: `PKR ${money(summary.expectedDrawer)}`, icon: TrendingUp, iconColor: 'bg-slate-700' },
-    { title: 'Transactions', value: String(summary.salesCount || 0), icon: Calculator, iconColor: 'bg-blue-500' },
   ]), [summary])
+
+  const onViewSale = useCallback((r) => {
+    setViewSale({
+      id: r.id,
+      date: r.date || date,
+      tokenNo: r.tokenNo,
+      billNo: r.billNo,
+      orderType: r.orderType,
+      customer: r.customer,
+      tableNo: r.tableNo,
+      waiterId: r.waiterId,
+      waiterName: r.waiterName,
+      riderName: r.riderName,
+      paymentMethod: r.paymentMethodRaw || r.paymentMethod,
+      total: r.netAmount ?? r.total,
+      totalAmount: r.netAmount ?? r.total,
+      status: r.status || 'Paid',
+    })
+  }, [date])
 
   const sections = useMemo(() => {
     const openings = tables.openings || []
@@ -214,7 +287,9 @@ export default function MyShift() {
     const foodpandaSales = tables.foodpandaSales || []
     const staffSales = tables.staffSales || []
     const payIn = tables.payIn || []
-    const expenses = tables.expenses || tables.payOut || []
+    const payOut = tables.payOut || []
+    const expenses = tables.expenses || []
+    const saleOpts = { date, staff, onView: onViewSale }
 
     return [
       {
@@ -245,7 +320,7 @@ export default function MyShift() {
         title: 'Cash Sales',
         icon: Wallet,
         headers: SALE_HEADERS,
-        rows: mapSaleRows(cashSales),
+        rows: mapSaleRows(cashSales, saleOpts),
         footer: cashSales.length ? saleFooter(cashSales) : null,
       },
       {
@@ -253,7 +328,7 @@ export default function MyShift() {
         title: 'Card Sales',
         icon: CreditCard,
         headers: SALE_HEADERS,
-        rows: mapSaleRows(cardSales),
+        rows: mapSaleRows(cardSales, saleOpts),
         footer: cardSales.length ? saleFooter(cardSales) : null,
       },
       {
@@ -261,50 +336,24 @@ export default function MyShift() {
         title: 'Bank Sales',
         icon: Landmark,
         headers: SALE_HEADERS,
-        rows: mapSaleRows(bankSales),
+        rows: mapSaleRows(bankSales, saleOpts),
         footer: bankSales.length ? saleFooter(bankSales) : null,
       },
       {
         key: 'foodpandaSales',
         title: 'Foodpanda Sales',
         icon: Bike,
-        headers: [
-          { key: 't', label: 'Time', width: '12%' },
-          { key: 'tok', label: 'Token', width: '18%' },
-          { key: 'pm', label: 'Payment', width: '28%' },
-          { key: 'a', label: 'Amount', align: 'r', width: '42%' },
-        ],
-        rows: foodpandaSales.map(r => [
-          timeLabel(r.at),
-          r.tokenNo || r.billNo || '—',
-          r.paymentMethod || 'cash',
-          { v: `PKR ${money(r.total)}`, align: 'r' },
-        ]),
-        footer: foodpandaSales.length ? [
-          { v: 'Total' }, '', '',
-          { v: `PKR ${money(foodpandaSales.reduce((s, r) => s + Number(r.total || 0), 0))}`, align: 'r' },
-        ] : null,
+        headers: SALE_HEADERS,
+        rows: mapSaleRows(foodpandaSales, saleOpts),
+        footer: foodpandaSales.length ? saleFooter(foodpandaSales) : null,
       },
       {
         key: 'staffSales',
         title: 'Staff Sales',
         icon: Users,
-        headers: [
-          { key: 't', label: 'Time', width: '12%' },
-          { key: 'tok', label: 'Token', width: '16%' },
-          { key: 'st', label: 'Staff', width: '30%' },
-          { key: 'a', label: 'Amount', align: 'r', width: '42%' },
-        ],
-        rows: staffSales.map(r => [
-          timeLabel(r.at),
-          r.tokenNo || r.billNo || '—',
-          r.staffName || '—',
-          { v: `PKR ${money(r.total)}`, align: 'r' },
-        ]),
-        footer: staffSales.length ? [
-          { v: 'Total' }, '', '',
-          { v: `PKR ${money(staffSales.reduce((s, r) => s + Number(r.total || 0), 0))}`, align: 'r' },
-        ] : null,
+        headers: SALE_HEADERS,
+        rows: mapSaleRows(staffSales, saleOpts),
+        footer: staffSales.length ? saleFooter(staffSales) : null,
       },
       {
         key: 'payIn',
@@ -330,8 +379,8 @@ export default function MyShift() {
         ] : null,
       },
       {
-        key: 'expenses',
-        title: 'Expenses (Pay Out)',
+        key: 'payOut',
+        title: 'Pay Out',
         icon: Receipt,
         headers: [
           { key: 't', label: 'Time', width: '12%' },
@@ -340,20 +389,61 @@ export default function MyShift() {
           { key: 'u', label: 'User', width: '16%' },
           { key: 'a', label: 'Amount', align: 'r', width: '22%' },
         ],
-        rows: expenses.map(r => [
+        rows: payOut.map(r => [
           timeLabel(r.at),
-          r.category || r.head || '—',
-          r.note || r.description || '—',
+          r.category || '—',
+          r.note || '—',
           r.userName || '—',
           { v: `PKR ${money(r.amount)}`, align: 'r' },
         ]),
-        footer: expenses.length ? [
+        footer: payOut.length ? [
           { v: 'Total' }, '', '', '',
+          { v: `PKR ${money(payOut.reduce((s, r) => s + Number(r.amount || 0), 0))}`, align: 'r' },
+        ] : null,
+      },
+      {
+        key: 'expenses',
+        title: 'Expenses',
+        icon: Receipt,
+        headers: [
+          { key: 't', label: 'Time' },
+          { key: 'c', label: 'Head' },
+          { key: 'n', label: 'Description' },
+          { key: 'acc', label: 'Account' },
+          { key: 'st', label: 'Status' },
+          { key: 'u', label: 'Added by' },
+          { key: 'img', label: 'Image' },
+          { key: 'a', label: 'Amount', align: 'r' },
+        ],
+        rows: expenses.map(r => [
+          timeLabel(r.at),
+          r.expenseHead || r.category || '—',
+          r.description || r.note || '—',
+          r.accountHead === 'bank' ? 'Bank' : 'Cash',
+          {
+            v: r.status === 'approved' ? 'Approved' : 'Pending',
+            node: (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${r.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                {r.status === 'approved' ? 'Approved' : 'Pending'}
+              </span>
+            ),
+          },
+          r.userName || '—',
+          {
+            v: r.imageUrl ? 'Yes' : '—',
+            node: r.imageUrl
+              ? <img src={r.imageUrl} alt="" className="h-8 w-8 rounded object-cover border" />
+              : '—',
+          },
+          { v: `PKR ${money(r.amount)}`, align: 'r' },
+        ]),
+        footer: expenses.length ? [
+          { v: 'Total' }, '', '', '', '', '', '',
           { v: `PKR ${money(expenses.reduce((s, r) => s + Number(r.amount || 0), 0))}`, align: 'r' },
         ] : null,
       },
     ].filter(s => s.rows.length > 0)
-  }, [tables])
+  }, [tables, date, staff, onViewSale])
 
   const printA4 = async () => {
     if (!data) { toast.error('Nothing to print'); return }
@@ -366,18 +456,24 @@ export default function MyShift() {
         { label: 'Foodpanda', amount: `PKR ${money(summary.salesFoodpanda)}` },
         { label: 'Staff', amount: `PKR ${money(summary.salesStaff)}` },
         { label: 'Pay In', amount: `PKR ${money(summary.payIn)}` },
-        { label: 'Expenses (Pay Out)', amount: `PKR ${money(summary.expenses)}` },
+        { label: 'Pay Out', amount: `PKR ${money(summary.payOut)}` },
+        { label: 'Expenses', amount: `PKR ${money(summary.expenses)}` },
         { label: 'Expected drawer', amount: `PKR ${money(summary.expectedDrawer)}` },
-        { label: 'Transactions', amount: String(summary.salesCount || 0) },
       ]
 
+      const flattenCell = (c) => {
+        if (c == null) return ''
+        if (typeof c === 'object' && c.v != null) return c.align === 'r' ? { v: c.v, align: 'r' } : c.v
+        if (typeof c === 'object' && c.node) return ''
+        return c
+      }
       let body = reportSummary(summaryItems)
       for (const sec of sections) {
         body += reportSec(`${sec.title} (${sec.rows.length})`)
         body += reportTable({
           headers: sec.headers.map(h => (h.align === 'r' ? { t: h.label, align: 'r' } : h.label)),
           numbered: true,
-          rows: sec.rows,
+          rows: sec.rows.map(row => row.map(flattenCell)),
         })
       }
 
@@ -444,6 +540,7 @@ export default function MyShift() {
     ${row('Foodpanda', summary.salesFoodpanda)}
     ${row('Staff', summary.salesStaff)}
     ${row('Pay In', summary.payIn)}
+    ${row('Pay Out', summary.payOut)}
     ${row('Expenses', summary.expenses)}
     <div class="kvrow big"><span>Expected drawer</span><span class="v">PKR ${money(summary.expectedDrawer)}</span></div>
   </div>
@@ -495,6 +592,20 @@ export default function MyShift() {
         <Link to="/sales/day-close" className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
           <Moon size={16} /> Day Closing
         </Link>
+        <button
+          type="button"
+          onClick={printA4}
+          className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+        >
+          <Printer size={16} /> Print
+        </button>
+        <button
+          type="button"
+          onClick={printThermalSummary}
+          className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <FileText size={16} /> Thermal
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
@@ -523,6 +634,15 @@ export default function MyShift() {
           No detail entries for this day yet. Summary widgets above stay available whether the day is open or closed.
         </div>
       )}
+
+      <OrderViewDialog
+        open={!!viewSale}
+        sale={viewSale}
+        API={api()}
+        token={token}
+        menu={menu}
+        onClose={() => setViewSale(null)}
+      />
     </div>
   )
 }

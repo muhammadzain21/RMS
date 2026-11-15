@@ -60,6 +60,31 @@ function fmtDate(d) {
   }
 }
 
+function fmtDateTime(exp) {
+  const at = exp?.createdAt || exp?.updatedAt
+  if (at) {
+    try {
+      const dt = new Date(at)
+      if (!Number.isNaN(dt.getTime())) return format(dt, 'dd MMM yyyy HH:mm')
+    } catch { /* fall through */ }
+  }
+  return fmtDate(exp?.date)
+}
+
+function readImageFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve('')
+    if (file.size > 4 * 1024 * 1024) {
+      reject(new Error('Image must be under 4 MB'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Failed to read image'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function ActionBtn({ label, onClick, className }) {
   return (
     <button
@@ -84,6 +109,7 @@ function emptyForm(date, names) {
   return {
     date,
     accountHead: 'cash',
+    imageUrl: '',
     lines: [emptyLine(names)],
   }
 }
@@ -103,6 +129,7 @@ function expenseToForm(exp, names, defaultDate) {
   return {
     date: exp.date || defaultDate,
     accountHead: exp.accountHead === 'bank' ? 'bank' : 'cash',
+    imageUrl: exp.imageUrl || '',
     lines: lines.length ? lines : [emptyLine(names)],
   }
 }
@@ -252,6 +279,7 @@ export default function ExpenseNew() {
   }, [names, defaultDate, showForm])
 
   const openDialog = () => {
+    // New expenses always use the current business date (not editable)
     setForm(emptyForm(defaultDate, names))
     setEditingId('')
     setShowForm(true)
@@ -263,9 +291,22 @@ export default function ExpenseNew() {
   }
 
   const startEdit = (exp) => {
-    setForm(expenseToForm(exp, names, defaultDate))
+    const next = expenseToForm(exp, names, defaultDate)
+    // Date stays locked to the voucher's business date / current business date
+    next.date = exp.date || defaultDate
+    setForm(next)
     setEditingId(exp.id)
     setShowForm(true)
+  }
+
+  const onPickImage = async (file) => {
+    if (!file) return
+    try {
+      const imageUrl = await readImageFile(file)
+      setForm(f => ({ ...f, imageUrl }))
+    } catch (err) {
+      toast.error(err.message || 'Image upload failed')
+    }
   }
 
   const setLine = (idx, patch) => {
@@ -294,9 +335,10 @@ export default function ExpenseNew() {
     if (!lines.length) { toast.error('Enter at least one line with a positive amount'); return }
     try {
       const body = JSON.stringify({
-        date: form.date,
+        date: editingId ? (form.date || defaultDate) : defaultDate,
         accountHead: form.accountHead,
         lines,
+        imageUrl: form.imageUrl || '',
       })
       const url = editingId ? `${API}/api/expenses/${editingId}` : `${API}/api/expenses`
       const method = editingId ? 'PATCH' : 'POST'
@@ -412,16 +454,17 @@ export default function ExpenseNew() {
       ]) +
       reportSec('Expenses') +
       reportTable({
-        headers: ['Date', 'Head(s)', 'Account', 'Amount', 'Added by', 'Status', 'Description'],
+        headers: ['Date / Time', 'Head(s)', 'Account', 'Amount', 'Added by', 'Status', 'Description', 'Image'],
         numbered: true,
         rows: expenses.map(e => [
-          e.date,
+          fmtDateTime(e),
           displayHeads(e),
           e.accountHead === 'bank' ? 'Bank' : 'Cash',
           { v: Number(e.amount || 0).toLocaleString(), align: 'r' },
           e.userName || '-',
           e.status === 'approved' ? 'Approved' : 'Pending',
           e.description || '-',
+          e.imageUrl ? 'Yes' : '—',
         ]),
       })
     const html = wrapReportDoc({
@@ -547,24 +590,25 @@ export default function ExpenseNew() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Date</th>
+                <th>Date / Time</th>
                 <th>Head(s)</th>
                 <th>Account</th>
                 <th>Amount</th>
+                <th>Image</th>
                 <th>Added by</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={7} className="text-center py-8 text-[var(--color-text-muted)] font-medium">Loading…</td></tr>}
+              {loading && <tr><td colSpan={8} className="text-center py-8 text-[var(--color-text-muted)] font-medium">Loading…</td></tr>}
               {!loading && expenses.map(e => {
                 const desc = displayDesc(e)
                 const bank = e.accountHead === 'bank'
                 const addedBy = String(e.userName || '').trim()
                 return (
                 <tr key={e.id}>
-                  <td className="whitespace-nowrap font-semibold tabular-nums">{fmtDate(e.date)}</td>
+                  <td className="whitespace-nowrap font-semibold tabular-nums">{fmtDateTime(e)}</td>
                   <td>
                     <div className="font-semibold text-[var(--color-text-primary)] truncate" title={displayHeads(e)}>{displayHeads(e)}</div>
                     {desc ? <div className="mt-0.5 truncate text-xs font-medium text-[var(--color-text-muted)]" title={desc}>{desc}</div> : null}
@@ -576,6 +620,15 @@ export default function ExpenseNew() {
                   </td>
                   <td className="whitespace-nowrap pr-6 font-extrabold tabular-nums text-[var(--color-text-primary)]">
                     PKR {Number(e.amount || 0).toLocaleString()}
+                  </td>
+                  <td>
+                    {e.imageUrl ? (
+                      <button type="button" onClick={() => setShowView(e)} className="block" title="View image">
+                        <img src={e.imageUrl} alt="Expense" className="h-10 w-10 rounded-lg object-cover border border-[var(--color-border)]" />
+                      </button>
+                    ) : (
+                      <span className="text-xs font-medium text-[var(--color-text-muted)]">—</span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap min-w-[8rem]">
                     {addedBy
@@ -603,7 +656,7 @@ export default function ExpenseNew() {
                 )
               })}
               {!loading && expenses.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-[var(--color-text-muted)] font-medium">No expenses match the filters</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-[var(--color-text-muted)] font-medium">No expenses match the filters</td></tr>
               )}
             </tbody>
           </table>
@@ -637,13 +690,43 @@ export default function ExpenseNew() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Date</label>
-                  <div className="mt-1"><DatePicker value={form.date} onChange={v => { if (v) setForm({ ...form, date: v }) }} allowClear={false} /></div>
+                  <div className="mt-1">
+                    <input
+                      type="text"
+                      readOnly
+                      value={editingId ? (form.date || defaultDate) : defaultDate}
+                      className="input w-full bg-slate-50 dark:bg-slate-800/60 cursor-not-allowed"
+                      title="Expenses use the current business date"
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] font-medium text-[var(--color-text-muted)]">Locked to current business date</p>
                 </div>
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Account Head</label>
                   <select value={form.accountHead} onChange={e => setForm({ ...form, accountHead: e.target.value })} className="input mt-1 w-full">
                     {ACCOUNT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Expense image / receipt</label>
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border-2 border-dashed border-blue-200 dark:border-blue-800 px-3 py-2 text-sm font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onPickImage(f) }}
+                    />
+                    {form.imageUrl ? 'Change image' : 'Upload image'}
+                  </label>
+                  {form.imageUrl ? (
+                    <>
+                      <img src={form.imageUrl} alt="Expense preview" className="h-16 w-16 rounded-lg object-cover border border-[var(--color-border)]" />
+                      <button type="button" onClick={() => setForm(f => ({ ...f, imageUrl: '' }))} className="text-xs font-bold text-rose-600">Remove</button>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -699,7 +782,7 @@ export default function ExpenseNew() {
               <button type="button" onClick={() => setShowView(null)} className="p-1.5 rounded-lg hover:bg-slate-100"><X size={18} /></button>
             </div>
             <div className="space-y-2 text-sm mb-4">
-              <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Date</span><span className="font-bold">{showView.date}</span></div>
+              <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Date / Time</span><span className="font-bold">{fmtDateTime(showView)}</span></div>
               <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Account</span><span className="font-bold">{showView.accountHead === 'bank' ? 'Bank' : 'Cash in Hand'}</span></div>
               <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Added by</span><span className="font-bold">{showView.userName || '-'}</span></div>
               <div className="flex justify-between gap-2 items-center"><span className="text-[var(--color-text-muted)] font-semibold">Status</span><StatusBadge status={showView.status} /></div>
@@ -707,6 +790,14 @@ export default function ExpenseNew() {
                 <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Approved by</span><span className="font-bold">{showView.approvedBy || '-'}{showView.approvedAt ? ` · ${format(new Date(showView.approvedAt), 'yyyy-MM-dd HH:mm')}` : ''}</span></div>
               )}
             </div>
+            {showView.imageUrl ? (
+              <div className="mb-4">
+                <div className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Receipt image</div>
+                <a href={showView.imageUrl} target="_blank" rel="noreferrer">
+                  <img src={showView.imageUrl} alt="Expense receipt" className="max-h-56 w-auto rounded-xl border border-[var(--color-border)] object-contain" />
+                </a>
+              </div>
+            ) : null}
             <table className="tbl text-sm mb-3">
               <thead><tr><th>Head</th><th className="text-right">Amount</th><th>Description</th></tr></thead>
               <tbody>
@@ -720,7 +811,10 @@ export default function ExpenseNew() {
               </tbody>
             </table>
             <div className="text-right font-extrabold text-base">Total: PKR {Number(showView.amount || 0).toLocaleString()}</div>
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex justify-end gap-2">
+              {canManage && (
+                <button type="button" onClick={() => { setShowView(null); startEdit(showView) }} className="ui-btn ui-btn-secondary">Edit / add image</button>
+              )}
               <button type="button" onClick={() => setShowView(null)} className="ui-btn ui-btn-primary">Close</button>
             </div>
           </div>

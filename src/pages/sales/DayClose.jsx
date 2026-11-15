@@ -123,6 +123,13 @@ export default function DayClose() {
  }, [liveRecalls, state.recalls])
  const hasOpenRecalls = pendingRecalls.length > 0
 
+ const pendingExpenses = useMemo(() => {
+  return (state.expenses || []).filter(e =>
+    String(e.date) === String(date) && String(e.status || 'pending') !== 'approved'
+  )
+ }, [state.expenses, date])
+ const hasPendingExpenses = pendingExpenses.length > 0
+
  // Handover amount is entered manually at close time
  const handoverNum = Math.max(0, Number(handoverAmt || 0))
  // Left at counter defaults to counted minus handover; stays editable
@@ -139,6 +146,10 @@ export default function DayClose() {
  const onCloseDay = async (e) => {
  e.preventDefault()
  if (isSelectedDateClosed) { toast.error('This date is already closed.'); return }
+ if (hasPendingExpenses) {
+  toast.error(`Approve ${pendingExpenses.length} pending expense${pendingExpenses.length === 1 ? '' : 's'} before day close.`)
+  return
+ }
 
  // Fresh server-side recall check right before confirm (don't trust stale UI alone)
  try {
@@ -207,12 +218,16 @@ export default function DayClose() {
  const res = await fetch(`${API}/api/day-closes`, { method: 'POST', headers, body: JSON.stringify(body) })
  if (res.status === 409) { toast.error('This date is already closed on server.'); return }
  if (!res.ok) {
- const err = await res.json().catch(() => ({}))
- if (err?.code === 'OPEN_RECALLS' || /recall/i.test(String(err?.error || ''))) {
-  toast.error(err.error || 'Clear open recalls before day close.')
-  return
- }
- throw new Error(err?.error || `Failed to close day (${res.status})`)
+  const err = await res.json().catch(() => ({}))
+  if (err.code === 'PENDING_EXPENSES' || /pending expense/i.test(String(err?.error || ''))) {
+   toast.error(err.error || 'Approve pending expenses before day close')
+   return
+  }
+  if (err?.code === 'OPEN_RECALLS' || /recall/i.test(String(err?.error || ''))) {
+   toast.error(err.error || 'Clear open recalls before day close.')
+   return
+  }
+  throw new Error(err?.error || `Failed to close day (${res.status})`)
  }
  const saved = await res.json()
  const { nextOpening, ...rest } = saved || {}
@@ -534,6 +549,27 @@ export default function DayClose() {
  </div>
  )}
 
+ {hasPendingExpenses && !isSelectedDateClosed && (
+ <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-amber-900 dark:text-amber-100">
+   <div>
+    <div className="font-semibold">Approve expenses before day close</div>
+    <div className="text-sm mt-0.5">
+     {pendingExpenses.length} pending expense{pendingExpenses.length === 1 ? '' : 's'} for {date}
+     {pendingExpenses.slice(0, 5).map(e => ` · ${e.expenseHead || e.category || 'Expense'} (PKR ${Number(e.amount || 0).toLocaleString()})`).join('')}
+     {pendingExpenses.length > 5 ? ' …' : ''}.
+    </div>
+   </div>
+   <Link
+    to="/expenses/new"
+    className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 transition-colors"
+   >
+    Open Expenses
+   </Link>
+  </div>
+ </div>
+ )}
+
  <form onSubmit={onCloseDay} className="grid grid-cols-1 lg:grid-cols-4 gap-4"><div><DatePicker label="Date" value={date} onChange={v=>{ if (v) setDate(v) }} allowClear={false} /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opening Cash</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 font-medium text-emerald-600 dark:text-emerald-400">
  PKR {openingCash.toLocaleString()}
  </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cash Sales (net)</label><div className="px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 font-medium text-emerald-600 dark:text-emerald-400">
@@ -553,8 +589,14 @@ export default function DayClose() {
  </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Counted Cash</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="0" value={countedCash} onChange={e=>setCountedCash(e.target.value)} className="w-full pl-12 pr-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500" placeholder="Enter counted amount" /></div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Variance</label><div className={`px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-700 font-bold ${variance !== 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
  {variance > 0 ? '+' : ''}PKR {variance.toLocaleString()}
  {variance !== 0 && <span className="ml-2 text-xs font-normal">({variance > 0 ? 'Over' : 'Short'})</span>}
- </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cash Handover (PKR)</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="0" value={handoverAmt} onChange={e=>setHandoverAmt(e.target.value)} className="w-full pl-12 pr-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-rose-500" placeholder="0" /></div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Handover To</label><input value={handoverTo} onChange={e=>setHandoverTo(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-rose-500" placeholder="Person name" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Left at Counter → next opening</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="0" value={leftAtCounter} onChange={e=>setLeftAtCounter(e.target.value)} className="w-full pl-12 pr-3 py-2 border-2 border-emerald-300 dark:border-emerald-700 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500" placeholder="0" /></div></div><div className="lg:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note</label><input value={note} onChange={e=>setNote(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-blue-500" placeholder="Optional note about day close..." /></div> <div className="lg:col-span-4"><button disabled={isSelectedDateClosed || hasOpenRecalls} className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 text-white font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed dark:from-white dark:to-gray-200 dark:text-gray-900">
- {isSelectedDateClosed ? 'Day Already Closed' : hasOpenRecalls ? `Clear ${pendingRecalls.length} Recall${pendingRecalls.length === 1 ? '' : 's'} First` : 'Close Day'}
+ </div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cash Handover (PKR)</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="0" value={handoverAmt} onChange={e=>setHandoverAmt(e.target.value)} className="w-full pl-12 pr-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-rose-500" placeholder="0" /></div></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Handover To</label><input value={handoverTo} onChange={e=>setHandoverTo(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-rose-500" placeholder="Person name" /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Left at Counter → next opening</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="0" value={leftAtCounter} onChange={e=>setLeftAtCounter(e.target.value)} className="w-full pl-12 pr-3 py-2 border-2 border-emerald-300 dark:border-emerald-700 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500" placeholder="0" /></div></div><div className="lg:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note</label><input value={note} onChange={e=>setNote(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-blue-500" placeholder="Optional note about day close..." /></div> <div className="lg:col-span-4"><button disabled={isSelectedDateClosed || hasOpenRecalls || hasPendingExpenses} className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-gray-900 to-gray-800 text-white font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed dark:from-white dark:to-gray-200 dark:text-gray-900">
+ {isSelectedDateClosed
+  ? 'Day Already Closed'
+  : hasOpenRecalls
+    ? `Clear ${pendingRecalls.length} Recall${pendingRecalls.length === 1 ? '' : 's'} First`
+    : hasPendingExpenses
+      ? `Approve ${pendingExpenses.length} Expense${pendingExpenses.length === 1 ? '' : 's'} First`
+      : 'Close Day'}
  </button></div></form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Day Close History</h2><div className="flex flex-wrap items-center gap-4 mb-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v=>setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v=>setTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 tracking-wide">Search</label><input placeholder="Date, note, user..." value={search} onChange={e=>{ setSearch(e.target.value); setPage(1) }} className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div><div className="flex gap-3 flex-shrink-0"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button></div>
  {loading && <div className="text-xs text-gray-500"> Loading...</div>}
  </div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Opening</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Cash</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Bank</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Card</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Returns</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Handover</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay In</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Pay Out</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Expenses</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Expected</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Counted</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Variance</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-3 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Print</th></tr></thead><tbody>

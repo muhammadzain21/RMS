@@ -35,6 +35,9 @@ function toPublic(c, override = null, branchId = '') {
     price: o?.price !== undefined && o?.price !== null ? Number(o.price) : Number(base.price || 0),
     minItems: o?.minItems !== undefined && o?.minItems !== null ? Number(o.minItems) : Number(base.minItems || 0),
     maxItems: o?.maxItems !== undefined && o?.maxItems !== null ? Number(o.maxItems) : Number(base.maxItems || 0),
+    parentCategoryId: String(base.parentCategoryId || ''),
+    bundleItems: Array.isArray(base.bundleItems) ? base.bundleItems : [],
+    bundleSlots: Array.isArray(base.bundleSlots) ? base.bundleSlots : [],
     branchId: base.branchId || '',
     isShared: shared,
     isBranchOnly: !shared,
@@ -57,6 +60,35 @@ function parseBool(v, defaultTrue = true) {
   if (['no', 'n', 'false', '0', 'inactive', 'off'].includes(s)) return false
   if (['yes', 'y', 'true', '1', 'active', 'on'].includes(s)) return true
   return defaultTrue
+}
+
+function sanitizeBundleItems(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((row) => ({
+      itemId: String(row?.itemId || row?.id || '').trim(),
+      name: String(row?.name || '').trim(),
+      qty: Math.max(1, Number(row?.qty || 1) || 1),
+      maxQty: Math.max(0, Number(row?.maxQty || 0) || 0),
+    }))
+    .filter((row) => row.itemId)
+}
+
+function sanitizeBundleSlots(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((row) => ({
+      categoryId: String(row?.categoryId || row?.id || '').trim(),
+      categoryName: String(row?.categoryName || row?.name || '').trim(),
+      label: String(row?.label || '').trim(),
+      minItems: Math.max(0, Number(row?.minItems || 0) || 0),
+      maxItems: Math.max(0, Number(row?.maxItems || 0) || 0),
+    }))
+    .filter((row) => row.categoryId)
+}
+
+function sanitizeParentId(v) {
+  return String(v || '').trim()
 }
 
 async function listForBranch(branchId) {
@@ -145,6 +177,11 @@ router.post('/', requireRole('Admin', 'Manager'), async (req, res, next) => {
     if (branchOnly && !branchId) {
       return res.status(400).json({ error: 'branchId required for branch-only categories' })
     }
+    const parentCategoryId = sanitizeParentId(body.parentCategoryId)
+    if (parentCategoryId) {
+      const parent = await Category.findById(parentCategoryId).lean()
+      if (!parent) return res.status(400).json({ error: 'Parent category not found' })
+    }
     const item = await Category.create({
       name: String(body.name).trim(),
       showOnPos: !!body.showOnPos,
@@ -155,6 +192,9 @@ router.post('/', requireRole('Admin', 'Manager'), async (req, res, next) => {
       price: Number(body.price ?? 0),
       minItems: Number(body.minItems ?? 0),
       maxItems: Number(body.maxItems ?? 0),
+      parentCategoryId,
+      bundleItems: sanitizeBundleItems(body.bundleItems),
+      bundleSlots: sanitizeBundleSlots(body.bundleSlots),
       branchId: branchOnly ? String(branchId || '') : '',
     })
     await logAudit(req, 'category', `Added category ${item.name}`, { id: item._id, branchId: item.branchId || '' })
@@ -208,6 +248,18 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
     if (update.price !== undefined) update.price = Number(update.price ?? 0)
     if (update.minItems !== undefined) update.minItems = Number(update.minItems ?? 0)
     if (update.maxItems !== undefined) update.maxItems = Number(update.maxItems ?? 0)
+    if (update.parentCategoryId !== undefined) {
+      update.parentCategoryId = sanitizeParentId(update.parentCategoryId)
+      if (update.parentCategoryId) {
+        if (String(update.parentCategoryId) === String(req.params.id)) {
+          return res.status(400).json({ error: 'Category cannot be its own parent' })
+        }
+        const parent = await Category.findById(update.parentCategoryId).lean()
+        if (!parent) return res.status(400).json({ error: 'Parent category not found' })
+      }
+    }
+    if (update.bundleItems !== undefined) update.bundleItems = sanitizeBundleItems(update.bundleItems)
+    if (update.bundleSlots !== undefined) update.bundleSlots = sanitizeBundleSlots(update.bundleSlots)
 
     const existing = await Category.findById(req.params.id)
     if (!existing) return res.status(404).json({ error: 'Not found' })
@@ -240,8 +292,30 @@ router.patch('/:id', requireRole('Admin', 'Manager'), async (req, res, next) => 
       return res.json(toPublic(existing, null, ''))
     }
 
+    // Hierarchy / deal composition is always catalog-level (not per-branch)
+    let structureChanged = false
+    for (const key of ['parentCategoryId', 'bundleItems', 'bundleSlots']) {
+      if (update[key] !== undefined) {
+        existing[key] = update[key]
+        structureChanged = true
+      }
+    }
+    if (structureChanged) {
+      if (!isAdminActor(req.user)) {
+        return res.status(403).json({ error: 'Only admin can change category hierarchy / deal composition' })
+      }
+      await existing.save()
+      await logAudit(req, 'category', `Updated category structure ${req.params.id}`, {
+        id: req.params.id,
+        parentCategoryId: existing.parentCategoryId,
+        bundleItems: (existing.bundleItems || []).length,
+        bundleSlots: (existing.bundleSlots || []).length,
+      })
+    }
+
     // Shared category viewed in a branch → upsert override
     if (!branchId) {
+      if (structureChanged) return res.json(toPublic(existing, null, ''))
       return res.status(400).json({ error: 'branchId required for branch override — select a branch in the header' })
     }
 

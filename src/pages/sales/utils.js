@@ -77,16 +77,46 @@ export function categoryKeyOf(cat, categoryName) {
   return n ? `name:${n}` : ''
 }
 
+export function isBundleCategory(cat) {
+  if (!cat) return false
+  return (Array.isArray(cat.bundleItems) && cat.bundleItems.length > 0)
+    || (Array.isArray(cat.bundleSlots) && cat.bundleSlots.length > 0)
+}
+
+export function findCategoryById(categories = [], id) {
+  const sid = String(id || '').trim()
+  if (!sid) return null
+  return (categories || []).find(c => String(c.id || c._id) === sid) || null
+}
+
+/** Lines that belong to a configured deal instance (bundle). */
+export function isDealLine(it) {
+  return !!(it?.mods?.dealGroupId || it?.mods?.underDeal)
+}
+
 /**
  * Cart subtotal: categories with price > 0 contribute that price once;
  * their item line prices are ignored. Other items use lineTotalFn.
+ * Configured deals (dealGroupId) charge package price once per deal instance.
  */
 export function computeCategoryAwareSubtotal(items, menu = [], categories = [], lineTotalFn) {
   const pricedSeen = new Set()
   let total = 0
   for (const it of (items || [])) {
-    if (it?.mods && (it.mods.underDeal || it.mods.pizzaFlavour)) continue
+    if (it?.mods && (it.mods.pizzaFlavour && !it.mods.dealGroupId)) continue
     const m = (menu || []).find(x => String(x.id) === String(it.itemId))
+    const dealGroupId = it?.mods?.dealGroupId ? String(it.mods.dealGroupId) : ''
+    if (dealGroupId) {
+      const key = `deal:${dealGroupId}`
+      if (pricedSeen.has(key)) continue
+      pricedSeen.add(key)
+      const dealCat = findCategoryById(categories, it.mods.dealCategoryId)
+        || findCategoryByName(categories, it.custom?.category || it.mods.dealCategoryName)
+      const pkg = getCategoryPackagePrice(dealCat, it)
+      if (pkg > 0) total += pkg
+      continue
+    }
+    if (it?.mods?.underDeal) continue
     const catName = resolveItemCategoryName(m, it)
     const cat = findCategoryByName(categories, catName)
     const pkg = getCategoryPackagePrice(cat, it)
@@ -108,9 +138,22 @@ export function computeCategoryAwareDiscount(items, menu = [], categories = [], 
   const pricedSeen = new Set()
   let disc = 0
   for (const it of (items || [])) {
-    if (it?.mods && (it.mods.underDeal || it.mods.pizzaFlavour)) continue
+    if (it?.mods && (it.mods.pizzaFlavour && !it.mods.dealGroupId)) continue
     const m = (menu || []).find(x => String(x.id) === String(it.itemId))
     if (!m && !it) continue
+    const dealGroupId = it?.mods?.dealGroupId ? String(it.mods.dealGroupId) : ''
+    if (dealGroupId) {
+      const key = `deal:${dealGroupId}`
+      if (pricedSeen.has(key)) continue
+      pricedSeen.add(key)
+      const dealCat = findCategoryById(categories, it.mods.dealCategoryId)
+        || findCategoryByName(categories, it.custom?.category || it.mods.dealCategoryName)
+      const pkg = getCategoryPackagePrice(dealCat, it)
+      const catDisc = Number(dealCat?.discount || 0)
+      if (pkg > 0 && catDisc > 0) disc += Math.round(pkg * (catDisc / 100))
+      continue
+    }
+    if (it?.mods?.underDeal) continue
     const catName = resolveItemCategoryName(m, it)
     const cat = findCategoryByName(categories, catName)
     const pkg = getCategoryPackagePrice(cat, it)
@@ -135,13 +178,13 @@ export function computeCategoryAwareDiscount(items, menu = [], categories = [], 
   return disc
 }
 
-/** Current qty in cart for a category (excludes flavour helper lines). */
+/** Current qty in cart for a category (excludes deal / flavour helper lines). */
 export function countCategoryQtyInCart(items, menu = [], categories = [], categoryName) {
   const target = String(categoryName || '').trim().toLowerCase()
   if (!target) return 0
   let qty = 0
   for (const it of (items || [])) {
-    if (it?.mods && (it.mods.underDeal || it.mods.pizzaFlavour)) continue
+    if (isDealLine(it) || it?.mods?.pizzaFlavour) continue
     const m = (menu || []).find(x => String(x.id) === String(it.itemId))
     const catName = resolveItemCategoryName(m, it)
     if (String(catName || '').trim().toLowerCase() !== target) continue
@@ -176,12 +219,14 @@ export function canAddItemToCart(items, menu = [], categories = [], itemId, addQ
 export function validateCategorySelectionLimits(items, menu = [], categories = []) {
   const counts = new Map() // key -> { name, qty, min, max }
   for (const it of (items || [])) {
-    if (it?.mods && (it.mods.underDeal || it.mods.pizzaFlavour)) continue
+    if (isDealLine(it) || it?.mods?.pizzaFlavour) continue
     const m = (menu || []).find(x => String(x.id) === String(it.itemId))
     const catName = resolveItemCategoryName(m, it)
     if (!catName) continue
     const cat = findCategoryByName(categories, catName)
     if (!cat) continue
+    // Bundle categories validate inside the deal builder, not as flat min/max
+    if (isBundleCategory(cat)) continue
     const min = Number(cat.minItems || 0)
     const max = Number(cat.maxItems || 0)
     if (min <= 0 && max <= 0) continue
@@ -210,6 +255,26 @@ export function groupItemsByCategory(items, menu = [], categories = []) {
   for (const it of (items || [])) {
     const m = (menu || []).find(x => String(x.id || x._id) === String(it.itemId || ''))
       || (it?.name ? (menu || []).find(x => String(x.name || '').trim().toLowerCase() === String(it.name || '').trim().toLowerCase()) : null)
+    const dealGroupId = it?.mods?.dealGroupId ? String(it.mods.dealGroupId) : ''
+    if (dealGroupId) {
+      const dealCat = findCategoryById(categories, it.mods.dealCategoryId)
+        || findCategoryByName(categories, it.custom?.category || it.mods.dealCategoryName)
+      const key = `deal:${dealGroupId}`
+      const packagePrice = getCategoryPackagePrice(dealCat, it)
+      if (!indexByKey.has(key)) {
+        indexByKey.set(key, groups.length)
+        groups.push({
+          key,
+          categoryName: dealCat?.name || it.mods.dealCategoryName || 'Deal',
+          category: dealCat,
+          packagePrice,
+          items: [],
+          showHeader: true,
+        })
+      }
+      groups[indexByKey.get(key)].items.push({ it, menuItem: m })
+      continue
+    }
     const catName = resolveItemCategoryName(m, it)
     const cat = catName ? findCategoryByName(categories, catName) : null
     const packagePrice = getCategoryPackagePrice(cat, it)
@@ -219,6 +284,7 @@ export function groupItemsByCategory(items, menu = [], categories = []) {
         packagePrice > 0
         || Number(cat?.minItems || 0) > 0
         || Number(cat?.maxItems || 0) > 0
+        || isBundleCategory(cat)
       )
     )
     if (!showHeader) {
@@ -251,6 +317,7 @@ export function groupItemsByCategory(items, menu = [], categories = []) {
 
 /** Unit price to persist on a sale/recall line (0 when category package pricing applies). */
 export function resolvePersistUnitPrice(menuItem, lineItem, categories, lineTotalFn) {
+  if (isDealLine(lineItem)) return 0
   const catName = resolveItemCategoryName(menuItem, lineItem)
   const cat = findCategoryByName(categories, catName)
   const pkg = getCategoryPackagePrice(cat, lineItem)

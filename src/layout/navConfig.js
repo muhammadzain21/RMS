@@ -45,8 +45,6 @@ const salesSection = {
  { path: '/sales/kds', label: 'KDS', icon: ChefHat, order: 7.5 },
  { path: '/sales/void-history', label: 'Void History', icon: XCircle, order: 8 },
   { path: '/customers', label: 'Customers', icon: Users, order: 19 },
-
- { path: '/sales/cash-count', label: 'Manager Cash Count', icon: Calculator, order: 11 },
  { path: '/sales/advance-booking', label: 'Advance Booking', icon: CalendarCheck, order: 12 },
  ]
 }
@@ -56,6 +54,7 @@ const daySection = {
  items: [
  { path: '/sales/cash-opening', label: 'Day Opening', icon: Wallet, order: 9 },
  { path: '/sales/pay-in-out', label: 'Pay In/Out', icon: ArrowLeftRight, order: 10 },
+ { path: '/sales/cash-count', label: 'Manager Cash Count', icon: Calculator, order: 10.5 },
  { path: '/sales/my-shift', label: 'My Day', icon: ClipboardList, order: 11 },
  { path: '/sales/day-close', label: 'Day Closing', icon: Moon, order: 12 },
  ]
@@ -196,6 +195,7 @@ const UPGRADE_ENABLED_PATHS = [
   '/branches',
   '/hq/compare',
   '/sales/my-shift',
+  '/sales/cash-count',
   '/sales/kds',
   '/backup-security',
 ]

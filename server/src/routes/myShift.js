@@ -313,24 +313,70 @@ router.get('/', async (req, res, next) => {
     const payOutRows = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'OUT')
     const payIn = payInRows.reduce((s, p) => s + money(p.amount), 0)
     const payOut = payOutRows.reduce((s, p) => s + money(p.amount), 0)
-    // My Day "Expenses" = Pay Out from Pay In/Out page (not Expenses module)
-    const expensesFromPayOut = payOut
+    const expenseModuleRows = expenses || []
+    const expenseModuleTotal = expenseModuleRows.reduce((s, e) => s + money(e.amount), 0)
+    const expenseModulePending = expenseModuleRows.filter(e => e.status !== 'approved').length
+    const expenseModuleApproved = expenseModuleRows.filter(e => e.status === 'approved').length
+    // Cash expenses (approved or pending) that hit the drawer
+    const expenseCashTotal = expenseModuleRows
+      .filter(e => String(e.accountHead || 'cash').toLowerCase() === 'cash')
+      .reduce((s, e) => s + money(e.amount), 0)
     const supplierPayTotal = (warehousePayments || []).reduce((s, p) => s + money(p.amount), 0)
     const openingCash = money(myOpening?.openingCash)
-    const expectedDrawer = openingCash + salesCash + payIn - payOut
+    const expectedDrawer = openingCash + salesCash + payIn - payOut - expenseCashTotal
 
-    const mapSale = (s) => ({
-      id: String(s._id || ''),
-      at: s.createdAt,
-      tokenNo: s.tokenNo || '',
-      billNo: s.billNo || '',
-      orderType: s.orderType || '',
-      paymentMethod: s.paymentMethod || 'cash',
-      total: saleAmt(s),
-      items: Array.isArray(s.items) ? s.items.length : 0,
-      staffName: s.staffName || s.waiter || '',
-      staffId: s.staffId || s.waiterId || '',
-    })
+    const customerText = (c) => {
+      if (!c) return ''
+      if (typeof c === 'string') return c
+      return c.name || c.phone || ''
+    }
+    const paymentLabel = (s) => {
+      const method = String(s.paymentMethod || 'cash').toUpperCase()
+      if (method === 'BANK') {
+        const ch = {
+          bank_account: 'BANK ACCOUNT', jazzcash: 'JAZZCASH', easypaisa: 'EASYPAISA',
+          sadapay: 'SADAPAY', nayapay: 'NAYAPAY', raast: 'RAAST', upaisa: 'UPAISA', zindigi: 'ZINDIGI',
+        }[String(s.bankChannel || '').toLowerCase()] || 'TRANSFER'
+        return `BANK (${ch}${s.bankLast4 ? ` ····${s.bankLast4}` : ''})`
+      }
+      if (method === 'CARD') return `CARD${s.bankLast4 ? ` ····${s.bankLast4}` : ''}`
+      if (method === 'STAFF') return `STAFF (${s.staffName || 'Member'})`
+      if (method === 'COMPLIMENTARY' || method === 'PERSONAL') return 'PERSONAL'
+      return method
+    }
+    const mapSale = (s) => {
+      const orderType = s.orderType || ''
+      const net = saleAmt(s)
+      const saleTotal = (() => {
+        const sub = Number(s.subtotal || 0)
+        if (sub > 0) return sub
+        return net
+      })()
+      return {
+        id: String(s._id || ''),
+        at: s.createdAt,
+        date: s.date || date,
+        tokenNo: s.tokenNo || '',
+        billNo: s.billNo || '',
+        customer: customerText(s.customer),
+        orderType,
+        tableNo: orderType === 'Dine-in' ? (s.tableNo || '') : '',
+        waiterId: s.waiterId || '',
+        waiterName: s.waiterName || s.waiter || '',
+        riderId: s.riderId || '',
+        riderName: s.riderName || s.rider || '',
+        saleTotal,
+        netAmount: net,
+        total: net,
+        paymentMethod: paymentLabel(s),
+        paymentMethodRaw: s.paymentMethod || 'cash',
+        status: 'Paid',
+        deliveryDate: s.deliveryDate || s.date || date,
+        items: Array.isArray(s.items) ? s.items.length : 0,
+        staffName: s.staffName || s.waiter || '',
+        staffId: s.staffId || s.waiterId || '',
+      }
+    }
 
     const mapPay = (p) => ({
       id: String(p._id || ''),
@@ -365,8 +411,11 @@ router.get('/', async (req, res, next) => {
         salesStaff,
         payIn,
         payOut,
-        expenses: expensesFromPayOut,
-        expensesAll: expensesFromPayOut,
+        expenses: expenseModuleTotal,
+        expensesCash: expenseCashTotal,
+        expensesPending: expenseModulePending,
+        expensesApproved: expenseModuleApproved,
+        expensesAll: expenseModuleTotal,
         supplierPayments: supplierPayTotal,
         voids: voidsDay.length,
         kots: kotsDay.length,
@@ -389,8 +438,19 @@ router.get('/', async (req, res, next) => {
         staffSales: staffSalesRows.map(mapSale),
         payIn: payInRows.map(mapPay),
         payOut: payOutRows.map(mapPay),
-        // Alias: expenses on My Day = pay-out entries
-        expenses: payOutRows.map(mapPay),
+        expenses: expenseModuleRows.map(e => ({
+          id: String(e._id || ''),
+          at: e.createdAt,
+          date: e.date || date,
+          amount: money(e.amount),
+          category: e.expenseHead || e.category || '',
+          expenseHead: e.expenseHead || e.category || '',
+          description: e.description || e.note || '',
+          accountHead: e.accountHead || 'cash',
+          status: e.status === 'approved' ? 'approved' : 'pending',
+          userName: e.userName || e.paidBy || '',
+          imageUrl: e.imageUrl || '',
+        })),
         payInOut: (payMoves || []).map(mapPay),
         supplierPayments: (warehousePayments || []).map(p => ({
           id: String(p._id || ''),
@@ -407,7 +467,7 @@ router.get('/', async (req, res, next) => {
         openings: (openings || []).length,
         sales: (sales || []).length,
         payInOut: (payMoves || []).length,
-        expenses: (expenses || []).length,
+        expenses: expenseModuleRows.length,
         supplierPayments: (warehousePayments || []).length,
         voids: voidsDay.length,
         kots: kotsDay.length,

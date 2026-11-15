@@ -1,6 +1,6 @@
 import { toast } from 'react-hot-toast'
 import { useConfirm } from '../../components/useConfirm.jsx'
-import React, { useMemo, useState, useEffect, useRef } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useData } from '../../state/DataContext.jsx'
 import {
   createLineTotal,
@@ -13,6 +13,7 @@ import {
   resolveItemCategoryName,
   getCategoryPackagePrice,
   categoryKeyOf,
+  isBundleCategory,
 } from './utils.js'
 import CategoryBar from './components/CategoryBar.jsx'
 import ItemsList from './components/ItemsList.jsx'
@@ -26,6 +27,8 @@ import HeldDialog from './components/HeldDialog.jsx'
 import VoidPreview from './components/VoidPreview.jsx'
 import VoidReasonModal from './components/VoidReasonModal.jsx'
 import SelectRiderModal from './components/SelectRiderModal.jsx'
+import PaymentMethodDialog from './components/PaymentMethodDialog.jsx'
+import DealBuilderDialog from './components/DealBuilderDialog.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useBranch } from '../../state/BranchContext.jsx'
 import { useNavigate } from 'react-router-dom'
@@ -64,8 +67,11 @@ export default function SalesNew() {
     } catch {}
   }, [state.dayCloses, state?.daybook?.open, businessDate, navigate])
 
-  // Left column UI state
-  const categories = useMemo(() => (state.categories||[])
+  // Left column UI state — top categories stay in CategoryBar; subcats open in menu pane
+  const [categoryPath, setCategoryPath] = useState([]) // drill path for subcategories in menu pane
+  const [dealCategory, setDealCategory] = useState(null)
+  const [showDealBuilder, setShowDealBuilder] = useState(false)
+  const allPosCategories = useMemo(() => (state.categories||[])
     .filter(c => c && c.active !== false && c.showOnPos !== false)
     .sort((a, b) => {
       const orderA = Number(a.sortOrder ?? 0)
@@ -73,8 +79,78 @@ export default function SalesNew() {
       if (orderA !== orderB) return orderA - orderB
       return String(a.name||'').localeCompare(String(b.name||''))
     }), [state.categories])
+  const kidsOf = useCallback((parentId) => (
+    allPosCategories.filter(c => String(c.parentCategoryId || '') === String(parentId || ''))
+  ), [allPosCategories])
+  const withMeta = useCallback((list) => list.map(c => {
+    const id = String(c.id || c._id)
+    return {
+      ...c,
+      _hasChildren: kidsOf(id).length > 0,
+      _isDeal: isBundleCategory(c),
+    }
+  }), [kidsOf])
+  // Category bar always shows top-level only
+  const categories = useMemo(() => withMeta(kidsOf('')), [kidsOf, withMeta])
+  const currentParentId = categoryPath.length
+    ? String(categoryPath[categoryPath.length - 1].id || categoryPath[categoryPath.length - 1]._id || '')
+    : ''
+  const menuSubcategories = useMemo(
+    () => (currentParentId ? withMeta(kidsOf(currentParentId)) : []),
+    [currentParentId, kidsOf, withMeta]
+  )
   const [selectedCategory, setSelectedCategory] = useState('')
   const [search, setSearch] = useState('')
+  const categoryBarSelected = categoryPath.length
+    ? String(categoryPath[0].name || '')
+    : selectedCategory
+
+  const openCategory = (cat, { fromTop = false } = {}) => {
+    if (!cat) return
+    const id = String(cat.id || cat._id)
+    const children = kidsOf(id)
+    if (children.length) {
+      setCategoryPath(prev => (fromTop ? [cat] : [...prev, cat]))
+      setSelectedCategory('')
+      return
+    }
+    if (isBundleCategory(cat)) {
+      if (fromTop) setCategoryPath([])
+      // Keep subcategory list visible after dialog closes (don't lock onto deal name)
+      setSelectedCategory('')
+      setDealCategory(cat)
+      setShowDealBuilder(true)
+      return
+    }
+    if (fromTop) setCategoryPath([])
+    setSelectedCategory(cat.name || '')
+  }
+
+  const onSelectCategory = (catOrName) => {
+    const cat = typeof catOrName === 'object' && catOrName
+      ? catOrName
+      : allPosCategories.find(c => String(c.name || '') === String(catOrName || ''))
+    if (!cat) {
+      setCategoryPath([])
+      setSelectedCategory(String(catOrName || ''))
+      return
+    }
+    openCategory(cat, { fromTop: true })
+  }
+
+  const onSelectSubcategory = (cat) => openCategory(cat, { fromTop: false })
+
+  const closeDealBuilder = () => {
+    setShowDealBuilder(false)
+    setDealCategory(null)
+    setSelectedCategory('')
+  }
+
+  const addDealLinesToCart = (lines) => {
+    setItems(prev => [...prev, ...(lines || [])])
+    closeDealBuilder()
+    toast.success('Deal added')
+  }
 
   // Menu and filtered items
   const menu = state.menu || []
@@ -126,7 +202,12 @@ export default function SalesNew() {
   const decQty = (idx) => setItems(prev => prev.map((it, i) => (
     i === idx ? { ...it, qty: Math.max(1, Number(it?.qty || 1) - 1) } : it
   )))
-  const removeItem = (idx) => setItems(prev => prev.filter((_,i)=> i!==idx))
+  const removeItem = (idx) => setItems(prev => {
+    const line = prev[idx]
+    const dealId = line?.mods?.dealGroupId
+    if (dealId) return prev.filter(it => String(it?.mods?.dealGroupId || '') !== String(dealId))
+    return prev.filter((_, i) => i !== idx)
+  })
 
   // Order type first — Foodpanda uses priceFoodpanda on menu items
   const [orderType, setOrderType] = useState('') // start with no selection; user must choose
@@ -202,6 +283,8 @@ export default function SalesNew() {
   // Select rider modal for paying delivery recalls
   const [showSelectRider, setShowSelectRider] = useState(false)
   const [recallToPay, setRecallToPay] = useState(null)
+  const [showPayMethod, setShowPayMethod] = useState(false)
+  const [pendingPayOpts, setPendingPayOpts] = useState(null)
 
   // Call-center inbox → one-click cart load (then cashier KOTs normally)
   useEffect(() => {
@@ -248,6 +331,7 @@ export default function SalesNew() {
     // Cart and filters
     setItems([])
     setSelectedCategory('')
+    setCategoryPath([])
     setSearch('')
     // Payment method
     setPaymentMethod('cash')
@@ -372,13 +456,9 @@ export default function SalesNew() {
       ord.id = activeRecall.id || activeRecall._id
       if (activeRecall.tokenNo) ord.tokenNo = activeRecall.tokenNo
     }
-    // For delivery orders, show rider selection modal before finalizing payment
-    if (orderType === 'Delivery') {
-      setRecallToPay(ord)
-      setShowSelectRider(true)
-      return
-    }
-    ;(async ()=>{ await finalizePayment(ord, null) })()
+    setRecallToPay(ord)
+    setPendingPayOpts(null)
+    setShowPayMethod(true)
   }
   const onOpenRecall = async () => {
     await refreshRecalls().catch(()=>{})
@@ -560,40 +640,55 @@ export default function SalesNew() {
     setShowRecall(false)
   }
   const handleRecallPay = (ord) => {
-    // If delivery, ask for rider then proceed to pay
-    if ((ord?.orderType||'') === 'Delivery') {
-      // Close dialog so it doesn't linger while selecting a rider
-      setShowRecall(false)
+    setShowRecall(false)
+    setRecallToPay(ord)
+    setPendingPayOpts(null)
+    setShowPayMethod(true)
+  }
+
+  const applyPayOpts = (pay) => {
+    if (!pay) return
+    setPaymentMethod(pay.method || 'cash')
+    setBankChannel(pay.bankChannel || '')
+    setBankLast4(pay.bankLast4 || '')
+    setBankRef('')
+    setCashReceived(Number(pay.cashReceived || 0))
+    setPayStaffId(pay.staffId || '')
+    setPayStaffName(pay.staffName || '')
+  }
+
+  const continueAfterPaymentMethod = (ord, pay) => {
+    applyPayOpts(pay)
+    setPendingPayOpts(pay)
+    setShowPayMethod(false)
+    if ((ord?.orderType || '') === 'Delivery') {
       setRecallToPay(ord)
       setShowSelectRider(true)
       return
     }
-    // Otherwise, pay directly
-    // Restore payment method from recall so finalizePayment uses the correct one
-    if (ord.paymentMethod) setPaymentMethod(ord.paymentMethod)
-    if (ord.bankChannel) setBankChannel(ord.bankChannel)
-    if (ord.bankLast4) setBankLast4(String(ord.bankLast4))
-    if (ord.bankRef) setBankRef(String(ord.bankRef))
-    if (ord.staffId) setPayStaffId(String(ord.staffId))
-    if (ord.staffName) setPayStaffName(String(ord.staffName))
-    // Close dialog immediately to prevent stale entry showing
-    setShowRecall(false)
-    ;(async ()=>{ await finalizePayment(ord, null) })()
+    setRecallToPay(null)
+    ;(async () => { await finalizePayment(ord, null, pay) })()
   }
 
-  const finalizePayment = async (ord, rider) => {
+  const finalizePayment = async (ord, rider, payOverride = null) => {
     try {
-      // Bank payments: destination required; last 4 digits optional but must be 4 digits if given
-      if (paymentMethod === 'bank') {
-        if (!bankChannel) { toast.error('Select bank destination'); return }
-        if (bankLast4 && !/^\d{4}$/.test(String(bankLast4))) { toast.error('Last 4 digits must be exactly 4 digits'); return }
+      const pay = payOverride || pendingPayOpts
+      const method = pay?.method || paymentMethod
+      const channel = pay?.bankChannel ?? bankChannel
+      const last4 = pay?.bankLast4 ?? bankLast4
+      const cashIn = pay?.cashReceived ?? cashReceived
+      const staffIdPay = pay?.staffId ?? payStaffId
+      const staffNamePay = pay?.staffName ?? payStaffName
+      // Bank payments: last 4 digits optional but must be 4 digits if given
+      if (method === 'bank') {
+        if (last4 && !/^\d{4}$/.test(String(last4))) { toast.error('Last 4 digits must be exactly 4 digits'); return }
       }
-      if (paymentMethod === 'card') {
-        if (bankLast4 && !/^\d{4}$/.test(String(bankLast4))) { toast.error('Last 4 digits must be exactly 4 digits'); return }
+      if (method === 'card') {
+        if (last4 && !/^\d{4}$/.test(String(last4))) { toast.error('Last 4 digits must be exactly 4 digits'); return }
       }
-      if (paymentMethod === 'staff' && !payStaffId) { toast.error('Select the staff member'); return }
-      const tipAmount = paymentMethod === 'cash'
-        ? Math.max(0, (Number(cashReceived) || 0) - (Number(ord.totalAmount) || 0))
+      if (method === 'staff' && !staffIdPay) { toast.error('Select the staff member'); return }
+      const tipAmount = (method === 'cash' || method === 'card' || method === 'bank')
+        ? Math.max(0, (Number(cashIn) || 0) - (Number(ord.totalAmount) || 0))
         : 0
       // 1) Create sale
       const saleBody = {
@@ -614,15 +709,15 @@ export default function SalesNew() {
         totalAmount: Number(ord.totalAmount||0),
         remarks: ord.remarks || '',
         status: 'PAID',
-        paymentMethod: paymentMethod,
-        bankChannel: paymentMethod === 'bank' ? bankChannel : '',
-        bankLast4: (paymentMethod === 'bank' || paymentMethod === 'card') ? String(bankLast4) : '',
+        paymentMethod: method,
+        bankChannel: method === 'bank' ? channel : '',
+        bankLast4: (method === 'bank' || method === 'card') ? String(last4 || '') : '',
         bankRef: '',
         tipAmount,
-        cashReceived: paymentMethod === 'cash' ? Number(cashReceived || 0) : 0,
-        staffId: paymentMethod === 'staff' ? String(payStaffId) : '',
-        staffName: paymentMethod === 'staff' ? payStaffName : '',
-        staffSettlement: paymentMethod === 'staff' ? 'pay_later' : '',
+        cashReceived: (method === 'cash' || method === 'card' || method === 'bank') ? Number(cashIn || 0) : 0,
+        staffId: method === 'staff' ? String(staffIdPay) : '',
+        staffName: method === 'staff' ? staffNamePay : '',
+        staffSettlement: method === 'staff' ? 'pay_later' : '',
         riderId: rider?.id || '',
         riderName: rider?.name || '',
         // Ensure dashboard uses business date
@@ -653,14 +748,14 @@ export default function SalesNew() {
           tableNo: saleBody.tableNo,
           floor,
           tokenNo: (savedSale?.tokenNo || saleBody.tokenNo || ''),
-          paymentMethod: paymentMethod,
+          paymentMethod: method,
           bankChannel: saleBody.bankChannel,
           bankLast4: saleBody.bankLast4,
           bankRef: '',
           staffId: saleBody.staffId,
           staffName: saleBody.staffName,
           staffSettlement: saleBody.staffSettlement,
-          cashReceived: Number(cashReceived||0),
+          cashReceived: Number(cashIn || 0),
           changeDue: 0,
           tipAmount,
           customer: saleBody.customer,
@@ -750,6 +845,8 @@ export default function SalesNew() {
       setItems([])
       setShowSelectRider(false)
       setRecallToPay(null)
+      setShowPayMethod(false)
+      setPendingPayOpts(null)
       // Reset discounts/charges so bill summary clears
       setBillDiscPct(0)
       setBillDiscAmt(0)
@@ -1611,8 +1708,8 @@ export default function SalesNew() {
       <div className="lg:col-span-7 space-y-3 lg:flex lg:flex-col lg:min-h-0 lg:overflow-hidden">
         <CategoryBar
           categories={categories}
-          selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
+          selectedCategory={categoryBarSelected}
+          onSelectCategory={onSelectCategory}
           tilesPerRow={state.settings?.posCategoryTilesPerRow || 4}
         />
     {/* Delivery customer modal */}
@@ -1640,6 +1737,8 @@ export default function SalesNew() {
           itemsInCategory={itemsInCategory}
           addToCart={addToCart}
           tilesPerRow={state.settings?.posItemTilesPerRow || 4}
+          subcategories={menuSubcategories}
+          onSelectSubcategory={onSelectSubcategory}
         />
         <ActionButtons
           discardSale={discardSale}
@@ -1740,12 +1839,33 @@ export default function SalesNew() {
       onPay={handleRecallPay}
       onCustomerBill={handleCustomerBill}
     />
+    <DealBuilderDialog
+      open={showDealBuilder}
+      category={dealCategory}
+      menu={menu}
+      categories={state.categories || []}
+      onCancel={closeDealBuilder}
+      onConfirm={addDealLinesToCart}
+    />
+    <PaymentMethodDialog
+      open={showPayMethod}
+      totalAmount={Number(recallToPay?.totalAmount || 0)}
+      initialMethod={recallToPay?.paymentMethod || paymentMethod || 'cash'}
+      initialBankChannel={recallToPay?.bankChannel || bankChannel || 'bank_account'}
+      initialLast4={String(recallToPay?.bankLast4 || bankLast4 || '')}
+      initialCashReceived={cashReceived || Number(recallToPay?.totalAmount || 0)}
+      initialStaffId={String(recallToPay?.staffId || payStaffId || '')}
+      staff={staffForPurchase}
+      showPersonalPayment={Boolean(state.settings?.showPersonalPayment)}
+      onCancel={()=>{ setShowPayMethod(false); setRecallToPay(null); setPendingPayOpts(null) }}
+      onConfirm={(pay)=> { if (recallToPay) continueAfterPaymentMethod(recallToPay, pay) }}
+    />
     {/* Select rider for delivery payment - rendered above Recall (higher z) */}
     <SelectRiderModal
       open={showSelectRider}
-      onCancel={()=>{ setShowSelectRider(false); setRecallToPay(null) }}
+      onCancel={()=>{ setShowSelectRider(false); setRecallToPay(null); setPendingPayOpts(null) }}
       riders={ridersFromStaff}
-      onConfirm={(r)=>{ const ord = recallToPay; setShowSelectRider(false); setRecallToPay(null); if (ord) finalizePayment(ord, r) }}
+      onConfirm={(r)=>{ const ord = recallToPay; const pay = pendingPayOpts; setShowSelectRider(false); setRecallToPay(null); if (ord) finalizePayment(ord, r, pay) }}
     />
     {/* KOT modal */}
     <KotModal

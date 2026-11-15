@@ -14,6 +14,8 @@ const ExpenseSchema = new mongoose.Schema({
   amount: { type: Number, required: true, min: 0 },
   description: { type: String, default: '' },
   note: { type: String, default: '' },
+  // Receipt / bill photo (data URL or hosted URL)
+  imageUrl: { type: String, default: '' },
   accountHead: { type: String, enum: ['cash', 'bank'], default: 'cash' },
   paymentMethod: { type: String, enum: ['cash', 'card', 'bank_transfer', 'cheque', 'other'], default: 'cash' },
   paidBy: { type: String, default: '' },
