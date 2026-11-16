@@ -238,7 +238,7 @@ export default function DealBuilderDialog({
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={onCancel}>
       <div
-        className="w-full max-w-6xl max-h-[94vh] overflow-hidden rounded-md bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 shadow-2xl flex flex-col"
+        className="w-[min(72rem,calc(100vw-1.5rem))] max-h-[94vh] overflow-hidden rounded-md bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 shadow-2xl flex flex-col shrink-0"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -251,9 +251,9 @@ export default function DealBuilderDialog({
           >×</button>
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 overflow-hidden">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(9rem,0.85fr)_minmax(0,3fr)] gap-3 p-3 overflow-hidden">
           {/* Left: selected products */}
-          <div className="lg:col-span-4 min-h-0 flex flex-col border border-gray-200 dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-950">
+          <div className="min-h-0 min-w-0 flex flex-col border border-gray-200 dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-950">
             <div className="grid grid-cols-12 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-gray-200 border-b dark:border-gray-700">
               <div className="col-span-2 px-2 py-2">Sr #</div>
               <div className="col-span-5 px-2 py-2">Product</div>
@@ -282,7 +282,7 @@ export default function DealBuilderDialog({
           </div>
 
           {/* Center: category / slot buttons */}
-          <div className="lg:col-span-2 min-h-0 overflow-y-auto flex flex-col gap-2 py-1">
+          <div className="min-h-0 min-w-0 overflow-y-auto flex flex-col gap-2 py-1">
             {bundleSlots.map((slot, idx) => {
               const n = slotCount(idx)
               const min = Number(slot.minItems || 0)
@@ -336,7 +336,7 @@ export default function DealBuilderDialog({
           </div>
 
           {/* Right: item grid */}
-          <div className="lg:col-span-6 min-h-0 flex flex-col border border-gray-200 dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-950">
+          <div className="min-h-0 min-w-0 flex flex-col border border-gray-200 dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-950">
             <div className="px-3 py-2 border-b dark:border-gray-700 text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
               {activePane.type === 'slot' && activeSlotMeta
                 ? slotLabel(activeSlotMeta, activeSlot)
@@ -346,9 +346,9 @@ export default function DealBuilderDialog({
                     || 'Included')
                   : 'Items'}
             </div>
-            <div className="flex-1 overflow-y-auto p-2 min-h-[220px]">
+            <div className="flex-1 overflow-y-auto p-2 min-h-[220px] w-full">
               {activePane.type === 'slot' && activeSlotMeta ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full">
                   {slotMenuItems.map((item) => {
                     const picks = slotPicks[activeSlot] || []
                     const selected = picks.find(p => String(p.itemId) === String(item.id))
@@ -381,7 +381,7 @@ export default function DealBuilderDialog({
                   )}
                 </div>
               ) : activePane.type === 'included' && bundleItems[activePane.index] ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full">
                   {(() => {
                     const row = bundleItems[activePane.index]
                     const menuItem = (menu || []).find(m => String(m.id) === String(row.itemId))
