@@ -254,7 +254,7 @@ export default function WarehouseSupplierHistory() {
       reportNo: `Rpt #: WSH-${exportDateStamp()}`,
       metaLeft: [
         ['Supplier', supplier?.name || id],
-        ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
+        ['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')],
         ['From', from || 'All'],
         ['To', to || 'All'],
       ],

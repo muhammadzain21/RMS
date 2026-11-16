@@ -248,7 +248,7 @@ function reducer(state, action) {
     }
     case 'UPDATE_SALE_STATUS': {
       const { id, status } = action.payload
-      const stamp = format(new Date(), 'HH:mm')
+      const stamp = format(new Date(), 'h:mm a')
       const next = {
         ...state,
         sales: state.sales.map(s => s.id === id ? { ...s, status, preparedTime: status === 'Preparing' || status === 'Completed' ? stamp : s.preparedTime } : s)

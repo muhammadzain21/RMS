@@ -530,7 +530,7 @@ export default function CallCenterOrders() {
           const items = Array.isArray(o.items) ? o.items : []
           const created = o.createdAt ? new Date(o.createdAt) : null
           const timeLabel = created && !Number.isNaN(created.getTime())
-            ? created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            ? created.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
             : ''
           return (
             <article

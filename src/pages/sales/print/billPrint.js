@@ -34,7 +34,7 @@ export async function printSaleReceiptUtil(opts = {}) {
     // Use provided createdAt for reprint, otherwise current time for new sale
     const saleDate = opts.createdAt ? new Date(opts.createdAt) : new Date()
     const dateStr = saleDate.toLocaleDateString()
-    const timeStr = saleDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const timeStr = saleDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
     // Track if this is a reprint (has original timestamp)
     const isReprint = !!opts.createdAt
 

@@ -93,7 +93,7 @@ export default function StaffMonthSummaryPage({
       title: `${st.name} — Monthly Summary`,
       reportLabel: 'Staff Monthly Summary',
       reportNo: `Rpt #: SMS-${month}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st.name], ['Month', month]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Staff', st.name], ['Month', month]],
       metaRight: [['Position', st.position || ''], ['Records', String(records.length)]],
       body,
     });

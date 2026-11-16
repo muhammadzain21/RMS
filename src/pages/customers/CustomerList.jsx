@@ -275,7 +275,7 @@ export default function CustomerList() {
  title: 'Customers',
  reportLabel: 'Customer List',
  reportNo: `Rpt #: CUS-${exportDateStamp()}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(list.length)]],
  body,
  })

@@ -186,7 +186,7 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
    </button>
  )}
  <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur text-xs" title="System Time"><span className="font-mono font-bold text-white">
- {currentTime.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+ {currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}
  </span><span className="text-white/60 text-[10px]">
  {Intl.DateTimeFormat().resolvedOptions().timeZone}
  </span></div>

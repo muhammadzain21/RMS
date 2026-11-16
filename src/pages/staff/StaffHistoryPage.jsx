@@ -242,7 +242,7 @@ export default function StaffHistoryPage({ staff, API, token, companyName, compa
       title: tabExport.title,
       reportLabel: 'Staff History',
       reportNo: `Rpt #: SH-${month}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st?.name || '—'], ['Month', month]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Staff', st?.name || '—'], ['Month', month]],
       metaRight: [['Tab', tabExport.tabLabel], ['Rows', String(tabExport.rows.length)]],
       body,
     });

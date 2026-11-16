@@ -461,7 +461,7 @@ export default function UserList() {
       title: 'User List',
       reportLabel: 'Users Report',
       reportNo: `Rpt #: USR-${exportDateStamp()}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')]],
       metaRight: [['Records', String(userList.length)]],
       body,
     })

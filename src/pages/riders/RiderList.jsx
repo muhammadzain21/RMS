@@ -172,7 +172,7 @@ export default function RiderList() {
  title: 'Rider Cash Records',
  reportLabel: 'Rider Cash Report',
  reportNo: `Rpt #: RC-${fromDate || 'all'}-${toDate || 'all'}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', fromDate || '—'], ['To', toDate || '—']],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['From', fromDate || '—'], ['To', toDate || '—']],
  metaRight: [['Rider filter', filterRider ? (riders.find(x => x.id === filterRider)?.name || filterRider) : 'All'], ['Settled', settledFilter]],
  body,
  })

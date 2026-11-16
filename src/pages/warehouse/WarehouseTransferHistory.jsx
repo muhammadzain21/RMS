@@ -88,7 +88,7 @@ export default function WarehouseTransferHistory() {
       reportLabel: 'Warehouse Transfers',
       reportNo: `Rpt #: WHT-${exportDateStamp()}`,
       metaLeft: [
-        ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
+        ['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')],
         ['From', from || 'All'],
         ['To', to || 'All'],
       ],

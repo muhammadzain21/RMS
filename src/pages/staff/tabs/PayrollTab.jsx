@@ -283,7 +283,7 @@ export default function PayrollTab({
       title: 'Payroll Report',
       reportLabel: 'Payroll Report',
       reportNo: `Rpt #: PAY-${month}-${tab}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', month], ['View', tab]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Period', month], ['View', tab]],
       metaRight: [['Records', String(tabRows.length)], ['Net (tab)', `${money(tabRows.reduce((s, r) => s + Number(r.netPay || 0), 0))} PKR`]],
       body,
     });

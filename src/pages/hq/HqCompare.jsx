@@ -102,7 +102,7 @@ export default function HqCompare() {
       title: 'Branch Compare',
       reportLabel: 'HQ Compare',
       reportNo: `Rpt #: CMP-${exportDateStamp()}`,
-      metaLeft: [['From', from], ['To', to], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+      metaLeft: [['From', from], ['To', to], ['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')]],
       metaRight: [['Branches', String(filtered.length)]],
       body,
     })

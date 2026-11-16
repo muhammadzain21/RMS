@@ -114,7 +114,7 @@ export default function WarehouseSuppliers() {
       title: 'Warehouse Suppliers',
       reportLabel: 'Warehouse Supplier List',
       reportNo: `Rpt #: WHS-${exportDateStamp()}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Search', search.trim() || 'All']],
       metaRight: [['Records', String(filtered.length)]],
       body,
     })

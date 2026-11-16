@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useMyWork, pkr, inRange, monthName, StatCard, Chip } from './myWorkShared.jsx'
+import { formatTime12 } from '../../utils/dateUtils.js'
 
 const LINKS = [
   { to: '/rider', label: 'Rider delivery', desc: 'Share live GPS on depart', icon: Bike, color: 'bg-rose-500' },
@@ -138,7 +139,7 @@ export default function MyHome() {
         key: `a-${r.date}`,
         date: r.date,
         title: `Attendance · ${r.status || '-'}`,
-        detail: [r.checkIn && `In ${r.checkIn}`, r.checkOut && `Out ${r.checkOut}`].filter(Boolean).join(' · ') || '—',
+        detail: [r.checkIn && `In ${formatTime12(r.checkIn)}`, r.checkOut && `Out ${formatTime12(r.checkOut)}`].filter(Boolean).join(' · ') || '—',
         tone: r.status === 'Present' ? 'green' : r.status === 'Late' ? 'amber' : r.status === 'Leave' ? 'blue' : 'red',
         sort: r.date,
       })

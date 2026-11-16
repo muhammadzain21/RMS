@@ -38,7 +38,7 @@ export default function ExpenseHistory() {
       title: 'Expense History',
       reportLabel: 'Expense Report',
       reportNo: `Rpt #: EX-${date || 'all'}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date filter', date || 'All']],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Date filter', date || 'All']],
       metaRight: [['Category', cat || 'All'], ['Records', String(rows.length)]],
       body,
     })

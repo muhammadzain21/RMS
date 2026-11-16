@@ -65,7 +65,7 @@ function fmtDateTime(exp) {
   if (at) {
     try {
       const dt = new Date(at)
-      if (!Number.isNaN(dt.getTime())) return format(dt, 'dd MMM yyyy HH:mm')
+      if (!Number.isNaN(dt.getTime())) return format(dt, 'dd MMM yyyy h:mm a')
     } catch { /* fall through */ }
   }
   return fmtDate(exp?.date)
@@ -472,7 +472,7 @@ export default function ExpenseNew() {
       title: 'Expenses',
       reportLabel: 'Expense Report',
       reportNo: `Rpt #: EX-${startDate || 'all'}-${endDate || 'all'}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', startDate || '...'], ['To', endDate || '...']],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['From', startDate || '...'], ['To', endDate || '...']],
       metaRight: [['Head', type || 'All'], ['Account', accountFilter || 'All'], ['Status', statusFilter || 'All']],
       body,
     })
@@ -787,7 +787,7 @@ export default function ExpenseNew() {
               <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Added by</span><span className="font-bold">{showView.userName || '-'}</span></div>
               <div className="flex justify-between gap-2 items-center"><span className="text-[var(--color-text-muted)] font-semibold">Status</span><StatusBadge status={showView.status} /></div>
               {showView.status === 'approved' && (
-                <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Approved by</span><span className="font-bold">{showView.approvedBy || '-'}{showView.approvedAt ? ` · ${format(new Date(showView.approvedAt), 'yyyy-MM-dd HH:mm')}` : ''}</span></div>
+                <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Approved by</span><span className="font-bold">{showView.approvedBy || '-'}{showView.approvedAt ? ` · ${format(new Date(showView.approvedAt), 'yyyy-MM-dd h:mm a')}` : ''}</span></div>
               )}
             </div>
             {showView.imageUrl ? (

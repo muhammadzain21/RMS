@@ -129,7 +129,7 @@ export default function DemandList() {
  title: 'Demand Management',
  reportLabel: 'Demand Report',
  reportNo: `Rpt #: DM-${exportDateStamp()}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', dateFrom || '—'], ['To', dateTo || '—']],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['From', dateFrom || '—'], ['To', dateTo || '—']],
  metaRight: [['Status', statusFilter], ['Search', search.trim() || '—']],
  body,
  footNote: 'Export reflects current page of filtered results.',
@@ -158,7 +158,7 @@ export default function DemandList() {
  title: 'Demand Detail',
  reportLabel: 'Demand',
  reportNo: demand.id ? `ID: ${String(demand.id).slice(-8)}` : '',
- metaLeft: [['Date', demand.date], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+ metaLeft: [['Date', demand.date], ['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')]],
  metaRight: [['Status', demand.status]],
  body,
  })

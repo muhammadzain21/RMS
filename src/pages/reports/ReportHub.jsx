@@ -6,6 +6,7 @@ import Pagination from '../../components/Pagination.jsx'
 import { btnCsv, btnPdf, btnPrint, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
 import { printReportDoc, downloadReportDoc, reportSummary, reportTable } from '../../utils/reportDoc.js'
 import { toast } from 'react-hot-toast'
+import { formatDateTime12 } from '../../utils/dateUtils.js'
 
 export default function ReportHub({
   title,
@@ -114,7 +115,7 @@ export default function ReportHub({
       ...(search.trim() ? [{ label: 'Search', value: search.trim() }] : []),
     ],
     metaRight: [
-      { label: 'Generated', value: new Date().toLocaleString() },
+      { label: 'Generated', value: formatDateTime12(new Date()) },
       { label: 'Rows', value: String(filteredRows.length) },
     ],
     body: `${reportSummary(result.summary || [])}${reportTable({ headers: result.headers || [], rows: filteredRows, numbered: true })}`,

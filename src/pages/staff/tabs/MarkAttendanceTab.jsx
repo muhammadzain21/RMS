@@ -125,7 +125,7 @@ export default function MarkAttendanceTab({
    title: 'Mark Attendance',
    reportLabel: 'Attendance Report',
    reportNo: `Rpt #: MA-${today}`,
-   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', today]],
+   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Date', today]],
    metaRight: [['Active staff', String(activeStaff.length)]],
    body,
   });

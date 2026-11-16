@@ -309,13 +309,14 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
       for (const s of sales) {
         const ts = Number(s.createdAt) || Date.parse(s.createdAt) || 0
         const hour = ts ? new Date(ts).getHours() : 0
-        const label = `${String(hour).padStart(2, '0')}:00`
-        const row = map.get(label) || { bills: 0, amount: 0 }
+        const h12 = hour % 12 || 12
+        const label = `${h12}:00 ${hour < 12 ? 'AM' : 'PM'}`
+        const row = map.get(hour) || { label, bills: 0, amount: 0 }
         row.bills += 1
         row.amount += saleTotal(s)
-        map.set(label, row)
+        map.set(hour, row)
       }
-      const rows = [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => [k, v.bills, fmtMoney(v.amount)])
+      const rows = [...map.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => [v.label, v.bills, fmtMoney(v.amount)])
       return { headers: ['Hour', 'Bills', 'Amount (PKR)'], rows, summary: [{ label: 'Hours', amount: String(rows.length) }] }
     }
     case 'deals': {

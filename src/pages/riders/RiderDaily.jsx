@@ -102,7 +102,7 @@ export default function RiderDaily() {
       title: 'Rider Daily Record',
       reportLabel: 'Rider Daily Report',
       reportNo: `Rpt #: RD-${form.date}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', form.date]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Date', form.date]],
       metaRight: [['Records', String(rows.length)]],
       body,
     })

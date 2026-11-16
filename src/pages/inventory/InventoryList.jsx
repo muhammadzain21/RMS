@@ -216,7 +216,7 @@ export default function InventoryList() {
  title: 'Inventory',
  reportLabel: 'Inventory Report',
  reportNo: `Rpt #: INV-${exportDateStamp()}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Tab', tabLabel], ['Search', search.trim() || 'All']],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Tab', tabLabel], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })

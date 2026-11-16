@@ -461,7 +461,7 @@ export default function SalesHistory() {
  reportLabel: 'Sales History Report',
  reportNo: `Rpt #: SH-${fromDate || 'all'}-${toDate || 'all'}`,
  metaLeft: [
- ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
+ ['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')],
  ['Period', `${fromDate || '...'} to ${toDate || '...'}`],
  ],
  metaRight: [

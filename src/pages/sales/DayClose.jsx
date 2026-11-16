@@ -412,7 +412,7 @@ export default function DayClose() {
  title: 'Day Close History',
  reportLabel: 'Day Close Report',
  reportNo: `Rpt #: DC-${format(new Date(), 'yyyyMMdd-HHmm')}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Period', `${periodFrom} to ${periodTo}`]],
  metaRight: [['Records', String(rows.length)]],
  body,
  })

@@ -1,5 +1,6 @@
 import { CalendarCheck } from 'lucide-react'
 import { useMyWork, StatCard, Panel, Chip, Empty, inRange } from './myWorkShared.jsx'
+import { formatTime12 } from '../../utils/dateUtils.js'
 
 export default function MyAttendance() {
   const { data, from, to } = useMyWork()
@@ -47,8 +48,8 @@ export default function MyAttendance() {
                       {r.status || '-'}
                     </Chip>
                   </td>
-                  <td className="font-medium">{r.checkIn || '-'}</td>
-                  <td className="font-medium">{r.checkOut || '-'}</td>
+                  <td className="font-medium">{formatTime12(r.checkIn) || '-'}</td>
+                  <td className="font-medium">{formatTime12(r.checkOut) || '-'}</td>
                   <td className="text-right font-semibold">{r.lateMinutes ?? '-'}</td>
                 </tr>
               ))}

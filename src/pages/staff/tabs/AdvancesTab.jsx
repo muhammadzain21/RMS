@@ -133,7 +133,7 @@ export default function AdvancesTab({
       title: isRegister ? 'Staff Advances Register' : 'Staff Advance Balances',
       reportLabel: 'Staff Advances Report',
       reportNo: `Rpt #: ADV-${month}-${view}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Month', month], ['View', view]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Month', month], ['View', view]],
       metaRight: [['Staff filter', filterStaffId ? staffName(filterStaffId) : 'All'], ['Records', String(isRegister ? monthAdvances.length : filteredBalances.length)]],
       body,
     });

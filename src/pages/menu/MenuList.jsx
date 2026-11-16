@@ -333,7 +333,7 @@ export default function MenuList() {
  title: 'Menu List',
  reportLabel: 'Menu Report',
  reportNo: `Rpt #: MENU-${exportDateStamp()}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })

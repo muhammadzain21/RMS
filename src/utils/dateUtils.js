@@ -14,13 +14,48 @@ export function getLocalDateString(date = new Date()) {
 }
 
 /**
- * Get current time as HH:mm in LOCAL timezone
+ * Get current time as 12-hour clock in LOCAL timezone (e.g. "2:30 PM")
  */
 export function getLocalTimeString(date = new Date()) {
-  const d = new Date(date);
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
+  return formatClock12(date)
+}
+
+/**
+ * Format a Date / ISO / timestamp as 12-hour clock.
+ * @param {Date|string|number} value
+ * @param {{ withSeconds?: boolean }} [opts]
+ * @returns {string} e.g. "2:30 PM" or "2:30:05 PM"
+ */
+export function formatClock12(value, opts = {}) {
+  if (value == null || value === '') return ''
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  const withSeconds = !!opts.withSeconds
+  try {
+    return d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      ...(withSeconds ? { second: '2-digit' } : {}),
+      hour12: true,
+    })
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Format date + 12-hour time for UI / reports.
+ * @param {Date|string|number} value
+ * @param {{ withSeconds?: boolean }} [opts]
+ * @returns {string} e.g. "2026-11-16 2:30 PM"
+ */
+export function formatDateTime12(value, opts = {}) {
+  if (value == null || value === '') return ''
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  const datePart = getLocalDateString(d)
+  const timePart = formatClock12(d, opts)
+  return timePart ? `${datePart} ${timePart}` : datePart
 }
 
 /**

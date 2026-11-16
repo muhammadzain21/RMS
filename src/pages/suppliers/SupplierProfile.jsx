@@ -92,7 +92,7 @@ export default function SupplierProfile() {
       title: `Supplier: ${supplier?.name || supplier?.company || 'Profile'}`,
       reportLabel: 'Supplier Supplies',
       reportNo: `Rpt #: SP-${id}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Phone', supplier?.phone || '-']],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Phone', supplier?.phone || '-']],
       metaRight: [['Status', supplier?.status || 'Active'], ['Lines', String(supplyLines.length)]],
       body,
     })

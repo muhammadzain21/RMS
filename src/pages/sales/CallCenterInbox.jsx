@@ -24,7 +24,7 @@ function orderDate(o) {
   const raw = o?.createdAt || o?.date || ''
   try {
     const d = new Date(raw)
-    if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd HH:mm')
+    if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd h:mm a')
   } catch {}
   return String(raw).slice(0, 16) || '—'
 }

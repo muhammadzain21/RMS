@@ -202,7 +202,7 @@ export default function Tables() {
  title: 'Tables Summary',
  reportLabel: 'Tables Report',
  reportNo: `Rpt #: TBL-${exportDateStamp()}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', periodLabel]],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Period', periodLabel]],
  metaRight: [['Search', search.trim() || 'All'], ['Records', String(rows.length)]],
  body,
  })

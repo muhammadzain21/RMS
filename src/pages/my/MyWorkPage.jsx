@@ -4,6 +4,7 @@ import { useData } from '../../state/DataContext.jsx'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
+import { formatTime12 } from '../../utils/dateUtils.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -99,7 +100,7 @@ export default function MyWorkPage() {
           { label: 'Absent', amount: String(att.filter(r => r.status === 'Absent').length) },
         ],
         headers: ['Date', 'Status', 'Check In', 'Check Out', 'Late (min)'],
-        rows: att.map(r => [r.date, r.status || '-', r.checkIn || '-', r.checkOut || '-', r.lateMinutes ?? '']),
+        rows: att.map(r => [r.date, r.status || '-', formatTime12(r.checkIn) || '-', formatTime12(r.checkOut) || '-', r.lateMinutes ?? '']),
       }
     }
     if (tab === 'purchases') {
@@ -169,7 +170,7 @@ export default function MyWorkPage() {
       title: tabExport.title,
       reportLabel: 'My Work',
       reportNo: `Rpt #: MW-${month}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Month', monthName(month)]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Month', monthName(month)]],
       metaRight: [['Tab', tabExport.tabLabel], ['Rows', String(tabExport.rows.length)]],
       body,
     })
@@ -242,7 +243,7 @@ export default function MyWorkPage() {
                 left={<>
                   <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{r.date}</div>
                   <div className="text-xs text-slate-400 mt-0.5">
-                    {r.checkIn ? `In ${r.checkIn}` : ''}{r.checkOut ? ` · Out ${r.checkOut}` : ''}{r.lateMinutes ? ` · ${r.lateMinutes}m late` : ''}
+                    {r.checkIn ? `In ${formatTime12(r.checkIn)}` : ''}{r.checkOut ? ` · Out ${formatTime12(r.checkOut)}` : ''}{r.lateMinutes ? ` · ${r.lateMinutes}m late` : ''}
                   </div>
                 </>}
                 right={<Chip color={r.status === 'Present' ? 'green' : r.status === 'Late' ? 'amber' : r.status === 'Leave' ? 'blue' : 'red'}>{r.status || '-'}</Chip>}

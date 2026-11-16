@@ -256,7 +256,7 @@ export default function DataManager() {
       title: 'Data Manager Export',
       reportLabel: 'Data Export',
       reportNo: `Col: ${collection}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', from || '—'], ['To', to || '—']],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['From', from || '—'], ['To', to || '—']],
       metaRight: [['Search', q.trim() || '—'], ['Rows', String(exportRows.length)]],
       body,
       footNote: exportRows.length < total ? `Showing first ${exportRows.length} of ${total} matching documents (cap 5000).` : '',

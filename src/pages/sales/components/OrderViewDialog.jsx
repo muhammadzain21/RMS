@@ -33,7 +33,7 @@ function fmtTime(v) {
   try {
     const d = new Date(v)
     if (isNaN(d.getTime())) return '-'
-    return d.toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleString('en-US', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })
   } catch { return '-' }
 }
 
@@ -104,7 +104,7 @@ export default function OrderViewDialog({ open, sale, API, token, menu = [], onC
       doc.text('Order Details', margin, y)
       doc.setFontSize(10)
       y += 16
-      doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd HH:mm')}`, margin, y)
+      doc.text(`Generated: ${format(new Date(), 'yyyy-MM-dd h:mm a')}`, margin, y)
       y += 10
       doc.setDrawColor(180)
       doc.line(margin, y, pageW - margin, y)

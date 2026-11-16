@@ -101,7 +101,7 @@ export default function CustomerProfile() {
       title: `Customer Ledger: ${customer?.name || 'Profile'}`,
       reportLabel: 'Customer Ledger',
       reportNo: `Rpt #: CL-${customer?.id || id}`,
-      metaLeft: [['Phone', customer?.phone || '-'], ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')]],
+      metaLeft: [['Phone', customer?.phone || '-'], ['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')]],
       metaRight: [['Regular', customer?.isRegular ? 'Yes' : 'No'], ['Visits', String(sales.length)]],
       body,
     })

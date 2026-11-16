@@ -112,7 +112,7 @@ export default function AuditLog() {
  headers: ['Time', 'Type', 'User', 'Action'],
  numbered: true,
  rows: rows.map(r => [
- r.at ? format(new Date(r.at), 'yyyy-MM-dd HH:mm:ss') : '-',
+ r.at ? format(new Date(r.at), 'yyyy-MM-dd h:mm:ss a') : '-',
  r.type || '-',
  r.userName || r.user || '-',
  r.action || r.message || '-',
@@ -124,7 +124,7 @@ export default function AuditLog() {
  title: 'Audit Log',
  reportLabel: 'Audit Report',
  reportNo: `Rpt #: AUD-${format(new Date(), 'yyyyMMdd-HHmm')}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Period', `${periodFrom} to ${periodTo}`]],
  metaRight: [['Records', String(rows.length)]],
  body,
  })
@@ -143,7 +143,7 @@ export default function AuditLog() {
  const exportCSV = () => {
  const headers = ['Time','Type','User','Action']
  const lines = rows.map(r => [
- r.at ? format(new Date(r.at), 'yyyy-MM-dd HH:mm:ss') : '-',
+ r.at ? format(new Date(r.at), 'yyyy-MM-dd h:mm:ss a') : '-',
  r.type || '',
  r.userName || r.user || '',
  r.action || r.message || ''
@@ -237,7 +237,7 @@ export default function AuditLog() {
  {/* Data Table */}
  <div className="border-2 border-indigo-200 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Time</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">User</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Action</th></tr></thead><tbody>
  {paginatedRows.map(r => (
- <tr key={r.id || r.at} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300">{r.at ? format(new Date(r.at), 'yyyy-MM-dd HH:mm:ss') : '-'}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${typeColors[r.type] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>
+ <tr key={r.id || r.at} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300">{r.at ? format(new Date(r.at), 'yyyy-MM-dd h:mm:ss a') : '-'}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${typeColors[r.type] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>
  {getTypeIcon(r.type)} {r.type || 'other'}
  </span></td><td className="p-3 font-medium text-gray-900 dark:text-gray-100">{r.userName || r.user || '-'}</td><td className="p-3 text-sm text-gray-700 dark:text-gray-300">{r.action || r.message || '-'}</td></tr>
  ))}

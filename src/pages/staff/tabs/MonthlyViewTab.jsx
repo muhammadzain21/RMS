@@ -158,7 +158,7 @@ export default function MonthlyViewTab({
    title: 'Monthly Staff Report',
    reportLabel: 'Monthly Attendance Report',
    reportNo: `Rpt #: MA-${month}-${monthlyStaffId}`,
-   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Staff', st?.name || ''], ['Month', month]],
+   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Staff', st?.name || ''], ['Month', month]],
    metaRight: [['Days', String(monthRecords.length)], ['Position', st?.position || '']],
    body,
   });

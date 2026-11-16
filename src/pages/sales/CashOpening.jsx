@@ -253,7 +253,7 @@ export default function CashOpening() {
  title: 'Day Opening History',
  reportLabel: 'Cash Opening Report',
  reportNo: `Rpt #: CO-${format(new Date(), 'yyyyMMdd-HHmm')}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Period', `${periodFrom} to ${periodTo}`]],
  metaRight: [['Records', String(rows.length)]],
  body,
  })

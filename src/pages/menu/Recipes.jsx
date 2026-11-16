@@ -378,7 +378,7 @@ export default function Recipes() {
  title: 'Recipes',
  reportLabel: 'Recipe Report',
  reportNo: `Rpt #: REC-${exportDateStamp()}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', listSearch.trim() || 'All']],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Search', listSearch.trim() || 'All']],
  metaRight: [['Records', String(filteredList.length)]],
  body,
  })

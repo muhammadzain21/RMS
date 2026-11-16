@@ -60,7 +60,7 @@ function elapsedSeconds(date) {
 function fmtClock(date) {
   if (!date) return '—'
   try {
-    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return new Date(date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })
   } catch {
     return '—'
   }

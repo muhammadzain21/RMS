@@ -205,7 +205,7 @@ export default function AdvanceBooking() {
  title: 'Advance Bookings',
  reportLabel: 'Advance Booking Report',
  reportNo: `Rpt #: AB-${format(new Date(), 'yyyyMMdd-HHmm')}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`], ['Status', statusLabel]],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Period', `${periodFrom} to ${periodTo}`], ['Status', statusLabel]],
  metaRight: [['Records', String(rows.length)]],
  body,
  })

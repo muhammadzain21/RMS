@@ -125,7 +125,7 @@ export default function ProfitLoss() {
  title: 'Profit & Loss',
  reportLabel: 'P&L Report',
  reportNo: `Rpt #: PL-${year}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Year', String(year)], ['Focus Month', month]],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Year', String(year)], ['Focus Month', month]],
  metaRight: [['Months', '12']],
  body,
  footNote: 'Net Profit = max(0, Sales − Returns − Personal) − (Purchases + Expenses).',

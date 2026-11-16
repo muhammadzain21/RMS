@@ -168,7 +168,7 @@ export default function PayInOut() {
  title: 'Pay In / Pay Out',
  reportLabel: 'Pay In/Out Report',
  reportNo: `Rpt #: PIO-${format(new Date(), 'yyyyMMdd-HHmm')}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Period', `${periodFrom} to ${periodTo}`]],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Period', `${periodFrom} to ${periodTo}`]],
  metaRight: [['Records', String(rows.length)]],
  body,
  })

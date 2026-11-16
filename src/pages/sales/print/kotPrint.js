@@ -14,7 +14,7 @@ export function buildKOTEscPos(opts = {}) {
   const items = Array.isArray(opts.items) ? opts.items : []
   const kotDate = opts.createdAt ? new Date(opts.createdAt) : new Date()
   const dateStr = kotDate.toLocaleDateString()
-  const timeStr = kotDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const timeStr = kotDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
   const title = String(opts.title || 'Order Receipt')
   const tokenNo = opts.tokenNo || state.currentTokenNo || opts.token || ''
   const orderType = opts.orderType || ''
@@ -108,7 +108,7 @@ export function buildKOTHtml(opts = {}) {
     // Use provided createdAt for reprint, otherwise current time for new KOT
     const kotDate = opts.createdAt ? new Date(opts.createdAt) : new Date()
     const dateStr = kotDate.toLocaleDateString()
-    const timeStr = kotDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const timeStr = kotDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
     const isReprint = opts.isReprint === true
     const title = opts.title || 'Order Receipt'
     const tokenNo = opts.tokenNo || state.currentTokenNo || opts.token || ''

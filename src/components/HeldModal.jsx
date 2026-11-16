@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import Pagination from './Pagination.jsx'
+import { formatDateTime12 } from '../utils/dateUtils.js'
 
 export default function HeldModal({
  open,
@@ -38,7 +39,7 @@ export default function HeldModal({
  {paged.map((r) => {
  const waiterName = staff.find(s=>s.id===r.waiterId)?.name || '-'
  return (
- <tr key={r.id} className="border-t"><td className="px-2 py-2">{r.id}</td><td className="px-2 py-2">{new Date(r.createdAt||Date.now()).toISOString().replace('T',' ').slice(0,19)}</td><td className="px-2 py-2">{waiterName}</td><td className="px-2 py-2">{r.tableNo || '-'}</td><td className="px-2 py-2">{r.orderType}</td><td className="px-2 py-2"><button type="button" className="px-2 py-1 rounded bg-sky-600 text-white" onClick={()=>onLoad(r)}>Load</button></td><td className="px-2 py-2"><button type="button" className="px-2 py-1 rounded bg-red-600 text-white" onClick={()=>onDelete(r)}>Cancel</button></td></tr>
+ <tr key={r.id} className="border-t"><td className="px-2 py-2">{r.id}</td><td className="px-2 py-2">{formatDateTime12(r.createdAt || Date.now())}</td><td className="px-2 py-2">{waiterName}</td><td className="px-2 py-2">{r.tableNo || '-'}</td><td className="px-2 py-2">{r.orderType}</td><td className="px-2 py-2"><button type="button" className="px-2 py-1 rounded bg-sky-600 text-white" onClick={()=>onLoad(r)}>Load</button></td><td className="px-2 py-2"><button type="button" className="px-2 py-1 rounded bg-red-600 text-white" onClick={()=>onDelete(r)}>Cancel</button></td></tr>
  )
  })}
  {!paged.length && (

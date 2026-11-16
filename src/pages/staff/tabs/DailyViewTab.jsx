@@ -75,7 +75,7 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
    title: 'Daily Attendance',
    reportLabel: 'Daily Attendance Report',
    reportNo: `Rpt #: DA-${dailyDate}`,
-   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Date', dailyDate]],
+   metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Date', dailyDate]],
    metaRight: [['Records', String(daily.length)]],
    body,
   });

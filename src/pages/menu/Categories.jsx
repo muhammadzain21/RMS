@@ -253,7 +253,7 @@ export default function Categories() {
  title: 'Categories',
  reportLabel: 'Category Report',
  reportNo: `Rpt #: CAT-${exportDateStamp()}`,
- metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Search', search.trim() || 'All']],
+ metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Search', search.trim() || 'All']],
  metaRight: [['Records', String(filteredItems.length)]],
  body,
  })

@@ -196,7 +196,7 @@ export default function RiderLiveMap() {
       if (!res.ok) throw new Error(json.error || `Failed to load (${res.status})`)
       const list = Array.isArray(json.riders) ? json.riders : []
       setRiders(list)
-      setUpdatedAt(new Date().toLocaleTimeString())
+      setUpdatedAt(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }))
       setNetError('')
       paint(list)
     } catch (e) {

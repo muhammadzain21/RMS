@@ -35,7 +35,7 @@ function escapeHtml(s) {
 function timeLabel(iso) {
   if (!iso) return '—'
   try {
-    return format(new Date(iso), 'HH:mm')
+    return format(new Date(iso), 'h:mm a')
   } catch {
     return String(iso).slice(11, 16) || '—'
   }
@@ -485,7 +485,7 @@ export default function MyShift() {
         metaLeft: [
           ['User', who],
           ['Date', date],
-          ['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')],
+          ['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')],
         ],
         metaRight: [
           ['Day status', data.dayClosed ? 'Closed' : data.dayOpen ? 'Open' : '—'],
@@ -527,7 +527,7 @@ export default function MyShift() {
     <table class="kvtable"><tbody>
       <tr><td>User</td><td class="val">${escapeHtml(who)}</td></tr>
       <tr><td>Date</td><td class="val">${escapeHtml(date)}</td></tr>
-      <tr><td>Printed</td><td class="val">${escapeHtml(format(new Date(), 'yyyy-MM-dd HH:mm'))}</td></tr>
+      <tr><td>Printed</td><td class="val">${escapeHtml(format(new Date(), 'yyyy-MM-dd h:mm a'))}</td></tr>
       <tr><td>Status</td><td class="val">${escapeHtml(data.dayClosed ? 'Closed' : data.dayOpen ? 'Open' : '—')}</td></tr>
     </tbody></table>
   </div>

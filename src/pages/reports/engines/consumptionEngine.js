@@ -36,7 +36,7 @@ function fmtClock(v) {
   const n = ts(v)
   if (!n) return '—'
   try {
-    return new Date(n).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return new Date(n).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })
   } catch {
     return '—'
   }

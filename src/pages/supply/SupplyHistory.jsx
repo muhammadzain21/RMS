@@ -135,7 +135,7 @@ export default function SupplyHistory() {
       title: 'Branch Purchases',
       reportLabel: 'Branch Purchases Report',
       reportNo: `Rpt #: PUR-${from || 'all'}-${to || 'all'}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['From', from || '...'], ['To', to || '...']],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['From', from || '...'], ['To', to || '...']],
       metaRight: [['Records', String(filtered.length)], ['Total cost', `PKR ${totalCost.toLocaleString()}`]],
       body,
     })

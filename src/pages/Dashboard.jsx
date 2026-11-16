@@ -605,7 +605,7 @@ export default function Dashboard() {
       title: 'POS Dashboard',
       reportLabel: 'Dashboard Summary',
       reportNo: `Rpt #: DB-${p.date}`,
-      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd HH:mm')], ['Business date', p.date]],
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')], ['Business date', p.date]],
       metaRight: [['Branch', p.companyName]],
       body,
     })
@@ -738,7 +738,7 @@ export default function Dashboard() {
               {currentOrders.map(o => (
                 <tr key={`${o.kind}-${o.id}`}>
                   <td className="whitespace-nowrap text-xs">
-                    {o.createdAt ? format(new Date(o.createdAt), 'HH:mm') : '—'}
+                    {o.createdAt ? format(new Date(o.createdAt), 'h:mm a') : '—'}
                     {o.date && o.date !== selectedDate ? (
                       <span className="ml-1 text-[var(--color-text-muted)]">({o.date})</span>
                     ) : null}
