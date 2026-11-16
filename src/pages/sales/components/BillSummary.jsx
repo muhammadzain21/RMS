@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import BankPaymentDialog from './BankPaymentDialog.jsx'
+import BankPaymentDialog, { bankChannelLabel } from './BankPaymentDialog.jsx'
 import CardPaymentDialog from './CardPaymentDialog.jsx'
 import StaffPaymentDialog from './StaffPaymentDialog.jsx'
 
@@ -16,7 +16,7 @@ export default function BillSummary({
   paymentMethod = 'cash',
   setPaymentMethod = ()=>{},
   // Bank transfer details
-  bankChannel = 'bank_account',
+  bankChannel = 'ubl',
   setBankChannel = ()=>{},
   bankLast4 = '',
   setBankLast4 = ()=>{},
@@ -161,7 +161,7 @@ export default function BillSummary({
           onClick={()=> setShowBankDialog(true)}
           className="w-full flex items-center justify-between rounded-lg border-2 border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/30 px-3 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
         >
-          <span>{bankLast4 ? `Bank ····${bankLast4}` : 'Set bank last 4 digits (optional)'}</span>
+          <span>{`${bankChannelLabel(bankChannel) || 'Select bank'}${bankLast4 ? ` ····${bankLast4}` : ''}`}</span>
           <span className="text-[10px] underline">Edit</span>
         </button>
       )}

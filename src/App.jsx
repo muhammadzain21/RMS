@@ -6,8 +6,9 @@ import InventoryForm from './pages/inventory/InventoryForm.jsx'
 import SalesNew from './pages/sales/SalesNew.jsx'
 import SalesHistory from './pages/sales/SalesHistory.jsx'
 import DeletedSales from './pages/sales/DeletedSales.jsx'
-import SalesSummary from './pages/sales/SalesSummary.jsx'
-import Consumption from './pages/sales/Consumption.jsx'
+import SalesReports from './pages/reports/SalesReports.jsx'
+import InventoryReports from './pages/reports/InventoryReports.jsx'
+import ConsumptionReports from './pages/reports/ConsumptionReports.jsx'
 import ReturnNew from './pages/sales/ReturnNew.jsx'
 import ReturnHistory from './pages/sales/ReturnHistory.jsx'
 import CashOpening from './pages/sales/CashOpening.jsx'
@@ -152,8 +153,11 @@ function App() {
         <Route path="sales/history" element={<ProtectedRoute roles={["Admin","Manager"]}><SalesHistory /></ProtectedRoute>} />
         <Route path="sales/deleted" element={<ProtectedRoute roles={["Admin"]}><DeletedSales /></ProtectedRoute>} />
         <Route path="sales/return-history" element={<ProtectedRoute roles={["Admin","Manager"]}><ReturnHistory /></ProtectedRoute>} />
-        <Route path="sales/summary" element={<ProtectedRoute roles={["Admin","Manager"]}><SalesSummary /></ProtectedRoute>} />
-        <Route path="sales/consumption" element={<ProtectedRoute roles={["Admin","Manager"]}><Consumption /></ProtectedRoute>} />
+        <Route path="sales/summary" element={<Navigate to="/reports/sales" replace />} />
+        <Route path="sales/consumption" element={<Navigate to="/reports/consumption" replace />} />
+        <Route path="reports/sales" element={<ProtectedRoute roles={["Admin","Manager"]}><SalesReports /></ProtectedRoute>} />
+        <Route path="reports/inventory" element={<ProtectedRoute roles={["Admin","Manager"]}><InventoryReports /></ProtectedRoute>} />
+        <Route path="reports/consumption" element={<ProtectedRoute roles={["Admin","Manager"]}><ConsumptionReports /></ProtectedRoute>} />
         <Route path="sales/kot-history" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><KotHistory /></ProtectedRoute>} />
         <Route path="sales/kds" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><KDS /></ProtectedRoute>} />
         <Route path="sales/void-history" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><VoidHistory /></ProtectedRoute>} />

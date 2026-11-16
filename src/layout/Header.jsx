@@ -1,15 +1,31 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import { useData } from '../state/DataContext.jsx'
 import { useBranch } from '../state/BranchContext.jsx'
 import ThemeToggle from '../components/ThemeToggle.jsx'
-import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelLeftDashed, ChevronDown, LogOut, KeyRound } from 'lucide-react'
+import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelLeftDashed, ChevronDown, LogOut, KeyRound, Building2 } from 'lucide-react'
 import { dashboardItem } from './navConfig.js'
 import { isDashboardVisible, getVisibleSections } from './Sidebar.jsx'
 
 export default function Header({ brand, onMenuClick, onCollapseClick, collapsed, user, canSell, onBlockedSellClick, logout, sidebarHidden, onToggleSidebarHidden }) {
- const { state, businessDate } = useData()
+ const { state, businessDate, rehydrate } = useData()
  const { branches, activeBranchId, activeBranch, setActiveBranchId } = useBranch()
+ const [refreshing, setRefreshing] = useState(false)
+
+ const onRefreshData = async () => {
+  if (refreshing) return
+  setRefreshing(true)
+  try {
+   if (typeof rehydrate === 'function') await rehydrate()
+   window.dispatchEvent(new CustomEvent('live_refresh'))
+   toast.success('Data refreshed')
+  } catch {
+   toast.error('Refresh failed')
+  } finally {
+   setRefreshing(false)
+  }
+ }
  const isHqUser = user?.role === 'Admin' || user?.role === 'SuperAdmin' || !!user?.isHq
  const staffBranchLabel = activeBranch?.name || activeBranch?.code
   || branches.find(b => String(b._id) === String(user?.homeBranchId || activeBranchId || ''))?.name
@@ -111,7 +127,19 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
  title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar (nav moves to header)'}
  >
  {sidebarHidden ? <PanelLeftOpen size={18} /> : <PanelLeftDashed size={18} />}
- </button><div className="md:hidden font-bold text-white drop-shadow truncate max-w-[42vw]">{brand}</div><div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div></div><div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+ </button>
+ <div className="md:hidden font-bold text-white drop-shadow truncate max-w-[42vw]">{brand}</div>
+ <div className="hidden md:block text-lg font-bold tracking-tight text-white drop-shadow">{brand}</div>
+ <button
+  type="button"
+  onClick={onRefreshData}
+  disabled={refreshing}
+  title="Refresh app data (no page reload)"
+  className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-60 touch-manipulation shrink-0"
+ >
+  <Building2 size={18} className={refreshing ? 'animate-spin' : ''} />
+ </button>
+ </div><div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
  {isHqUser && branches.length > 0 ? (
   <label className="flex items-center gap-1.5 max-w-[11rem] sm:max-w-[16rem]" title="Header branch wins over page filters">
     <span className="hidden sm:inline text-[10px] sm:text-xs font-semibold text-white/80 whitespace-nowrap">Working as</span>

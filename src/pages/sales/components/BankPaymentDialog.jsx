@@ -1,20 +1,30 @@
 import React, { useEffect, useState } from 'react'
 
-// Kept for historical label lookup (old sales may still store a channel key).
 export const BANK_CHANNELS = [
-  { key: 'bank_account', label: 'Bank Account' },
-  { key: 'jazzcash', label: 'JazzCash' },
-  { key: 'easypaisa', label: 'EasyPaisa' },
-  { key: 'sadapay', label: 'SadaPay' },
-  { key: 'nayapay', label: 'NayaPay' },
-  { key: 'raast', label: 'Raast' },
-  { key: 'upaisa', label: 'UPaisa' },
-  { key: 'zindigi', label: 'Zindigi' },
+  { key: 'ubl', label: 'UBL' },
+  { key: 'mcb', label: 'MCB' },
 ]
 
-export const bankChannelLabel = (key) => BANK_CHANNELS.find(c => c.key === String(key || '').toLowerCase())?.label || key || ''
+// Keep old keys readable in history / prints
+const LEGACY_BANK_LABELS = {
+  bank_account: 'Bank Account',
+  jazzcash: 'JazzCash',
+  easypaisa: 'EasyPaisa',
+  sadapay: 'SadaPay',
+  nayapay: 'NayaPay',
+  raast: 'Raast',
+  upaisa: 'UPaisa',
+  zindigi: 'Zindigi',
+}
 
-// Modal shown when the Bank payment method is selected — optional last 4 digits only.
+export const bankChannelLabel = (key) => {
+  const k = String(key || '').toLowerCase()
+  return BANK_CHANNELS.find(c => c.key === k)?.label
+    || LEGACY_BANK_LABELS[k]
+    || key
+    || ''
+}
+
 export default function BankPaymentDialog({
   open,
   channel,
@@ -22,21 +32,25 @@ export default function BankPaymentDialog({
   onConfirm,
   onCancel,
 }) {
+  const [ch, setCh] = useState(channel || 'ubl')
   const [digits, setDigits] = useState(last4 || '')
   const [err, setErr] = useState('')
 
   useEffect(() => {
     if (open) {
+      const initial = String(channel || '').toLowerCase()
+      setCh(BANK_CHANNELS.some(c => c.key === initial) ? initial : 'ubl')
       setDigits(last4 || '')
       setErr('')
     }
-  }, [open, last4])
+  }, [open, channel, last4])
 
   if (!open) return null
 
   const confirm = () => {
+    if (!ch) { setErr('Select a bank'); return }
     if (digits && !/^\d{4}$/.test(digits)) { setErr('Last 4 digits must be exactly 4 digits (or leave empty)'); return }
-    onConfirm({ channel: channel || '', last4: digits })
+    onConfirm({ channel: ch, last4: digits })
   }
 
   return (
@@ -44,7 +58,25 @@ export default function BankPaymentDialog({
       <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border-2 border-blue-200 dark:border-blue-800 shadow-2xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Bank Payment Details</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Optionally enter the sender&apos;s last 4 digits for verification.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Select bank and optionally enter last 4 digits.</p>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5 uppercase tracking-wide">Bank</div>
+          <div className="grid grid-cols-2 gap-2">
+            {BANK_CHANNELS.map(c => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setCh(c.key)}
+                className={`px-2 py-2.5 rounded-lg border-2 text-sm font-bold transition-all ${
+                  ch === c.key
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                    : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50 dark:bg-gray-800 dark:text-blue-300 dark:border-blue-700'
+                }`}
+              >{c.label}</button>
+            ))}
+          </div>
         </div>
 
         <label className="block">

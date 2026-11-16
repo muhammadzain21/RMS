@@ -86,7 +86,7 @@ export async function printSaleReceiptUtil(opts = {}) {
     const balance = tipAmt > 0 ? 0 : Math.max(0, cashPaid - total)
 
     const orderType = opts.orderType || 'Take-away'
-    const BANK_CHANNELS = { bank_account: 'Bank Account', jazzcash: 'JazzCash', easypaisa: 'EasyPaisa', sadapay: 'SadaPay', nayapay: 'NayaPay', raast: 'Raast', upaisa: 'UPaisa', zindigi: 'Zindigi' }
+    const BANK_CHANNELS = { ubl: 'UBL', mcb: 'MCB', bank_account: 'Bank Account', jazzcash: 'JazzCash', easypaisa: 'EasyPaisa', sadapay: 'SadaPay', nayapay: 'NayaPay', raast: 'Raast', upaisa: 'UPaisa', zindigi: 'Zindigi' }
     const pmRaw = (opts.paymentMethod || 'Cash').toString()
     const pmLower = pmRaw.toLowerCase()
     const paymentType = pmLower === 'bank'

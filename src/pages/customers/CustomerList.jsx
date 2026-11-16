@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useData } from '../../state/DataContext.jsx'
 import CustomerModal from '../../components/CustomerModal.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
@@ -8,6 +9,7 @@ import Pagination from '../../components/Pagination.jsx'
 import { format } from 'date-fns'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
+import { aggregateCustomerSales } from './customerLedgerUtils.js'
 
 export default function CustomerList() {
  const { state, dispatch } = useData()
@@ -67,18 +69,11 @@ export default function CustomerList() {
  // Reset to page 1 when search changes
  useEffect(() => { setPage(1); setJump(1) }, [search])
 
- // Aggregate visits and spent from actual sales so list matches profile
- const salesAgg = useMemo(() => {
- const map = {}
- for (const s of (state.sales || [])) {
- const cid = s?.customer?.id
- if (!cid) continue
- if (!map[cid]) map[cid] = { visits: 0, spent: 0 }
- map[cid].visits += 1
- map[cid].spent += Number(s.total || 0) - Number(s.discount || 0)
- }
- return map
- }, [state.sales])
+ // Aggregate visits/spent from sales (match by customer id or phone)
+ const salesAgg = useMemo(
+  () => aggregateCustomerSales(state.sales || [], [...(state.customers || []), ...rows]),
+  [state.sales, state.customers, rows]
+ )
 
  const onImportClick = () => fileRef.current?.click()
 
@@ -221,12 +216,15 @@ export default function CustomerList() {
  }
  }
 
- const mapCustomerRow = (c) => ({
-   ...c,
-   id: c.id || c._id,
-   visits: salesAgg[c.id]?.visits ?? c.totalVisits ?? 0,
-   spent: salesAgg[c.id]?.spent ?? c.totalSpent ?? 0,
- })
+ const mapCustomerRow = (c) => {
+   const id = c.id || c._id
+   return {
+     ...c,
+     id,
+     visits: salesAgg[id]?.visits ?? c.totalVisits ?? 0,
+     spent: salesAgg[id]?.spent ?? c.totalSpent ?? 0,
+   }
+ }
 
  const fetchFilteredCustomers = async () => {
  const params = new URLSearchParams({ page: '1', limit: '50000' })
@@ -329,7 +327,7 @@ export default function CustomerList() {
  {(r.name?.[0] || '').toUpperCase()}
  </div><span className="font-medium">{r.name || '-'}</span></div></td><td className="p-3 text-gray-600 dark:text-gray-400">{r.phone || '-'}</td><td className="p-3 text-gray-600 dark:text-gray-400 truncate max-w-xs">{r.address || '-'}</td><td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-medium ${r.isRegular ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
  {r.isRegular ? 'Yes' : 'No'}
- </span></td><td className="p-3 text-gray-700 dark:text-gray-300">{salesAgg[r.id]?.visits || r.totalVisits || 0}</td><td className="p-3 font-medium text-gray-800 dark:text-gray-200">PKR {(salesAgg[r.id]?.spent || r.totalSpent || 0).toLocaleString()}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-semibold shadow-sm hover:bg-blue-600 transition-all hover:scale-105 active:scale-95">Edit</button><button onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-semibold shadow-sm hover:bg-rose-600 transition-all hover:scale-105 active:scale-95">Delete</button></div></td></tr>
+ </span></td><td className="p-3 text-gray-700 dark:text-gray-300">{salesAgg[r.id]?.visits || r.totalVisits || 0}</td><td className="p-3 font-medium text-gray-800 dark:text-gray-200">PKR {Number(salesAgg[r.id]?.spent || r.totalSpent || 0).toLocaleString()}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><Link to={`/customers/${r.id}`} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-semibold shadow-sm hover:bg-emerald-600 transition-all hover:scale-105 active:scale-95">Ledger</Link><button onClick={()=>onEdit(r)} className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-semibold shadow-sm hover:bg-blue-600 transition-all hover:scale-105 active:scale-95">Edit</button><button onClick={()=>onDelete(r.id)} className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-semibold shadow-sm hover:bg-rose-600 transition-all hover:scale-105 active:scale-95">Delete</button></div></td></tr>
  ))}
  {!rows.length && (
  <tr><td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No customers found</div></td></tr>

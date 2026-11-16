@@ -105,6 +105,14 @@ router.post('/', requireRole('Admin','Manager','Staff','CallCenter'), async (req
   } catch (e) { next(e) }
 })
 
+router.get('/:id', async (req, res, next) => {
+  try {
+    const c = await Customer.findById(req.params.id).lean()
+    if (!c) return res.status(404).json({ error: 'Customer not found' })
+    res.json({ ...c, id: c._id })
+  } catch (e) { next(e) }
+})
+
 router.patch('/:id', requireRole('Admin','Manager','Staff','CallCenter'), async (req, res, next) => {
   try {
     const payload = normalizeCustomerFields(req.body || {})

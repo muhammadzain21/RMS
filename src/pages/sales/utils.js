@@ -113,7 +113,8 @@ export function computeCategoryAwareSubtotal(items, menu = [], categories = [], 
       const dealCat = findCategoryById(categories, it.mods.dealCategoryId)
         || findCategoryByName(categories, it.custom?.category || it.mods.dealCategoryName)
       const pkg = getCategoryPackagePrice(dealCat, it)
-      if (pkg > 0) total += pkg
+      const dealQty = Math.max(1, Number(it.mods?.dealQty || 1))
+      if (pkg > 0) total += pkg * dealQty
       continue
     }
     if (it?.mods?.underDeal) continue
@@ -133,6 +134,21 @@ export function computeCategoryAwareSubtotal(items, menu = [], categories = [], 
   return total
 }
 
+/** Fingerprint of a deal's composition (for merging same-flavour deals). */
+export function dealCompositionKey(lines = []) {
+  const list = (lines || []).filter(it => it?.mods?.dealGroupId || it?.mods?.underDeal)
+  if (!list.length) return ''
+  const dealQty = Math.max(1, Number(list[0]?.mods?.dealQty || 1))
+  const catId = String(list[0]?.mods?.dealCategoryId || list[0]?.mods?.dealCategoryName || '')
+  const parts = list
+    .map(it => {
+      const unitQty = Math.max(1, Math.round(Number(it.qty || 1) / dealQty))
+      return `${String(it.itemId)}:${unitQty}`
+    })
+    .sort()
+  return `${catId}|${parts.join(',')}`
+}
+
 /** Discount amount with category package pricing (discount % applied to package once). */
 export function computeCategoryAwareDiscount(items, menu = [], categories = [], lineTotalFn) {
   const pricedSeen = new Set()
@@ -149,8 +165,9 @@ export function computeCategoryAwareDiscount(items, menu = [], categories = [], 
       const dealCat = findCategoryById(categories, it.mods.dealCategoryId)
         || findCategoryByName(categories, it.custom?.category || it.mods.dealCategoryName)
       const pkg = getCategoryPackagePrice(dealCat, it)
+      const dealQty = Math.max(1, Number(it.mods?.dealQty || 1))
       const catDisc = Number(dealCat?.discount || 0)
-      if (pkg > 0 && catDisc > 0) disc += Math.round(pkg * (catDisc / 100))
+      if (pkg > 0 && catDisc > 0) disc += Math.round(pkg * dealQty * (catDisc / 100))
       continue
     }
     if (it?.mods?.underDeal) continue

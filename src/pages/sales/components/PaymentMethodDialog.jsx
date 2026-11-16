@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { BANK_CHANNELS, bankChannelLabel } from './BankPaymentDialog.jsx'
 
 const METHODS = [
   { key: 'cash', label: 'Cash', active: 'from-emerald-500 to-emerald-600', border: 'border-emerald-400', inactive: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300' },
@@ -14,7 +15,7 @@ export default function PaymentMethodDialog({
   open,
   totalAmount = 0,
   initialMethod = 'cash',
-  initialBankChannel = 'bank_account',
+  initialBankChannel = 'ubl',
   initialLast4 = '',
   initialCashReceived = 0,
   initialStaffId = '',
@@ -24,6 +25,7 @@ export default function PaymentMethodDialog({
   onCancel = () => {},
 }) {
   const [method, setMethod] = useState(initialMethod || 'cash')
+  const [bankChannel, setBankChannel] = useState(initialBankChannel || 'ubl')
   const [last4, setLast4] = useState(initialLast4 || '')
   const [cashStr, setCashStr] = useState(String(Math.floor(Number(initialCashReceived) || 0)))
   const [staffId, setStaffId] = useState(initialStaffId || '')
@@ -32,11 +34,13 @@ export default function PaymentMethodDialog({
   useEffect(() => {
     if (!open) return
     setMethod(initialMethod || 'cash')
+    const ch = String(initialBankChannel || '').toLowerCase()
+    setBankChannel(BANK_CHANNELS.some(c => c.key === ch) ? ch : 'ubl')
     setLast4(initialLast4 || '')
     setCashStr(String(Math.floor(Number(initialCashReceived) || Number(totalAmount) || 0)))
     setStaffId(initialStaffId || '')
     setErr('')
-  }, [open, initialMethod, initialLast4, initialCashReceived, initialStaffId, totalAmount])
+  }, [open, initialMethod, initialBankChannel, initialLast4, initialCashReceived, initialStaffId, totalAmount])
 
   const methods = useMemo(
     () => METHODS.filter(m => m.key !== 'complimentary' || showPersonalPayment),
@@ -56,6 +60,9 @@ export default function PaymentMethodDialog({
   if (!open) return null
 
   const confirm = () => {
+    if (method === 'bank') {
+      if (!bankChannel) { setErr('Select a bank'); return }
+    }
     if (method === 'bank' || method === 'card') {
       if (last4 && !/^\d{4}$/.test(String(last4))) { setErr('Last 4 digits must be exactly 4 digits (or leave empty)'); return }
     }
@@ -65,7 +72,7 @@ export default function PaymentMethodDialog({
     }
     onConfirm({
       method,
-      bankChannel: '',
+      bankChannel: method === 'bank' ? bankChannel : '',
       bankLast4: (method === 'bank' || method === 'card') ? String(last4 || '') : '',
       cashReceived: showCashReceived ? cashReceived : 0,
       staffId: method === 'staff' ? String(chosenStaff?.id || '') : '',
@@ -129,7 +136,24 @@ export default function PaymentMethodDialog({
           )}
 
           {method === 'bank' && (
-            <div className="rounded-xl border-2 border-blue-100 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 p-4">
+            <div className="rounded-xl border-2 border-blue-100 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 p-4 space-y-3">
+              <div>
+                <div className="text-xs font-bold text-blue-800 dark:text-blue-200 mb-2 uppercase tracking-wide">Bank</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {BANK_CHANNELS.map(c => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => setBankChannel(c.key)}
+                      className={`px-3 py-3 rounded-xl border-2 text-sm font-bold transition-all ${
+                        bankChannel === c.key
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                          : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50 dark:bg-gray-800 dark:text-blue-300 dark:border-blue-700'
+                      }`}
+                    >{c.label}</button>
+                  ))}
+                </div>
+              </div>
               <label className="block">
                 <span className="text-xs font-bold text-blue-800 dark:text-blue-200 uppercase tracking-wide">
                   Last 4 digits <span className="text-blue-400 font-normal normal-case">(optional)</span>
@@ -144,6 +168,11 @@ export default function PaymentMethodDialog({
                   className="mt-1.5 w-full px-4 py-3 border-2 border-blue-200 dark:border-blue-700 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-white focus:border-blue-500 outline-none"
                 />
               </label>
+              {bankChannel && (
+                <div className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                  {bankChannelLabel(bankChannel)}{last4 ? ` ····${last4}` : ''}
+                </div>
+              )}
             </div>
           )}
 

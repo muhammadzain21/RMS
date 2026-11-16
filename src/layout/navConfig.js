@@ -38,7 +38,6 @@ const salesSection = {
  { path: '/call-center', label: 'Call Center', icon: Headphones, order: 2.3 },
  { path: '/sales/return', label: 'Return', icon: Undo2, order: 3, end: true },
  { path: '/sales/history', label: 'Sale history', icon: History, order: 4 },
- { path: '/sales/summary', label: 'Sales Summary', icon: BarChart3, order: 4.5 },
  { path: '/sales/deleted', label: 'Deleted Sales', icon: Trash2, order: 5 },
  { path: '/sales/return-history', label: 'Return history', icon: FileText, order: 6 },
  { path: '/sales/kot-history', label: 'KOT History', icon: FileText, order: 7 },
@@ -72,7 +71,6 @@ const operationsSection = {
  { path: '/menu', label: 'Menu', icon: UtensilsCrossed, order: 21, end: true },
  { path: '/menu/categories', label: 'Categories', icon: FolderTree, order: 22 },
  { path: '/menu/recipes', label: 'Recipes', icon: FlaskConical, order: 23 },
- { path: '/sales/consumption', label: 'Consumption', icon: BarChart3, order: 24 },
  { path: '/riders', label: 'Riders', icon: Bike, order: 25, end: true },
  { path: '/riders/live', label: 'Rider Live Map', icon: MapPinned, order: 25.2 },
  ]
@@ -106,6 +104,15 @@ const staffSection = {
  ]
 }
 
+const reportsSection = {
+ label: 'Reports',
+ items: [
+ { path: '/reports/sales', label: 'Sales Reports', icon: BarChart3, order: 30.1 },
+ { path: '/reports/inventory', label: 'Inventory Reports', icon: Package, order: 30.2 },
+ { path: '/reports/consumption', label: 'Consumption Reports', icon: ChefHat, order: 30.3 },
+ ]
+}
+
 const financeSection = {
  label: 'Finance',
  items: [
@@ -135,6 +142,7 @@ export const allSections = [
  operationsSection,
  warehouseSection,
  staffSection,
+ reportsSection,
  financeSection,
  adminSection,
 ]
@@ -197,6 +205,9 @@ const UPGRADE_ENABLED_PATHS = [
   '/sales/my-shift',
   '/sales/cash-count',
   '/sales/kds',
+  '/reports/sales',
+  '/reports/inventory',
+  '/reports/consumption',
   '/backup-security',
 ]
 

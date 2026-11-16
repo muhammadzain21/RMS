@@ -1,0 +1,46 @@
+export const SALES_REPORT_TYPES = [
+  { id: 'item_wise', label: 'Item Wise Sale Report' },
+  { id: 'item_details', label: 'Item Wise Sale Details Report' },
+  { id: 'category_wise', label: 'Category Wise Sale Report' },
+  { id: 'branch_wise', label: 'Branch Wise Sale Report' },
+  { id: 'transaction', label: 'Transaction Report' },
+  { id: 'customer_wise', label: 'Customer Wise Sale Report' },
+  { id: 'customer_ledger', label: 'Customer Ledger' },
+  { id: 'discount', label: 'Discount Report' },
+  { id: 'complimentary', label: 'Complimentary Report' },
+  { id: 'waiter', label: 'Waiter Report' },
+  { id: 'user_wise', label: 'User Wise Sale Report' },
+  { id: 'user_item', label: 'User Wise Item Sale Report' },
+  { id: 'payment_mode', label: 'Payment Mode Wise Sale Report' },
+  { id: 'invoice_type', label: 'Invoice Type Wise Sale Report' },
+  { id: 'hourly', label: 'Hourly Wise Sale Report' },
+  { id: 'deals', label: 'Deals Report' },
+  { id: 'cancellation', label: 'Cancellation Report' },
+  { id: 'sales_summary', label: 'Sales Summary' },
+  { id: 'gross_profit', label: 'Gross Profit Report' },
+  { id: 'pnl', label: 'P&L Report' },
+  { id: 'rider', label: 'Rider Report' },
+  { id: 'shift_closing', label: 'Shift Closing Report' },
+]
+
+export const INVENTORY_REPORT_TYPES = [
+  { id: 'stock', label: 'Stock Report' },
+  { id: 'stock_valuation', label: 'Stock Valuation Report' },
+  { id: 'closing_stock', label: 'Closing Stock Summary Report' },
+  { id: 'stock_variance', label: 'Stock Variance Report' },
+  { id: 'consumption_vs_physical', label: 'Consumption vs Physical Stock Report' },
+  { id: 'item_purchase', label: 'Item Wise Purchase Report' },
+  { id: 'supplier_purchase', label: 'Supplier Wise Purchase Report' },
+  { id: 'supplier_ledger', label: 'Supplier Ledger' },
+  { id: 'item_transfer', label: 'Item Wise Location Transfer Report' },
+  { id: 'location_transfer', label: 'Location Wise Item Transfer Report' },
+]
+
+export const CONSUMPTION_REPORT_TYPES = [
+  { id: 'item_recipe', label: 'Item Wise Recipe Consumption Report' },
+  { id: 'recipe_item', label: 'Recipe Wise Item Consumption Report' },
+  { id: 'date_production', label: 'Date Wise Production Report' },
+  { id: 'kitchen_sale', label: 'Kitchen Wise Sale Report' },
+  { id: 'kitchen_closing', label: 'Location Wise Kitchen Closing Report' },
+  { id: 'kitchen_ready_time', label: 'Kitchen Order Ready Time Report' },
+]

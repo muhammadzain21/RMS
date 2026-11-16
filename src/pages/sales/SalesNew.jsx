@@ -14,7 +14,9 @@ import {
   getCategoryPackagePrice,
   categoryKeyOf,
   isBundleCategory,
+  dealCompositionKey,
 } from './utils.js'
+import { resolveCustomerSnapshot } from '../customers/customerLedgerUtils.js'
 import CategoryBar from './components/CategoryBar.jsx'
 import ItemsList from './components/ItemsList.jsx'
 import CartTable from './components/CartTable.jsx'
@@ -147,9 +149,73 @@ export default function SalesNew() {
   }
 
   const addDealLinesToCart = (lines) => {
-    setItems(prev => [...prev, ...(lines || [])])
+    const incoming = Array.isArray(lines) ? lines : []
+    if (!incoming.length) return
+    const fingerprint = dealCompositionKey(incoming)
+    setItems(prev => {
+      if (!fingerprint) return [...prev, ...incoming]
+      // Group existing cart by dealGroupId
+      const byDeal = new Map()
+      for (const it of prev) {
+        const id = it?.mods?.dealGroupId ? String(it.mods.dealGroupId) : ''
+        if (!id) continue
+        if (!byDeal.has(id)) byDeal.set(id, [])
+        byDeal.get(id).push(it)
+      }
+      for (const [dealId, group] of byDeal.entries()) {
+        if (dealCompositionKey(group) !== fingerprint) continue
+        // Same flavours — bump deal qty and scale component qtys
+        const curQty = Math.max(1, Number(group[0]?.mods?.dealQty || 1))
+        const nextQty = curQty + 1
+        return prev.map(it => {
+          if (String(it?.mods?.dealGroupId || '') !== dealId) return it
+          const unitQty = Math.max(1, Math.round(Number(it.qty || 1) / curQty))
+          return {
+            ...it,
+            qty: unitQty * nextQty,
+            mods: { ...(it.mods || {}), dealQty: nextQty },
+          }
+        })
+      }
+      return [...prev, ...incoming]
+    })
     closeDealBuilder()
     toast.success('Deal added')
+  }
+
+  const scaleDealQty = (dealId, nextQty) => {
+    const id = String(dealId || '')
+    if (!id) return
+    const qty = Math.max(1, Number(nextQty || 1))
+    setItems(prev => {
+      const group = prev.filter(it => String(it?.mods?.dealGroupId || '') === id)
+      if (!group.length) return prev
+      const curQty = Math.max(1, Number(group[0]?.mods?.dealQty || 1))
+      if (curQty === qty) return prev
+      return prev.map(it => {
+        if (String(it?.mods?.dealGroupId || '') !== id) return it
+        const unitQty = Math.max(1, Math.round(Number(it.qty || 1) / curQty))
+        return {
+          ...it,
+          qty: unitQty * qty,
+          mods: { ...(it.mods || {}), dealQty: qty },
+        }
+      })
+    })
+  }
+  const incDealQty = (dealId) => {
+    const group = items.filter(it => String(it?.mods?.dealGroupId || '') === String(dealId || ''))
+    const cur = Math.max(1, Number(group[0]?.mods?.dealQty || 1))
+    scaleDealQty(dealId, cur + 1)
+  }
+  const decDealQty = (dealId) => {
+    const group = items.filter(it => String(it?.mods?.dealGroupId || '') === String(dealId || ''))
+    const cur = Math.max(1, Number(group[0]?.mods?.dealQty || 1))
+    if (cur <= 1) return
+    scaleDealQty(dealId, cur - 1)
+  }
+  const removeDeal = (dealId) => {
+    setItems(prev => prev.filter(it => String(it?.mods?.dealGroupId || '') !== String(dealId || '')))
   }
 
   // Menu and filtered items
@@ -245,7 +311,7 @@ export default function SalesNew() {
   // Payment method
   const [paymentMethod, setPaymentMethod] = useState('cash')
   // Bank transfer details (destination + last 4 digits of sender account)
-  const [bankChannel, setBankChannel] = useState('bank_account')
+  const [bankChannel, setBankChannel] = useState('ubl')
   const [bankLast4, setBankLast4] = useState('')
   const [bankRef, setBankRef] = useState('')
   // Staff purchase — always a pending purchase deducted at payroll unless paid earlier
@@ -335,7 +401,7 @@ export default function SalesNew() {
     setSearch('')
     // Payment method
     setPaymentMethod('cash')
-    setBankChannel('bank_account')
+    setBankChannel('ubl')
     setBankLast4('')
     setBankRef('')
     setPayStaffId('')
@@ -432,11 +498,12 @@ export default function SalesNew() {
         waiterId: orderType==='Dine-in' ? kotWaiterId : '',
         tableNo: orderType==='Dine-in' ? kotTable : '',
         customer: orderType==='Delivery'
-          ? {
+          ? resolveCustomerSnapshot({
+              id: activeRecallSource === 'recall' ? (activeRecall?.customer?.id || activeRecall?.customer?._id) : undefined,
               name: (payName || (activeRecallSource==='recall' ? (activeRecall?.customer?.name || '') : '')),
               phone: (payPhone || (activeRecallSource==='recall' ? (activeRecall?.customer?.phone || '') : '')),
               address: (payAddress || (activeRecallSource==='recall' ? (activeRecall?.customer?.address || '') : '')),
-            }
+            }, state.customers || [])
           : null,
         totalQty: totalQtyLocal,
         subtotal: subtotalLocal,
@@ -698,7 +765,10 @@ export default function SalesNew() {
         items: (ord.items||[]).map(it => ({ itemId: it.itemId, name: it.name, price: Number(it.price||0), qty: Number(it.qty||0), mods: it.mods||{}, custom: it.custom||null })),
         waiterId: ord.waiterId || '',
         tableNo: ord.tableNo || '',
-        customer: ord.customer || (activeRecall?.customer || ( (ord.orderType||'')==='Delivery' ? { name: payName, phone: payPhone, address: payAddress } : null )),
+        customer: resolveCustomerSnapshot(
+          ord.customer || activeRecall?.customer || ((ord.orderType || '') === 'Delivery' ? { name: payName, phone: payPhone, address: payAddress } : null),
+          state.customers || []
+        ),
         totalQty: Number(ord.totalQty|| (Array.isArray(ord.items)? ord.items.reduce((s,i)=>s+Number(i.qty||0),0):0)),
         subtotal: Number(ord.subtotal||0),
         itemsDiscount: Number(ord.itemsDiscount||0),
@@ -859,7 +929,7 @@ export default function SalesNew() {
       setCashReceived(0)
       // Reset payment method
       setPaymentMethod('cash')
-      setBankChannel('bank_account')
+      setBankChannel('ubl')
       setBankLast4('')
       setBankRef('')
       setPayStaffId('')
@@ -1019,7 +1089,7 @@ export default function SalesNew() {
       bankRef: '',
       staffId: paymentMethod === 'staff' ? String(payStaffId) : '',
       staffName: paymentMethod === 'staff' ? payStaffName : '',
-      customer: orderType==='Delivery' ? { name: payName, phone: payPhone, address: payAddress } : null,
+      customer: orderType==='Delivery' ? resolveCustomerSnapshot({ name: payName, phone: payPhone, address: payAddress }, state.customers || []) : null,
     }
     try {
       const key = `held-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
@@ -1578,7 +1648,7 @@ export default function SalesNew() {
           items: items.map(mapCartItemForPersist),
           waiterId: orderType==='Dine-in' ? kotWaiterId : '',
           tableNo: orderType==='Dine-in' ? kotTable : '',
-          customer: orderType==='Delivery' ? { name: payName, phone: payPhone, address: payAddress } : null,
+          customer: orderType==='Delivery' ? resolveCustomerSnapshot({ name: payName, phone: payPhone, address: payAddress }, state.customers || []) : null,
           totalQty: totalQtyLocal,
           subtotal: subtotalLocal,
           itemsDiscount: Number(itemsDiscount||0),
@@ -1767,6 +1837,9 @@ export default function SalesNew() {
           updateItem={updateItem}
           removeItem={removeItem}
           lineTotal={lineTotal}
+          incDealQty={incDealQty}
+          decDealQty={decDealQty}
+          removeDeal={removeDeal}
         />
         <BillSummary
           orderType={orderType}
@@ -1851,7 +1924,7 @@ export default function SalesNew() {
       open={showPayMethod}
       totalAmount={Number(recallToPay?.totalAmount || 0)}
       initialMethod={recallToPay?.paymentMethod || paymentMethod || 'cash'}
-      initialBankChannel={recallToPay?.bankChannel || bankChannel || 'bank_account'}
+      initialBankChannel={recallToPay?.bankChannel || bankChannel || 'ubl'}
       initialLast4={String(recallToPay?.bankLast4 || bankLast4 || '')}
       initialCashReceived={cashReceived || Number(recallToPay?.totalAmount || 0)}
       initialStaffId={String(recallToPay?.staffId || payStaffId || '')}

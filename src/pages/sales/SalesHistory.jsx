@@ -180,7 +180,7 @@ export default function SalesHistory() {
  paymentMethod: (() => {
  const pm = (s.paymentMethod || 'cash').toString().toUpperCase()
  if (pm === 'BANK') {
- const ch = { bank_account: 'BANK ACCOUNT', jazzcash: 'JAZZCASH', easypaisa: 'EASYPAISA', sadapay: 'SADAPAY', nayapay: 'NAYAPAY', raast: 'RAAST', upaisa: 'UPAISA', zindigi: 'ZINDIGI' }[String(s.bankChannel||'').toLowerCase()] || 'TRANSFER'
+ const ch = { ubl: 'UBL', mcb: 'MCB', bank_account: 'BANK ACCOUNT', jazzcash: 'JAZZCASH', easypaisa: 'EASYPAISA', sadapay: 'SADAPAY', nayapay: 'NAYAPAY', raast: 'RAAST', upaisa: 'UPAISA', zindigi: 'ZINDIGI' }[String(s.bankChannel||'').toLowerCase()] || 'TRANSFER'
  return `BANK (${ch}${s.bankLast4 ? ` ····${s.bankLast4}` : ''})`
  }
  if (pm === 'CARD') {

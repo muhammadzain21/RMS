@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { findCategoryById } from '../utils.js'
 
 /**
- * Configure a deal/subcategory: included items + picks from linked categories (min/max).
- * Package price comes from the deal category `price`.
+ * Deal builder — Image1 layout:
+ * left = selected products table, center = slot categories, right = item grid.
  */
 export default function DealBuilderDialog({
   open,
@@ -20,7 +20,8 @@ export default function DealBuilderDialog({
   const [includedQty, setIncludedQty] = useState({})
   // slotIndex -> [{ itemId, name, qty }]
   const [slotPicks, setSlotPicks] = useState({})
-  const [activeSlot, setActiveSlot] = useState(0)
+  // activePane: { type: 'slot', index } | { type: 'included', index }
+  const [activePane, setActivePane] = useState({ type: 'slot', index: 0 })
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -32,12 +33,15 @@ export default function DealBuilderDialog({
     }
     setIncludedQty(qtyMap)
     setSlotPicks({})
-    setActiveSlot(0)
+    setActivePane(bundleSlots.length ? { type: 'slot', index: 0 } : { type: 'included', index: 0 })
     setErr('')
   }, [open, category?.id, category?._id])
 
+  const activeSlot = activePane.type === 'slot' ? activePane.index : -1
+
   const slotMenuItems = useMemo(() => {
-    const slot = bundleSlots[activeSlot]
+    if (activePane.type !== 'slot') return []
+    const slot = bundleSlots[activePane.index]
     if (!slot) return []
     const linked = findCategoryById(categories, slot.categoryId)
     const catName = String(linked?.name || slot.categoryName || '').trim().toLowerCase()
@@ -45,7 +49,40 @@ export default function DealBuilderDialog({
     return (menu || [])
       .filter(m => m && m.active !== false && String(m.category || '').trim().toLowerCase() === catName)
       .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || '')))
-  }, [bundleSlots, activeSlot, categories, menu])
+  }, [bundleSlots, activePane, categories, menu])
+
+  const summaryRows = useMemo(() => {
+    const rows = []
+    for (const row of bundleItems) {
+      const id = String(row.itemId)
+      const menuItem = (menu || []).find(m => String(m.id) === id)
+      const qty = Math.max(1, Number(includedQty[id] || row.qty || 1))
+      rows.push({
+        key: `inc-${id}`,
+        kind: 'included',
+        itemId: id,
+        name: menuItem?.name || row.name || id,
+        qty,
+        maxQty: Math.max(0, Number(row.maxQty || 0)),
+        baseQty: Math.max(1, Number(row.qty || 1)),
+        extraPrice: 0,
+      })
+    }
+    for (let i = 0; i < bundleSlots.length; i++) {
+      for (const pick of (slotPicks[i] || [])) {
+        rows.push({
+          key: `slot-${i}-${pick.itemId}`,
+          kind: 'slot',
+          slotIndex: i,
+          itemId: pick.itemId,
+          name: pick.name || '',
+          qty: Math.max(1, Number(pick.qty || 1)),
+          extraPrice: 0,
+        })
+      }
+    }
+    return rows
+  }, [bundleItems, bundleSlots, includedQty, slotPicks, menu])
 
   if (!open || !category) return null
 
@@ -58,34 +95,58 @@ export default function DealBuilderDialog({
     const slot = bundleSlots[idx]
     const max = Math.max(0, Number(slot?.maxItems || 0))
     setSlotPicks((prev) => {
-      const list = [...(prev[idx] || [])]
+      const list = (prev[idx] || []).map(p => ({ ...p }))
       const found = list.findIndex(p => String(p.itemId) === String(item.id))
+      const current = list.reduce((s, p) => s + Number(p.qty || 0), 0)
+
+      // Already selected → add another (same item twice+) while under max
       if (found >= 0) {
-        list.splice(found, 1)
+        if (max > 0 && current >= max) {
+          // At max with single slot: replace with this item at qty 1
+          if (max === 1) return { ...prev, [idx]: [{ itemId: item.id, name: item.name, qty: 1 }] }
+          return prev
+        }
+        list[found].qty = Number(list[found].qty || 0) + 1
         return { ...prev, [idx]: list }
       }
-      const current = list.reduce((s, p) => s + Number(p.qty || 0), 0)
-      if (max > 0 && current >= max) return prev
+
+      if (max > 0 && current >= max) {
+        // Replace when single-pick max
+        if (max === 1) return { ...prev, [idx]: [{ itemId: item.id, name: item.name, qty: 1 }] }
+        return prev
+      }
       list.push({ itemId: item.id, name: item.name, qty: 1 })
       return { ...prev, [idx]: list }
     })
     setErr('')
   }
 
-  const bumpSlotQty = (idx, itemId, delta) => {
+  const bumpSummaryQty = (row, delta) => {
+    if (row.kind === 'included') {
+      const baseQty = row.baseQty
+      const maxQty = row.maxQty
+      if (maxQty <= baseQty) return
+      setIncludedQty(v => {
+        const cur = Math.max(baseQty, Number(v[row.itemId] || baseQty))
+        const next = Math.min(maxQty, Math.max(baseQty, cur + delta))
+        return { ...v, [row.itemId]: next }
+      })
+      return
+    }
+    const idx = row.slotIndex
     const slot = bundleSlots[idx]
     const max = Math.max(0, Number(slot?.maxItems || 0))
     setSlotPicks((prev) => {
       const list = (prev[idx] || []).map((p) => ({ ...p }))
-      const row = list.find(p => String(p.itemId) === String(itemId))
-      if (!row) return prev
-      const others = list.reduce((s, p) => s + (String(p.itemId) === String(itemId) ? 0 : Number(p.qty || 0)), 0)
-      const nextQty = Number(row.qty || 0) + delta
+      const found = list.find(p => String(p.itemId) === String(row.itemId))
+      if (!found) return prev
+      const others = list.reduce((s, p) => s + (String(p.itemId) === String(row.itemId) ? 0 : Number(p.qty || 0)), 0)
+      const nextQty = Number(found.qty || 0) + delta
       if (nextQty <= 0) {
-        return { ...prev, [idx]: list.filter(p => String(p.itemId) !== String(itemId)) }
+        return { ...prev, [idx]: list.filter(p => String(p.itemId) !== String(row.itemId)) }
       }
       if (max > 0 && others + nextQty > max) return prev
-      row.qty = nextQty
+      found.qty = nextQty
       return { ...prev, [idx]: list }
     })
   }
@@ -99,12 +160,12 @@ export default function DealBuilderDialog({
       const label = slot.label || slot.categoryName || findCategoryById(categories, slot.categoryId)?.name || 'Selection'
       if (min > 0 && n < min) {
         setErr(`${label}: select at least ${min}`)
-        setActiveSlot(i)
+        setActivePane({ type: 'slot', index: i })
         return
       }
       if (max > 0 && n > max) {
         setErr(`${label}: max ${max} allowed`)
-        setActiveSlot(i)
+        setActivePane({ type: 'slot', index: i })
         return
       }
     }
@@ -126,6 +187,7 @@ export default function DealBuilderDialog({
           dealGroupId,
           dealCategoryId,
           dealCategoryName,
+          dealQty: 1,
           isBundleDefault: true,
         },
         custom: {
@@ -147,6 +209,7 @@ export default function DealBuilderDialog({
             dealGroupId,
             dealCategoryId,
             dealCategoryName,
+            dealQty: 1,
             dealSlotCategoryId: String(slot.categoryId || ''),
             dealSlotLabel: slot.label || slot.categoryName || '',
           },
@@ -167,162 +230,195 @@ export default function DealBuilderDialog({
   }
 
   const activeSlotMeta = bundleSlots[activeSlot]
-  const activeMin = Number(activeSlotMeta?.minItems || 0)
-  const activeMax = Number(activeSlotMeta?.maxItems || 0)
+  const slotLabel = (slot, idx) => {
+    const linked = findCategoryById(categories, slot.categoryId)
+    return slot.label || linked?.name || slot.categoryName || `Slot ${idx + 1}`
+  }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 backdrop-blur-sm p-4" onClick={onCancel}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={onCancel}>
       <div
-        className="w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-2xl bg-white dark:bg-gray-900 border-2 border-emerald-200 dark:border-emerald-800 shadow-2xl flex flex-col"
+        className="w-full max-w-6xl max-h-[94vh] overflow-hidden rounded-md bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-emerald-100 dark:border-emerald-900 bg-gradient-to-r from-emerald-50 to-white dark:from-emerald-950/40 dark:to-gray-950">
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">Build deal</div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">{category.name}</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {packagePrice > 0
-                ? <>Package price: <span className="font-bold text-emerald-700 dark:text-emerald-300">PKR {packagePrice.toLocaleString()}</span> <span className="text-gray-400">(item prices ignored)</span></>
-                : 'No package price set — configure Category Price on this deal'}
-            </p>
-          </div>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">{category.name || 'Deal'}</h3>
           <button
             type="button"
             onClick={onCancel}
-            className="w-9 h-9 rounded-xl border-2 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 text-xl leading-none shrink-0"
+            className="w-8 h-8 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-xl leading-none"
             aria-label="Close"
           >×</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {bundleItems.length > 0 && (
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300 mb-2.5">Included items</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                {bundleItems.map((row) => {
-                  const id = String(row.itemId)
-                  const menuItem = (menu || []).find(m => String(m.id) === id)
-                  const name = menuItem?.name || row.name || id
-                  const baseQty = Math.max(1, Number(row.qty || 1))
-                  const maxQty = Math.max(0, Number(row.maxQty || 0))
-                  const qty = Number(includedQty[id] || baseQty)
-                  return (
-                    <div key={id} className="flex items-center justify-between gap-3 rounded-xl border-2 border-emerald-100 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/25 px-4 py-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold text-sm truncate text-gray-900 dark:text-gray-100">{name}</div>
-                        <div className="text-[11px] text-emerald-700/70 dark:text-emerald-300/70">Included in deal</div>
-                      </div>
-                      {maxQty > baseQty ? (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button type="button" className="w-8 h-8 rounded-lg border-2 border-emerald-200 dark:border-emerald-700 font-bold hover:bg-white dark:hover:bg-gray-800" onClick={() => setIncludedQty(v => ({ ...v, [id]: Math.max(baseQty, qty - 1) }))}>−</button>
-                          <span className="w-8 text-center text-sm font-bold">{qty}</span>
-                          <button type="button" className="w-8 h-8 rounded-lg border-2 border-emerald-200 dark:border-emerald-700 font-bold hover:bg-white dark:hover:bg-gray-800" onClick={() => setIncludedQty(v => ({ ...v, [id]: Math.min(maxQty, qty + 1) }))}>+</button>
-                        </div>
-                      ) : (
-                        <span className="text-sm font-bold text-emerald-800 dark:text-emerald-200 shrink-0">×{qty}</span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 overflow-hidden">
+          {/* Left: selected products */}
+          <div className="lg:col-span-4 min-h-0 flex flex-col border border-gray-200 dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-950">
+            <div className="grid grid-cols-12 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-gray-200 border-b dark:border-gray-700">
+              <div className="col-span-2 px-2 py-2">Sr #</div>
+              <div className="col-span-5 px-2 py-2">Product</div>
+              <div className="col-span-3 px-2 py-2 text-right">Extra Price</div>
+              <div className="col-span-2 px-2 py-2 text-center">Qty</div>
             </div>
-          )}
+            <div className="flex-1 overflow-y-auto min-h-[160px]">
+              {summaryRows.length === 0 ? (
+                <div className="px-3 py-8 text-center text-sm text-gray-400">Select items from the right</div>
+              ) : summaryRows.map((row, i) => (
+                <div key={row.key} className="grid grid-cols-12 items-center border-b border-gray-100 dark:border-gray-800 text-sm">
+                  <div className="col-span-2 px-2 py-2 text-gray-500">{i + 1}</div>
+                  <div className="col-span-5 px-2 py-2 font-medium truncate" title={row.name}>{row.name}</div>
+                  <div className="col-span-3 px-2 py-2 text-right text-gray-600">{row.extraPrice}</div>
+                  <div className="col-span-2 px-1 py-2 flex items-center justify-center gap-0.5">
+                    <button type="button" className="w-5 h-5 text-xs border rounded text-gray-600" onClick={() => bumpSummaryQty(row, -1)}>−</button>
+                    <span className="min-w-[1.25rem] text-center font-bold text-blue-600">{row.qty}</span>
+                    <button type="button" className="w-5 h-5 text-xs border rounded text-gray-600" onClick={() => bumpSummaryQty(row, 1)}>+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-3 py-2 border-t dark:border-gray-700 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20">
+              Package: PKR {packagePrice.toLocaleString()}
+            </div>
+          </div>
 
-          {bundleSlots.length > 0 && (
-            <div className="space-y-4">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300 mb-2.5">Choose options</div>
-                <div className="flex flex-wrap gap-2">
-                  {bundleSlots.map((slot, idx) => {
-                    const linked = findCategoryById(categories, slot.categoryId)
-                    const label = slot.label || linked?.name || slot.categoryName || `Slot ${idx + 1}`
-                    const n = slotCount(idx)
-                    const min = Number(slot.minItems || 0)
-                    const max = Number(slot.maxItems || 0)
-                    const ok = (min <= 0 || n >= min) && (max <= 0 || n <= max)
+          {/* Center: category / slot buttons */}
+          <div className="lg:col-span-2 min-h-0 overflow-y-auto flex flex-col gap-2 py-1">
+            {bundleSlots.map((slot, idx) => {
+              const n = slotCount(idx)
+              const min = Number(slot.minItems || 0)
+              const max = Number(slot.maxItems || 0)
+              const ok = (min <= 0 || n >= min) && (max <= 0 || n <= max)
+              const active = activePane.type === 'slot' && activePane.index === idx
+              return (
+                <button
+                  key={`${slot.categoryId}-${idx}`}
+                  type="button"
+                  onClick={() => setActivePane({ type: 'slot', index: idx })}
+                  className={`w-full min-h-[72px] px-2 py-3 rounded-lg border-2 text-sm font-bold uppercase leading-tight transition-all ${
+                    active
+                      ? 'bg-emerald-500 text-white border-emerald-600 shadow'
+                      : ok
+                        ? 'bg-gray-200 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600'
+                        : 'bg-amber-100 text-amber-900 border-amber-300'
+                  }`}
+                >
+                  {slotLabel(slot, idx)}
+                  {(min > 0 || max > 0) && (
+                    <div className={`mt-1 text-[10px] font-semibold normal-case ${active ? 'text-emerald-50' : 'text-gray-500'}`}>
+                      {n}{max > 0 ? `/${max}` : ''}{min > 0 ? ` min ${min}` : ''}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+            {bundleItems.map((row, idx) => {
+              const menuItem = (menu || []).find(m => String(m.id) === String(row.itemId))
+              const name = menuItem?.name || row.name || 'Included'
+              const active = activePane.type === 'included' && activePane.index === idx
+              return (
+                <button
+                  key={`inc-btn-${row.itemId}-${idx}`}
+                  type="button"
+                  onClick={() => setActivePane({ type: 'included', index: idx })}
+                  className={`w-full min-h-[72px] px-2 py-3 rounded-lg border-2 text-sm font-bold uppercase leading-tight transition-all ${
+                    active
+                      ? 'bg-emerald-500 text-white border-emerald-600 shadow'
+                      : 'bg-gray-200 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600'
+                  }`}
+                >
+                  {name}
+                </button>
+              )
+            })}
+            {!bundleSlots.length && !bundleItems.length && (
+              <div className="text-xs text-gray-400 text-center py-6">No slots</div>
+            )}
+          </div>
+
+          {/* Right: item grid */}
+          <div className="lg:col-span-6 min-h-0 flex flex-col border border-gray-200 dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-950">
+            <div className="px-3 py-2 border-b dark:border-gray-700 text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+              {activePane.type === 'slot' && activeSlotMeta
+                ? slotLabel(activeSlotMeta, activeSlot)
+                : activePane.type === 'included'
+                  ? ((menu || []).find(m => String(m.id) === String(bundleItems[activePane.index]?.itemId))?.name
+                    || bundleItems[activePane.index]?.name
+                    || 'Included')
+                  : 'Items'}
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 min-h-[220px]">
+              {activePane.type === 'slot' && activeSlotMeta ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {slotMenuItems.map((item) => {
+                    const picks = slotPicks[activeSlot] || []
+                    const selected = picks.find(p => String(p.itemId) === String(item.id))
+                    const max = Math.max(0, Number(activeSlotMeta.maxItems || 0))
+                    const total = slotCount(activeSlot)
+                    const disabled = !selected && max > 0 && total >= max && max !== 1
                     return (
                       <button
-                        key={`${slot.categoryId}-${idx}`}
+                        key={item.id}
                         type="button"
-                        onClick={() => setActiveSlot(idx)}
-                        className={`px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
-                          activeSlot === idx
-                            ? 'bg-sky-600 text-white border-sky-500 shadow-md'
-                            : ok
-                              ? 'bg-white dark:bg-gray-800 border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200 hover:border-sky-400'
-                              : 'bg-amber-50 border-amber-300 text-amber-800'
+                        disabled={disabled}
+                        onClick={() => toggleSlotItem(activeSlot, item)}
+                        className={`min-h-[70px] rounded-lg border-2 px-2 py-2 text-xs sm:text-sm font-bold uppercase leading-tight transition-all ${
+                          selected
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow'
+                            : disabled
+                              ? 'opacity-40 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-gray-200'
+                              : 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'
                         }`}
                       >
-                        {label}
-                        <span className="ml-1.5 opacity-80 font-bold">
-                          ({n}{max > 0 ? `/${max}` : ''}{min > 0 ? ` · min ${min}` : ''})
-                        </span>
+                        <span className="line-clamp-3">{item.name}</span>
+                        {selected && Number(selected.qty) > 1 ? (
+                          <span className="mt-1 block text-[10px] font-semibold opacity-90">×{selected.qty}</span>
+                        ) : null}
                       </button>
                     )
                   })}
+                  {!slotMenuItems.length && (
+                    <div className="col-span-full py-10 text-center text-sm text-gray-500">No menu items in this linked category.</div>
+                  )}
                 </div>
-              </div>
-
-              {activeSlotMeta && (
-                <div className="rounded-xl border-2 border-sky-100 dark:border-sky-900 bg-sky-50/40 dark:bg-sky-950/15 p-4">
-                  <div className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-                    Pick flavours / items
-                    {(activeMin > 0 || activeMax > 0)
-                      ? <span className="font-semibold text-sky-700 dark:text-sky-300"> · {activeMin || 0}–{activeMax || '∞'}</span>
-                      : ''}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[340px] overflow-y-auto pr-1">
-                    {slotMenuItems.map((item) => {
-                      const picks = slotPicks[activeSlot] || []
-                      const selected = picks.find(p => String(p.itemId) === String(item.id))
-                      const max = Math.max(0, Number(activeSlotMeta.maxItems || 0))
-                      const total = slotCount(activeSlot)
-                      const disabled = !selected && max > 0 && total >= max
-                      return (
-                        <div key={item.id} className="relative pb-3">
-                          <button
-                            type="button"
-                            disabled={disabled}
-                            onClick={() => toggleSlotItem(activeSlot, item)}
-                            className={`w-full h-20 rounded-xl border-2 text-sm font-semibold px-2 transition-all ${
-                              selected
-                                ? 'bg-amber-500 text-white border-amber-600 shadow-md scale-[1.02]'
-                                : disabled
-                                  ? 'opacity-40 cursor-not-allowed bg-gray-100 dark:bg-gray-800'
-                                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:border-amber-400 hover:shadow-sm'
-                            }`}
-                          >
-                            <span className="line-clamp-2 uppercase leading-tight">{item.name}</span>
-                          </button>
-                          {selected && (
-                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white dark:bg-gray-900 rounded-full border-2 border-amber-300 shadow px-1.5 py-0.5">
-                              <button type="button" className="w-6 h-6 text-sm font-bold rounded-full hover:bg-amber-50" onClick={() => bumpSlotQty(activeSlot, item.id, -1)}>−</button>
-                              <span className="text-xs font-bold w-5 text-center">{selected.qty}</span>
-                              <button type="button" className="w-6 h-6 text-sm font-bold rounded-full hover:bg-amber-50" onClick={() => bumpSlotQty(activeSlot, item.id, 1)}>+</button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                    {!slotMenuItems.length && (
-                      <div className="col-span-full text-sm text-gray-500 py-10 text-center">No menu items in this linked category.</div>
-                    )}
-                  </div>
+              ) : activePane.type === 'included' && bundleItems[activePane.index] ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {(() => {
+                    const row = bundleItems[activePane.index]
+                    const menuItem = (menu || []).find(m => String(m.id) === String(row.itemId))
+                    const name = menuItem?.name || row.name || row.itemId
+                    return (
+                      <button
+                        type="button"
+                        className="min-h-[70px] rounded-lg border-2 px-2 py-2 text-xs sm:text-sm font-bold uppercase leading-tight bg-emerald-600 text-white border-emerald-700 shadow"
+                      >
+                        <span className="line-clamp-3">{name}</span>
+                        <span className="mt-1 block text-[10px] font-semibold opacity-90">Included</span>
+                      </button>
+                    )
+                  })()}
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-gray-500 px-4 text-center">
+                  This category has no deal composition configured.
                 </div>
               )}
             </div>
-          )}
-
-          {!bundleItems.length && !bundleSlots.length && (
-            <div className="text-sm text-gray-500 text-center py-12">This category has no deal composition configured.</div>
-          )}
+          </div>
         </div>
 
-        {err && <div className="px-6 pb-2 text-sm font-medium text-rose-600 dark:text-rose-400">{err}</div>}
+        {err && <div className="px-4 pb-1 text-sm font-medium text-rose-600">{err}</div>}
 
-        <div className="flex gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/50">
-          <button type="button" onClick={onCancel} className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 font-semibold text-sm hover:bg-white dark:hover:bg-gray-800">Cancel</button>
-          <button type="button" onClick={confirm} className="flex-[1.4] px-4 py-3 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-bold text-sm shadow-md hover:shadow-lg">Add Deal</button>
+        <div className="flex items-center justify-center gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950">
+          <button
+            type="button"
+            onClick={confirm}
+            className="min-w-[140px] px-6 py-2.5 rounded-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold shadow"
+          >Submit</button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-w-[140px] px-6 py-2.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow"
+          >Cancel</button>
         </div>
       </div>
     </div>
