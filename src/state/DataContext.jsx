@@ -619,7 +619,7 @@ export function DataProvider({ children }) {
         supplies: mapList(supplies, []),
         sales: mapList(sales, []),
         deletedSales: mapList(deletedSales, []),
-        recalls: mapList(recalls, []),
+        recalls: mapList(recalls, []).filter((r) => !r?.clearedAt),
         returns: mapList(returns, []),
         expenses: mapList(expenses, []),
         audit: mapList(audit, []),

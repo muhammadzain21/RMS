@@ -363,16 +363,23 @@ export default function SalesNew() {
       sessionStorage.removeItem('cc_cart_payload')
       const lines = Array.isArray(cart?.items) ? cart.items : []
       if (!lines.length) return
-      setItems(lines.map(it => ({
-        itemId: it.itemId || undefined,
-        qty: Number(it.qty) || 1,
-        mods: it.mods || undefined,
-        custom: {
-          name: it.name || 'Item',
-          price: Number(it.price) || 0,
-          category: it.category || '',
-        },
-      })))
+      setItems(lines.map(it => {
+        const mods = it.mods instanceof Map ? Object.fromEntries(it.mods) : (it.mods || undefined)
+        const baseCustom = {
+          name: it.name || it.custom?.name || 'Item',
+          price: Number(it.custom?.price ?? it.price) || 0,
+          category: it.custom?.category || it.category || '',
+        }
+        const custom = it.custom && typeof it.custom === 'object'
+          ? { ...baseCustom, ...it.custom, name: it.custom.name || baseCustom.name }
+          : baseCustom
+        return {
+          itemId: it.itemId || undefined,
+          qty: Number(it.qty) || 1,
+          mods,
+          custom,
+        }
+      }))
       if (cart.orderType) setOrderType(cart.orderType === 'Drive-thru' ? 'Foodpanda' : cart.orderType)
       if (cart.customer) {
         setPayName(cart.customer.name || '')

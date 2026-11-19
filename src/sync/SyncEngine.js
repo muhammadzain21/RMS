@@ -152,6 +152,27 @@ async function fetchJson(url, opts) {
   return j
 }
 
+/**
+ * Call VPS sync APIs via the local Node server so the browser stays same-origin
+ * (avoids CORS blocks from http://127.0.0.1 → https://cloud).
+ */
+async function cloudFetchJson(cloud, syncPath, { method = 'GET', token, cloudToken, branchId, body } = {}) {
+  const local = String(localApi() || '').replace(/\/+$/, '')
+  const tok = String(cloudToken || token || '').trim()
+  return fetchJson(`${local}/api/sync/proxy`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      cloudBase: cloud,
+      path: syncPath,
+      method,
+      cloudToken: tok,
+      branchId: branchId || resolveSyncBranchId(),
+      body,
+    }),
+  })
+}
+
 function pickDocs(data, names) {
   const docs = {}
   for (const name of names) {
@@ -201,10 +222,12 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
       break
     }
 
-    await fetchJson(`${cloud}/api/sync/push`, {
+    await cloudFetchJson(cloud, '/api/sync/push', {
       method: 'POST',
-      headers: authHeaders(cloudToken || token),
-      body: JSON.stringify({ branchId, deviceId: deviceId(), docs }),
+      token,
+      cloudToken,
+      branchId,
+      body: { branchId, deviceId: deviceId(), docs },
     })
 
     // Advance past the newest row we actually sent (not wall clock — avoids skipping mid-batch).
@@ -235,9 +258,10 @@ async function pullThenApply({ cloud, local, token, cloudToken, branchId }) {
   let lastServerTime = ''
   while (pages < MAX_DRAIN_PAGES) {
     pages += 1
-    const pulled = await fetchJson(
-      `${cloud}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500`,
-      { headers: authHeaders(cloudToken || token) }
+    const pulled = await cloudFetchJson(
+      cloud,
+      `/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500`,
+      { method: 'GET', token, cloudToken, branchId }
     )
 
     const data = pulled.data || {}

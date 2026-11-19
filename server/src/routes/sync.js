@@ -285,4 +285,75 @@ router.get('/status', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+/**
+ * Branch PC browser → local Node → VPS (avoids CORS).
+ * Body: { cloudBase, path, method, cloudToken, branchId, body }
+ * path must start with /api/sync/
+ */
+router.post('/proxy', async (req, res, next) => {
+  try {
+    const cloudBase = String(req.body?.cloudBase || '').trim().replace(/\/+$/, '')
+    const syncPath = String(req.body?.path || '').trim()
+    const method = String(req.body?.method || 'GET').toUpperCase()
+    const cloudToken = String(
+      req.body?.cloudToken ||
+      String(req.headers.authorization || '').replace(/^Bearer\s+/i, '') ||
+      ''
+    ).trim()
+    const branchId = String(req.body?.branchId || req.headers['x-branch-id'] || '').trim()
+    const payload = req.body?.body
+
+    if (!cloudBase || !/^https?:\/\//i.test(cloudBase)) {
+      return res.status(400).json({ error: 'cloudBase must be an http(s) URL' })
+    }
+    try {
+      const host = new URL(cloudBase).hostname
+      const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(host)
+      if (!isLocal && !/^https:/i.test(cloudBase)) {
+        return res.status(400).json({ error: 'cloudBase must use https' })
+      }
+    } catch {
+      return res.status(400).json({ error: 'Invalid cloudBase URL' })
+    }
+    if (!syncPath.startsWith('/api/sync/')) {
+      return res.status(400).json({ error: 'path must start with /api/sync/' })
+    }
+    if (!['GET', 'POST'].includes(method)) {
+      return res.status(400).json({ error: 'method must be GET or POST' })
+    }
+    if (!cloudToken) {
+      return res.status(401).json({ error: 'Cloud auth token missing' })
+    }
+
+    const url = `${cloudBase}${syncPath}`
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${cloudToken}`,
+    }
+    if (branchId) headers['X-Branch-Id'] = branchId
+
+    const upstream = await fetch(url, {
+      method,
+      headers,
+      body: method === 'GET' ? undefined : JSON.stringify(payload ?? {}),
+    })
+    const text = await upstream.text()
+    const ct = String(upstream.headers.get('content-type') || '')
+    if (ct.includes('text/html') || /^\s*<!doctype/i.test(text) || /^\s*<html/i.test(text)) {
+      return res.status(502).json({
+        error:
+          'Cloud URL returned HTML instead of the API. On the VPS, nginx must proxy /api to Node (port 5000).',
+      })
+    }
+    res.status(upstream.status)
+    if (ct) res.set('Content-Type', ct)
+    else res.type('json')
+    return res.send(text || '{}')
+  } catch (e) {
+    const msg = String(e?.message || e)
+    return res.status(502).json({ error: `Cloud proxy failed: ${msg}` })
+  }
+})
+
 export default router

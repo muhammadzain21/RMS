@@ -8,7 +8,8 @@ const CcItemSchema = new mongoose.Schema({
   price: { type: Number, default: 0 },
   category: { type: String, default: '' },
   notes: { type: String, default: '' },
-  mods: { type: Map, of: mongoose.Schema.Types.Mixed },
+  mods: { type: mongoose.Schema.Types.Mixed, default: {} },
+  custom: { type: mongoose.Schema.Types.Mixed, default: null },
 }, { _id: false })
 
 /**

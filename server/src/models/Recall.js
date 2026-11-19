@@ -45,6 +45,8 @@ const RecallSchema = new mongoose.Schema({
   staffId: { type: String, default: '' },
   staffName: { type: String, default: '' },
   staffSettlement: { type: String, default: '' },
+  // Soft-clear so sync can push “removed from recall” to cloud (hard delete does not sync).
+  clearedAt: { type: Date, default: null, index: true },
   idempotencyKey: { type: String, default: null, index: { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } } },
 }, { timestamps: true })
 

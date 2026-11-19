@@ -58,11 +58,28 @@ async function honorIdempotency(req, res) {
   return null
 }
 
+function openRecallFilter(extra = {}) {
+  return {
+    ...extra,
+    $and: [
+      ...(extra.$and ? extra.$and : []),
+      {
+        $or: [
+          { clearedAt: null },
+          { clearedAt: { $exists: false } },
+        ],
+      },
+    ],
+  }
+}
+
 // GET /api/recalls
 router.get('/', async (req, res, next) => {
   try {
     const hasPagination = req.query.page !== undefined || req.query.limit !== undefined
-    const q = { ...branchFilter(req) }
+    const includeCleared = String(req.query.includeCleared || '') === '1'
+    let q = { ...branchFilter(req) }
+    if (!includeCleared) q = openRecallFilter(q)
     const waiterId = String(req.query.waiterId || '').trim()
     if (waiterId) q.waiterId = waiterId
     const orderType = String(req.query.orderType || '').trim()
@@ -202,16 +219,28 @@ router.patch('/:id', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
-// DELETE /api/recalls/:id
+// DELETE /api/recalls/:id — soft-clear (keeps row for cloud sync of “cleared”)
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params
+    const prev = await Recall.findById(id).lean()
+    if (!prev) return res.json({ ok: true, alreadyGone: true })
+    if (prev.clearedAt) return res.json({ ok: true, alreadyCleared: true })
+    const updated = await Recall.findByIdAndUpdate(
+      id,
+      { $set: { clearedAt: new Date() } },
+      { new: true }
+    )
     try {
-      const prev = await Recall.findById(id).lean()
-      await logAudit(req, 'recall', `Deleted recall ${id}`, { id, orderNo: prev?.orderNo, tokenNo: prev?.tokenNo, orderType: prev?.orderType, totalAmount: prev?.totalAmount })
+      await logAudit(req, 'recall', `Cleared recall ${id}`, {
+        id,
+        orderNo: prev?.orderNo,
+        tokenNo: prev?.tokenNo,
+        orderType: prev?.orderType,
+        totalAmount: prev?.totalAmount,
+      })
     } catch {}
-    await Recall.findByIdAndDelete(id)
-    res.json({ ok: true })
+    res.json({ ok: true, id: updated?.id || updated?._id || id, clearedAt: updated?.clearedAt })
   } catch (e) { next(e) }
 })
 

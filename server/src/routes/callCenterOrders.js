@@ -8,7 +8,19 @@ import { logAudit } from '../middleware/auditLog.js'
 const router = Router()
 
 function calcTotals(items = [], discount = 0) {
-  const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0)
+  const seenDeal = new Set()
+  const subtotal = items.reduce((s, it) => {
+    const mods = it?.mods && typeof it.mods === 'object' ? it.mods : {}
+    const dealId = mods.underDeal && mods.dealGroupId ? String(mods.dealGroupId) : ''
+    if (dealId) {
+      if (seenDeal.has(dealId)) return s
+      seenDeal.add(dealId)
+      const dealQty = Math.max(1, Number(mods.dealQty || 1))
+      const pkg = Number(it?.custom?.categoryPrice || it?.price || 0)
+      return s + pkg * dealQty
+    }
+    return s + (Number(it.qty) || 0) * (Number(it.price) || 0)
+  }, 0)
   const disc = Math.max(0, Number(discount) || 0)
   return { subtotal, discount: disc, total: Math.max(0, subtotal - disc) }
 }
@@ -139,6 +151,7 @@ router.post('/', authRequired, requireRole('Admin', 'Manager', 'Staff', 'CallCen
         category: it.category || it.custom?.category || '',
         notes: it.notes || '',
         mods: it.mods || {},
+        custom: it.custom || null,
       })),
       remarks,
       isAddOn,
@@ -243,7 +256,8 @@ function buildCart(doc) {
       price: it.price,
       category: it.category,
       notes: it.notes,
-      mods: it.mods,
+      mods: it.mods instanceof Map ? Object.fromEntries(it.mods) : (it.mods || {}),
+      custom: it.custom || (it.category || it.name ? { name: it.name, price: it.price, category: it.category } : null),
     })),
   }
 }

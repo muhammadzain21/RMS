@@ -1,13 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { Headphones, RefreshCw, Trash2, ShoppingCart, Link2 } from 'lucide-react'
 import CategoryBar from '../sales/components/CategoryBar.jsx'
 import ItemsList from '../sales/components/ItemsList.jsx'
+import DealBuilderDialog from '../sales/components/DealBuilderDialog.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useBranch } from '../../state/BranchContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { ccStatusLabel, ccStatusStyle } from '../../utils/callCenterStatus.js'
-import { resolveMenuUnitPrice } from '../sales/utils.js'
+import {
+  resolveMenuUnitPrice,
+  isBundleCategory,
+  canAddItemToCart,
+  dealCompositionKey,
+} from '../sales/utils.js'
 import { useLiveRefresh, pokeLiveRefresh } from '../../hooks/useLiveRefresh.js'
 
 function api() {
@@ -21,12 +27,6 @@ export default function CallCenterOrders() {
   const { branches, activeBranchId } = useBranch()
   const { state } = useData()
   const menu = state?.menu || []
-  const categories = useMemo(() => {
-    const fromSettings = Array.isArray(state?.categories) ? state.categories : []
-    if (fromSettings.length) return fromSettings
-    const names = [...new Set(menu.map(m => m.category).filter(Boolean))]
-    return names.map(name => ({ name }))
-  }, [state?.categories, menu])
 
   const [orders, setOrders] = useState([])
   // Prefill with header branch, but queue always lists every branch
@@ -35,6 +35,9 @@ export default function CallCenterOrders() {
   const [customer, setCustomer] = useState({ id: '', name: '', phone: '', address: '' })
   const [remarks, setRemarks] = useState('')
   const [cart, setCart] = useState([])
+  const [categoryPath, setCategoryPath] = useState([])
+  const [dealCategory, setDealCategory] = useState(null)
+  const [showDealBuilder, setShowDealBuilder] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState('')
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(false)
@@ -51,14 +54,141 @@ export default function CallCenterOrders() {
   const phoneFocusedRef = useRef(false)
   const cartSectionRef = useRef(null)
 
+  // Same POS category tree as Sell page
+  const allPosCategories = useMemo(() => (state.categories || [])
+    .filter(c => c && c.active !== false && c.showOnPos !== false)
+    .sort((a, b) => {
+      const orderA = Number(a.sortOrder ?? 0)
+      const orderB = Number(b.sortOrder ?? 0)
+      if (orderA !== orderB) return orderA - orderB
+      return String(a.name || '').localeCompare(String(b.name || ''))
+    }), [state.categories])
+  const kidsOf = useCallback((parentId) => (
+    allPosCategories.filter(c => String(c.parentCategoryId || '') === String(parentId || ''))
+  ), [allPosCategories])
+  const withMeta = useCallback((list) => list.map(c => {
+    const id = String(c.id || c._id)
+    return {
+      ...c,
+      _hasChildren: kidsOf(id).length > 0,
+      _isDeal: isBundleCategory(c),
+    }
+  }), [kidsOf])
+  const categories = useMemo(() => withMeta(kidsOf('')), [kidsOf, withMeta])
+  const currentParentId = categoryPath.length
+    ? String(categoryPath[categoryPath.length - 1].id || categoryPath[categoryPath.length - 1]._id || '')
+    : ''
+  const menuSubcategories = useMemo(
+    () => (currentParentId ? withMeta(kidsOf(currentParentId)) : []),
+    [currentParentId, kidsOf, withMeta]
+  )
+  const categoryBarSelected = categoryPath.length
+    ? String(categoryPath[0].name || '')
+    : selectedCategory
+
+  const openCategory = (cat, { fromTop = false } = {}) => {
+    if (!cat) return
+    const id = String(cat.id || cat._id)
+    const children = kidsOf(id)
+    if (children.length) {
+      setCategoryPath(prev => (fromTop ? [cat] : [...prev, cat]))
+      setSelectedCategory('')
+      return
+    }
+    if (isBundleCategory(cat)) {
+      if (fromTop) setCategoryPath([])
+      setSelectedCategory('')
+      setDealCategory(cat)
+      setShowDealBuilder(true)
+      return
+    }
+    if (fromTop) setCategoryPath([])
+    setSelectedCategory(cat.name || '')
+  }
+
+  const onSelectCategory = (catOrName) => {
+    const cat = typeof catOrName === 'object' && catOrName
+      ? catOrName
+      : allPosCategories.find(c => String(c.name || '') === String(catOrName || ''))
+    if (!cat) {
+      setCategoryPath([])
+      setSelectedCategory(String(catOrName || ''))
+      return
+    }
+    openCategory(cat, { fromTop: true })
+  }
+
+  const onSelectSubcategory = (cat) => openCategory(cat, { fromTop: false })
+
+  const closeDealBuilder = () => {
+    setShowDealBuilder(false)
+    setDealCategory(null)
+    setSelectedCategory('')
+  }
+
+  const addDealLinesToCart = (lines) => {
+    const incoming = Array.isArray(lines) ? lines : []
+    if (!incoming.length) return
+    const fingerprint = dealCompositionKey(incoming)
+    const mapped = incoming.map((line) => {
+      const m = menu.find(x => String(x.id || x._id) === String(line.itemId))
+      return {
+        itemId: String(line.itemId),
+        name: line.custom?.name || m?.name || String(line.itemId),
+        price: 0,
+        qty: Math.max(1, Number(line.qty || 1)),
+        category: line.custom?.category || m?.category || '',
+        mods: line.mods || {},
+        custom: line.custom || null,
+      }
+    })
+    setCart((prev) => {
+      if (!fingerprint) return [...prev, ...mapped]
+      const byDeal = new Map()
+      for (const it of prev) {
+        const id = it?.mods?.dealGroupId ? String(it.mods.dealGroupId) : ''
+        if (!id) continue
+        if (!byDeal.has(id)) byDeal.set(id, [])
+        byDeal.get(id).push(it)
+      }
+      for (const [dealId, group] of byDeal.entries()) {
+        if (dealCompositionKey(group) !== fingerprint) continue
+        const curQty = Math.max(1, Number(group[0]?.mods?.dealQty || 1))
+        const nextQty = curQty + 1
+        return prev.map((it) => {
+          if (String(it?.mods?.dealGroupId || '') !== dealId) return it
+          const unitQty = Math.max(1, Math.round(Number(it.qty || 1) / curQty))
+          return {
+            ...it,
+            qty: unitQty * nextQty,
+            mods: { ...(it.mods || {}), dealQty: nextQty },
+          }
+        })
+      }
+      return [...prev, ...mapped]
+    })
+    closeDealBuilder()
+    toast.success('Deal added')
+  }
+
   const itemsInCategory = useMemo(() => {
+    const cat = String(selectedCategory || '').trim().toLowerCase()
     const q = search.trim().toLowerCase()
-    return menu.filter(m => {
-      if (selectedCategory && String(m.category || '') !== String(selectedCategory)) return false
-      if (q && !String(m.name || '').toLowerCase().includes(q)) return false
-      return true
-    }).map(m => ({ ...m, id: m.id || m._id }))
+    let list = menu
+    if (cat) list = list.filter(m => String(m.category || '').trim().toLowerCase() === cat)
+    if (q) list = list.filter(m => String(m.name || '').toLowerCase().includes(q))
+    return [...list]
+      .sort((a, b) => {
+        const orderA = Number(a.sortOrder ?? 0)
+        const orderB = Number(b.sortOrder ?? 0)
+        if (orderA !== orderB) return orderA - orderB
+        return String(a.name || '').localeCompare(String(b.name || ''))
+      })
+      .map(m => ({ ...m, id: m.id || m._id }))
   }, [menu, selectedCategory, search])
+
+  const catTiles = Number(state.settings?.posCategoryTilesPerRow) || 4
+  const itemTiles = Number(state.settings?.posItemTilesPerRow) || 4
 
   const load = async ({ quiet = false } = {}) => {
     try {
@@ -84,21 +214,19 @@ export default function CallCenterOrders() {
       : (branches[0]?._id ? String(branches[0]._id) : '')
     if (preferred) setBranchId(preferred)
   }, [branches, branchId, activeBranchId])
-  useEffect(() => {
-    if (!selectedCategory && categories[0]) {
-      const n = typeof categories[0] === 'object' ? categories[0].name : categories[0]
-      if (n) setSelectedCategory(n)
-    }
-  }, [categories, selectedCategory])
-
   const addToCart = (id) => {
     const m = menu.find(x => String(x.id || x._id) === String(id))
     if (!m) return
     const itemId = String(m.id || m._id)
+    const check = canAddItemToCart(cart, menu, state.categories || [], itemId, 1)
+    if (!check.ok) {
+      toast.error(check.message || 'Category max items reached')
+      return
+    }
     const unit = resolveMenuUnitPrice(m, orderType)
     setCart(prev => {
-      const existing = prev.find(x => x.itemId === itemId)
-      if (existing) return prev.map(x => x.itemId === itemId ? { ...x, qty: x.qty + 1 } : x)
+      const existing = prev.find(x => x.itemId === itemId && !x?.mods?.underDeal)
+      if (existing) return prev.map(x => (x === existing ? { ...x, qty: x.qty + 1 } : x))
       return [...prev, {
         itemId,
         name: m.name,
@@ -109,12 +237,13 @@ export default function CallCenterOrders() {
     })
   }
 
-  // Reprice cart when switching to/from Foodpanda
+  // Reprice cart when switching to/from Foodpanda (skip deal package lines)
   useEffect(() => {
     setCart(prev => {
       if (!prev.length) return prev
       let changed = false
       const next = prev.map(it => {
+        if (it?.mods?.underDeal) return it
         const m = menu.find(x => String(x.id || x._id) === String(it.itemId))
         if (!m) return it
         const price = resolveMenuUnitPrice(m, orderType)
@@ -125,8 +254,25 @@ export default function CallCenterOrders() {
     })
   }, [orderType, menu])
 
-  const total = cart.reduce((s, it) => s + it.qty * it.price, 0)
-  const cartQty = cart.reduce((s, it) => s + it.qty, 0)
+  const total = cart.reduce((s, it, idx) => {
+    if (it?.mods?.underDeal && it?.mods?.dealGroupId) {
+      const first = cart.findIndex(x => String(x?.mods?.dealGroupId || '') === String(it.mods.dealGroupId))
+      if (first !== idx) return s
+      const dealQty = Math.max(1, Number(it.mods.dealQty || 1))
+      const pkg = Number(it.custom?.categoryPrice || 0)
+      return s + pkg * dealQty
+    }
+    return s + Number(it.qty || 0) * Number(it.price || 0)
+  }, 0)
+  const cartQty = cart.reduce((s, it) => {
+    if (it?.mods?.underDeal && it?.mods?.dealGroupId) {
+      // Count deal once using dealQty on first component
+      const first = cart.findIndex(x => String(x?.mods?.dealGroupId || '') === String(it.mods.dealGroupId))
+      if (cart.indexOf(it) !== first) return s
+      return s + Math.max(1, Number(it.mods.dealQty || 1))
+    }
+    return s + Number(it.qty || 0)
+  }, 0)
   const authHeaders = useMemo(() => ({
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
@@ -499,25 +645,91 @@ export default function CallCenterOrders() {
     </>
   )
 
-  const renderCartLines = () => (
-    <div className="min-h-0 flex-1 space-y-1 overflow-auto">
-      {cart.map((it, i) => (
-        <div key={it.itemId} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-2 text-sm dark:bg-slate-800/70">
+  const bumpCartQty = (i, delta) => {
+    const line = cart[i]
+    if (!line) return
+    if (line?.mods?.underDeal && line?.mods?.dealGroupId) {
+      const dealId = String(line.mods.dealGroupId)
+      const group = cart.filter(x => String(x?.mods?.dealGroupId || '') === dealId)
+      const cur = Math.max(1, Number(group[0]?.mods?.dealQty || 1))
+      const nextQty = cur + delta
+      if (nextQty < 1) {
+        setCart(c => c.filter(x => String(x?.mods?.dealGroupId || '') !== dealId))
+        return
+      }
+      setCart(prev => prev.map(it => {
+        if (String(it?.mods?.dealGroupId || '') !== dealId) return it
+        const unitQty = Math.max(1, Math.round(Number(it.qty || 1) / cur))
+        return { ...it, qty: unitQty * nextQty, mods: { ...(it.mods || {}), dealQty: nextQty } }
+      }))
+      return
+    }
+    if (delta < 0 && Number(line.qty || 1) <= 1) {
+      setCart(c => c.filter((_, idx) => idx !== i))
+      return
+    }
+    if (delta > 0) {
+      const check = canAddItemToCart(cart, menu, state.categories || [], line.itemId, 1)
+      if (!check.ok) {
+        toast.error(check.message || 'Category max items reached')
+        return
+      }
+    }
+    setCart(c => c.map((x, idx) => (idx === i ? { ...x, qty: Math.max(1, Number(x.qty || 1) + delta) } : x)))
+  }
+
+  const renderCartLines = () => {
+    const shownDeal = new Set()
+    const rows = []
+    cart.forEach((it, i) => {
+      if (it?.mods?.underDeal && it?.mods?.dealGroupId) {
+        const dealId = String(it.mods.dealGroupId)
+        if (shownDeal.has(dealId)) return
+        shownDeal.add(dealId)
+        const group = cart.filter(x => String(x?.mods?.dealGroupId || '') === dealId)
+        const dealQty = Math.max(1, Number(group[0]?.mods?.dealQty || 1))
+        const pkg = Number(group[0]?.custom?.categoryPrice || 0)
+        const label = group[0]?.custom?.category || group[0]?.mods?.dealCategoryName || 'Deal'
+        const parts = group.map(g => g.name).filter(Boolean).join(', ')
+        rows.push(
+          <div key={dealId} className="flex items-center justify-between gap-2 rounded-lg bg-violet-50 px-2 py-2 text-sm dark:bg-violet-950/40">
+            <div className="min-w-0">
+              <div className="font-semibold truncate">{label}</div>
+              <div className="text-[11px] text-slate-500 truncate" title={parts}>{parts}</div>
+              <div className="text-[11px] text-slate-500">{pkg.toLocaleString()} × {dealQty}</div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button type="button" className="h-9 w-9 rounded bg-slate-200 text-lg font-bold dark:bg-slate-700" onClick={() => bumpCartQty(i, -1)}>−</button>
+              <span className="w-7 text-center text-sm font-bold">{dealQty}</span>
+              <button type="button" className="h-9 w-9 rounded bg-slate-200 text-lg font-bold dark:bg-slate-700" onClick={() => bumpCartQty(i, 1)}>+</button>
+              <button type="button" className="ml-1 p-2 text-rose-500" onClick={() => setCart(c => c.filter(x => String(x?.mods?.dealGroupId || '') !== dealId))}><Trash2 size={16} /></button>
+            </div>
+          </div>
+        )
+        return
+      }
+      rows.push(
+        <div key={`${it.itemId}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-2 text-sm dark:bg-slate-800/70">
           <div className="min-w-0">
             <div className="font-semibold truncate">{it.name}</div>
-            <div className="text-[11px] text-slate-500">{it.price.toLocaleString()} × {it.qty}</div>
+            <div className="text-[11px] text-slate-500">{Number(it.price || 0).toLocaleString()} × {it.qty}</div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button type="button" className="h-9 w-9 rounded bg-slate-200 text-lg font-bold dark:bg-slate-700" onClick={() => setCart(c => c.map((x, idx) => idx === i ? { ...x, qty: Math.max(1, x.qty - 1) } : x))}>-</button>
+            <button type="button" className="h-9 w-9 rounded bg-slate-200 text-lg font-bold dark:bg-slate-700" onClick={() => bumpCartQty(i, -1)}>−</button>
             <span className="w-7 text-center text-sm font-bold">{it.qty}</span>
-            <button type="button" className="h-9 w-9 rounded bg-slate-200 text-lg font-bold dark:bg-slate-700" onClick={() => setCart(c => c.map((x, idx) => idx === i ? { ...x, qty: x.qty + 1 } : x))}>+</button>
+            <button type="button" className="h-9 w-9 rounded bg-slate-200 text-lg font-bold dark:bg-slate-700" onClick={() => bumpCartQty(i, 1)}>+</button>
             <button type="button" className="ml-1 p-2 text-rose-500" onClick={() => setCart(c => c.filter((_, idx) => idx !== i))}><Trash2 size={16} /></button>
           </div>
         </div>
-      ))}
-      {!cart.length && <div className="py-8 text-center text-sm text-slate-400">Tap menu items to add</div>}
-    </div>
-  )
+      )
+    })
+    return (
+      <div className="min-h-0 flex-1 space-y-1 overflow-auto">
+        {rows}
+        {!cart.length && <div className="py-8 text-center text-sm text-slate-400">Tap menu items to add</div>}
+      </div>
+    )
+  }
 
   const queuePanel = (
     <div className={`min-h-[50dvh] flex-col rounded-2xl border bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50 lg:min-h-0 lg:flex ${mobileTab === 'queue' ? 'flex' : 'hidden lg:flex'}`}>
@@ -672,9 +884,9 @@ export default function CallCenterOrders() {
         <div className={`min-h-0 flex-col gap-2 rounded-2xl border bg-white p-2 dark:border-slate-700 dark:bg-slate-900 ${mobileTab === 'order' ? 'flex' : 'hidden lg:flex'}`}>
           <CategoryBar
             categories={categories}
-            selectedCategory={selectedCategory}
-            onSelectCategory={setSelectedCategory}
-            tilesPerRow={4}
+            selectedCategory={categoryBarSelected}
+            onSelectCategory={onSelectCategory}
+            tilesPerRow={catTiles}
           />
           <input
             className="rounded-xl border px-3 py-2.5 text-sm dark:border-slate-600 dark:bg-slate-800"
@@ -686,7 +898,9 @@ export default function CallCenterOrders() {
             selectedCategory={selectedCategory}
             itemsInCategory={itemsInCategory}
             addToCart={addToCart}
-            tilesPerRow={4}
+            tilesPerRow={itemTiles}
+            subcategories={menuSubcategories}
+            onSelectSubcategory={onSelectSubcategory}
           />
 
           {/* Mobile Sell-like: cart + customer under menu in same scroll */}
@@ -751,6 +965,15 @@ export default function CallCenterOrders() {
           </button>
         </div>
       ) : null}
+
+      <DealBuilderDialog
+        open={showDealBuilder}
+        category={dealCategory}
+        menu={menu}
+        categories={state.categories || []}
+        onCancel={closeDealBuilder}
+        onConfirm={addDealLinesToCart}
+      />
     </div>
   )
 }

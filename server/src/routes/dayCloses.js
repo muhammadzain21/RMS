@@ -29,14 +29,18 @@ function addOneDayYmd(ymd) {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
+const OPEN_RECALL_Q = {
+  $or: [{ clearedAt: null }, { clearedAt: { $exists: false } }],
+}
+
 /** Any unpaid recall still in DB blocks day close (including older dates). */
 async function countOpenRecalls() {
-  const pending = await Recall.find({})
+  const pending = await Recall.find(OPEN_RECALL_Q)
     .select('date createdAt tokenNo orderNo')
     .sort({ createdAt: -1 })
     .limit(200)
     .lean()
-  const count = await Recall.countDocuments({})
+  const count = await Recall.countDocuments(OPEN_RECALL_Q)
   return {
     count,
     items: pending.slice(0, 10).map(r => ({

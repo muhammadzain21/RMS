@@ -56,6 +56,19 @@ export default function RecallDialog({
  if (page !== 1) setPage(1)
  }, [open, waiterFilter, typeFilter, limit])
 
+ const [refreshTick, setRefreshTick] = useState(0)
+
+ useEffect(() => {
+ if (!open) return
+ const bump = () => setRefreshTick((n) => n + 1)
+ window.addEventListener('live_refresh', bump)
+ window.addEventListener('epicspire:sync', bump)
+ return () => {
+  window.removeEventListener('live_refresh', bump)
+  window.removeEventListener('epicspire:sync', bump)
+ }
+ }, [open])
+
  useEffect(() => {
  if (!open) return
  if (!canFetch) return
@@ -77,7 +90,7 @@ export default function RecallDialog({
  const res = await fetch(`${API}/api/recalls?${params.toString()}`, { headers: authHeaders, signal: ctrl.signal, cache: 'no-store' })
  if (!res.ok) return
  const data = await res.json()
- const rows = Array.isArray(data?.data) ? data.data : []
+ const rows = (Array.isArray(data?.data) ? data.data : []).filter((r) => !r?.clearedAt)
  setServerRows(rows)
  setTotal(Number(data?.total || rows.length || 0))
  setPages(Number(data?.pages || 1))
@@ -86,7 +99,7 @@ export default function RecallDialog({
  finally { setLoading(false) }
  })()
  return () => ctrl.abort()
- }, [open, canFetch, API, authHeaders, page, limit, waiterFilter, typeFilter, search])
+ }, [open, canFetch, API, authHeaders, page, limit, waiterFilter, typeFilter, search, refreshTick])
 
  const filtered = useMemo(() => {
  if (canFetch) return effectiveRows
