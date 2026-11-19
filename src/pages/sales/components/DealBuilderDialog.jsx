@@ -65,7 +65,6 @@ export default function DealBuilderDialog({
         qty,
         maxQty: Math.max(0, Number(row.maxQty || 0)),
         baseQty: Math.max(1, Number(row.qty || 1)),
-        extraPrice: 0,
       })
     }
     for (let i = 0; i < bundleSlots.length; i++) {
@@ -77,7 +76,6 @@ export default function DealBuilderDialog({
           itemId: pick.itemId,
           name: pick.name || '',
           qty: Math.max(1, Number(pick.qty || 1)),
-          extraPrice: 0,
         })
       }
     }
@@ -238,7 +236,7 @@ export default function DealBuilderDialog({
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4" onClick={onCancel}>
       <div
-        className="w-[min(72rem,calc(100vw-1.5rem))] max-h-[94vh] overflow-hidden rounded-md bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 shadow-2xl flex flex-col shrink-0"
+        className="w-[min(72rem,calc(100vw-1.5rem))] h-[min(42rem,94vh)] overflow-hidden rounded-md bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 shadow-2xl flex flex-col shrink-0"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -256,18 +254,16 @@ export default function DealBuilderDialog({
           <div className="min-h-0 min-w-0 flex flex-col border border-gray-200 dark:border-gray-700 rounded overflow-hidden bg-white dark:bg-gray-950">
             <div className="grid grid-cols-12 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold uppercase tracking-wide text-gray-700 dark:text-gray-200 border-b dark:border-gray-700">
               <div className="col-span-2 px-2 py-2">Sr #</div>
-              <div className="col-span-5 px-2 py-2">Product</div>
-              <div className="col-span-3 px-2 py-2 text-right">Extra Price</div>
+              <div className="col-span-8 px-2 py-2">Product</div>
               <div className="col-span-2 px-2 py-2 text-center">Qty</div>
             </div>
-            <div className="flex-1 overflow-y-auto min-h-[160px]">
+            <div className="flex-1 overflow-y-auto min-h-0">
               {summaryRows.length === 0 ? (
                 <div className="px-3 py-8 text-center text-sm text-gray-400">Select items from the right</div>
               ) : summaryRows.map((row, i) => (
                 <div key={row.key} className="grid grid-cols-12 items-center border-b border-gray-100 dark:border-gray-800 text-sm">
                   <div className="col-span-2 px-2 py-2 text-gray-500">{i + 1}</div>
-                  <div className="col-span-5 px-2 py-2 font-medium truncate" title={row.name}>{row.name}</div>
-                  <div className="col-span-3 px-2 py-2 text-right text-gray-600">{row.extraPrice}</div>
+                  <div className="col-span-8 px-2 py-2 font-medium truncate" title={row.name}>{row.name}</div>
                   <div className="col-span-2 px-1 py-2 flex items-center justify-center gap-0.5">
                     <button type="button" className="w-5 h-5 text-xs border rounded text-gray-600" onClick={() => bumpSummaryQty(row, -1)}>−</button>
                     <span className="min-w-[1.25rem] text-center font-bold text-blue-600">{row.qty}</span>
@@ -346,9 +342,9 @@ export default function DealBuilderDialog({
                     || 'Included')
                   : 'Items'}
             </div>
-            <div className="flex-1 overflow-y-auto p-2 min-h-[220px] w-full">
+            <div className="flex-1 overflow-y-auto p-2 min-h-0 w-full">
               {activePane.type === 'slot' && activeSlotMeta ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full content-start">
                   {slotMenuItems.map((item) => {
                     const picks = slotPicks[activeSlot] || []
                     const selected = picks.find(p => String(p.itemId) === String(item.id))

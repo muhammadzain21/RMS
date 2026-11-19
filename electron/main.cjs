@@ -587,7 +587,22 @@ app.on('ready', () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (process.platform !== 'darwin') {
+    try { if (licenseCheckInterval) clearInterval(licenseCheckInterval) } catch {}
+    app.quit()
+    // Embedded API server can keep the event loop alive; force exit so
+    // Windows installers can replace files without a manual uninstall.
+    setTimeout(() => {
+      try { process.exit(0) } catch {}
+    }, 1200)
+  }
+})
+
+app.on('before-quit', () => {
+  try { if (licenseCheckInterval) clearInterval(licenseCheckInterval) } catch {}
+  setTimeout(() => {
+    try { process.exit(0) } catch {}
+  }, 2000)
 })
 
 app.on('activate', () => {

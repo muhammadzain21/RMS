@@ -115,6 +115,7 @@
       }
     ],
     "win": {
+      "executableName": "EpicspireRMS",
       "target": [
         {
           "target": "nsis",
@@ -138,7 +139,7 @@
       "displayLanguageSelector": false,
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico",
-      "license": "",
+      "include": "build/installer.nsh",
       "multiLanguageInstaller": false
     }
   }
