@@ -20,23 +20,33 @@ export default function CashOpening() {
  const [openingCash, setOpeningCash] = useState('')
  const [search, setSearch] = useState('')
 
- // Prefill from existing opening (including auto from previous day close)
+ // Most recent day close before the selected date → next opening source
+ const previousDayClose = useMemo(() => {
+  return (state.dayCloses || [])
+   .filter(d => String(d.date) < String(date))
+   .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null
+ }, [date, state.dayCloses])
+
+ const hasPreviousDay = !!previousDayClose
+ const previousOpeningAmt = hasPreviousDay
+  ? Math.max(0, Number(previousDayClose.leftAtCounter ?? 0))
+  : null
+ // Locked whenever a previous day close exists (carry-forward cash)
+ const openingLocked = hasPreviousDay
+
+ // Prefill: previous day left-at-counter when locked; else existing opening or blank
  useEffect(() => {
+  if (openingLocked) {
+   setOpeningCash(String(previousOpeningAmt))
+   return
+  }
   const entry = (state.cashOpenings || []).find(e => String(e.date) === String(date))
   if (entry) {
    setOpeningCash(String(Number(entry.openingCash || 0)))
    return
   }
-  // Fallback: prior day close left-at-counter
-  const prev = (state.dayCloses || [])
-   .filter(d => String(d.date) < String(date))
-   .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0]
-  if (prev && prev.leftAtCounter != null) {
-   setOpeningCash(String(Number(prev.leftAtCounter || 0)))
-   return
-  }
   setOpeningCash('')
- }, [date, state.cashOpenings, state.dayCloses])
+ }, [date, openingLocked, previousOpeningAmt, state.cashOpenings])
  const [from, setFrom] = useState('')
  const [to, setTo] = useState('')
  const [page, setPage] = useState(1)
@@ -172,15 +182,18 @@ export default function CashOpening() {
  }
 
  const recordOpening = async () => {
- const amt = Number(openingCash)
+ const amt = openingLocked ? Number(previousOpeningAmt) : Number(openingCash)
+ const note = openingLocked
+  ? `From previous day close ${previousDayClose.date}`
+  : ''
  try {
- const res = await fetch(`${API}/api/cash-openings`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ date, openingCash: amt, note: '', userId: user?.id, userName: user?.name }) })
+ const res = await fetch(`${API}/api/cash-openings`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ date, openingCash: amt, note, userId: user?.id, userName: user?.name }) })
  if (!res.ok) throw new Error('Failed to open day')
  const saved = await res.json().catch(() => null)
  if (saved) {
   dispatch({
    type: 'UPSERT_CASH_OPENING',
-   payload: { id: saved.id || saved._id, date: saved.date || date, openingCash: saved.openingCash ?? amt, note: saved.note || '', userName: saved.userName || user?.name || '' },
+   payload: { id: saved.id || saved._id, date: saved.date || date, openingCash: saved.openingCash ?? amt, note: saved.note || note, userName: saved.userName || user?.name || '' },
   })
  }
  await refreshOpenings()
@@ -306,9 +319,44 @@ export default function CashOpening() {
  <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800"><div className="flex items-center gap-2 text-amber-800 dark:text-amber-200"><span className="text-xl"></span><span className="font-medium">Selected date is closed. You can re-open it to record cash.</span></div></div>
  )}
  
- <form onSubmit={onOpen} className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div><DatePicker label="Date" value={date} onChange={v => { if (v) setDate(v) }} allowClear={false} /></div><div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opening Cash Amount</label><div className="relative"><span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span><input type="number" min="0" value={openingCash} onChange={e => setOpeningCash(e.target.value)} placeholder="0" className="w-full pl-12 pr-3 py-2 border rounded-lg bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" /></div></div><div className="flex items-end"><button type="submit" className="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]">
- {isSelectedDateClosed ? ' Re-open & Record' : ' Record Opening'}
- </button></div></form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-wrap items-center gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Day Opening History</h2><div className="sm:ml-auto flex gap-3"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button></div></div><div className="flex flex-wrap items-center gap-4 mb-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v => setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v => setTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Date, amount, user..." className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Opening Cash</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ <form onSubmit={onOpen} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  <div>
+   <DatePicker label="Date" value={date} onChange={v => { if (v) setDate(v) }} allowClear={false} />
+  </div>
+  <div>
+   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opening Cash Amount</label>
+   <div className="relative">
+    <span className="absolute left-3 top-2 text-gray-500 dark:text-gray-400 font-medium">PKR</span>
+    <input
+     type="number"
+     min="0"
+     value={openingCash}
+     onChange={e => { if (!openingLocked) setOpeningCash(e.target.value) }}
+     readOnly={openingLocked}
+     placeholder="0"
+     className={`w-full pl-12 pr-3 py-2 border rounded-lg border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${
+      openingLocked
+       ? 'bg-gray-100 text-gray-700 dark:bg-gray-800/80 dark:text-gray-200 cursor-not-allowed'
+       : 'bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+     }`}
+    />
+   </div>
+   {openingLocked ? (
+    <p className="mt-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+     From previous day close ({previousDayClose.date}) — left at counter. Not editable.
+    </p>
+   ) : (
+    <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+     No previous day close found — enter opening cash manually.
+    </p>
+   )}
+  </div>
+  <div className="flex items-end">
+   <button type="submit" className="w-full px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]">
+    {isSelectedDateClosed ? ' Re-open & Record' : ' Record Opening'}
+   </button>
+  </div>
+ </form></div><div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="flex flex-wrap items-center gap-3 mb-4"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Day Opening History</h2><div className="sm:ml-auto flex gap-3"><button onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button><button onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button><button onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button></div></div><div className="flex flex-wrap items-center gap-4 mb-4"><div className="flex-shrink-0"><DatePicker label="From" value={from} onChange={v => setFrom(v)} /></div><div className="flex-shrink-0"><DatePicker label="To" value={to} onChange={v => setTo(v)} /></div><div className="flex-1 min-w-0 basis-full sm:basis-auto"><label className="text-xs font-semibold text-[var(--color-text-muted)] tracking-wide">Search</label><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Date, amount, user..." className="mt-1 w-full px-3 py-2 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all" /></div></div><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Opening Cash</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-4 py-3 text-center font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {rows.map(r => (
  <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-medium">{r.date}</td><td className="px-4 py-3"><span className="font-semibold text-emerald-600 dark:text-emerald-400">PKR {Number(r.openingCash).toLocaleString()}</span></td><td className="px-4 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-4 py-3 text-center"><button onClick={() => onDelete(r)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium text-sm border border-red-200 dark:border-red-700">Delete</button></td></tr>
  ))}

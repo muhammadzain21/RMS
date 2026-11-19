@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
+import { useBranch } from '../../state/BranchContext.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import { btnCsv, btnPdf, btnPrint, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
@@ -17,6 +18,7 @@ export default function ReportHub({
 }) {
   const { state, businessDate } = useData()
   const { token } = useAuth()
+  const { branches = [] } = useBranch() || {}
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const today = businessDate || new Date().toLocaleDateString('en-CA')
 
@@ -80,6 +82,7 @@ export default function ReportHub({
         API,
         token,
         state,
+        branches,
         ...extra,
       })
       setResult(out || { headers: [], rows: [], summary: [] })

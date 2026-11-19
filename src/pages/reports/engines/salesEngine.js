@@ -33,12 +33,36 @@ function mapToRows(map, columns) {
   return [...map.entries()].map(([key, v]) => columns(key, v))
 }
 
-export async function runSalesReport({ type, from, to, API, token, state, customerId }) {
+function resolveBranchName(sale, branchById) {
+  const named = String(sale?.branchName || '').trim()
+  if (named) return named
+  const id = String(sale?.branchId || '').trim()
+  if (id && branchById.has(id)) {
+    const b = branchById.get(id)
+    return b?.name || b?.code || id
+  }
+  return id || 'Default'
+}
+
+export async function runSalesReport({ type, from, to, API, token, state, customerId, branches = [] }) {
   const menu = state.menu || []
   const menuById = new Map(menu.map(m => [String(m.id), m]))
   const ingredientsByName = new Map((state.ingredients || []).map(i => [String(i.name || '').trim().toLowerCase(), i]))
   const staffById = new Map((state.staff || []).map(s => [String(s.id || s._id), s]))
   const customers = state.customers || []
+
+  let branchList = Array.isArray(branches) ? branches : []
+  if (!branchList.length) {
+    try {
+      const data = await fetchJson(API, '/api/branches', token)
+      branchList = Array.isArray(data) ? data : (data?.rows || data?.data || [])
+    } catch {
+      branchList = []
+    }
+  }
+  const branchById = new Map(
+    branchList.map(b => [String(b._id || b.id || ''), b]).filter(([id]) => id),
+  )
 
   let sales = []
   try {
@@ -120,11 +144,11 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
     case 'branch_wise': {
       const map = new Map()
       for (const s of sales) {
-        const b = String(s.branchId || s.branchName || 'Default')
-        const row = map.get(b) || { count: 0, amount: 0 }
+        const name = resolveBranchName(s, branchById)
+        const row = map.get(name) || { count: 0, amount: 0 }
         row.count += 1
         row.amount += saleTotal(s)
-        map.set(b, row)
+        map.set(name, row)
       }
       return {
         headers: ['Branch', 'Bills', 'Amount (PKR)'],

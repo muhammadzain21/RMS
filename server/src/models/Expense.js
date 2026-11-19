@@ -4,6 +4,8 @@ const ExpenseLineSchema = new mongoose.Schema({
   expenseHead: { type: String, default: '' },
   description: { type: String, default: '' },
   amount: { type: Number, default: 0, min: 0 },
+  // Per-line receipt / bill photo (data URL or hosted URL)
+  imageUrl: { type: String, default: '' },
 }, { _id: false })
 
 const ExpenseSchema = new mongoose.Schema({

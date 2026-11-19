@@ -112,15 +112,22 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     }
 
     // All expenses for this business date must be approved before day close
+    // Include legacy docs with empty branchId for the active branch
     const Expense = (await import('../models/Expense.js')).default
     const pendingExpenseFilter = {
-      date,
-      branchId: branchIdForClose,
-      $or: [
-        { status: 'pending' },
-        { status: { $exists: false } },
-        { status: null },
-        { status: '' },
+      $and: [
+        { date },
+        ...(branchIdForClose
+          ? [{ $or: [{ branchId: branchIdForClose }, { branchId: '' }, { branchId: { $exists: false } }, { branchId: null }] }]
+          : []),
+        {
+          $or: [
+            { status: 'pending' },
+            { status: { $exists: false } },
+            { status: null },
+            { status: '' },
+          ],
+        },
       ],
     }
     const pendingExpenseCount = await Expense.countDocuments(pendingExpenseFilter)

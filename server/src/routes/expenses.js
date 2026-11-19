@@ -114,6 +114,7 @@ function parseLines(body) {
         expenseHead: String(l.expenseHead || 'Misc').trim() || 'Misc',
         description: String(l.description || '').trim(),
         amount: Number(l.amount || 0),
+        imageUrl: String(l.imageUrl || ''),
       }))
       .filter(l => l.amount > 0)
   }
@@ -124,6 +125,7 @@ function parseLines(body) {
       expenseHead,
       description: String(body.description || '').trim(),
       amount,
+      imageUrl: String(body.imageUrl || ''),
     }]
   }
   return []
@@ -143,6 +145,12 @@ function normalizeBody(body, req, { isCreate = false } = {}) {
   const description = String(body.description || '').trim()
     || (lineDescriptions.length ? lineDescriptions.join('; ') : lines[0].description || '')
 
+  // Prefer explicit voucher image; else first line image (list thumbnail / legacy)
+  const firstLineImage = lines.find(l => l.imageUrl)?.imageUrl || ''
+  const voucherImage = body.imageUrl !== undefined
+    ? String(body.imageUrl || '')
+    : firstLineImage
+
   const out = {
     date: body.date,
     category: firstHead,
@@ -151,9 +159,7 @@ function normalizeBody(body, req, { isCreate = false } = {}) {
     amount,
     description,
     accountHead,
-  }
-  if (body.imageUrl !== undefined) {
-    out.imageUrl = String(body.imageUrl || '')
+    imageUrl: voucherImage || firstLineImage || '',
   }
   if (isCreate) {
     out.userId = String(req.user?.id || req.user?._id || '')
@@ -162,7 +168,6 @@ function normalizeBody(body, req, { isCreate = false } = {}) {
     out.approvedBy = ''
     out.approvedByUserId = ''
     out.approvedAt = undefined
-    if (out.imageUrl === undefined) out.imageUrl = String(body.imageUrl || '')
   }
   if (body.branchId) out.branchId = String(body.branchId)
   return out

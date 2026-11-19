@@ -99,6 +99,7 @@ export default function DayClose() {
  }
  // Live recalls for the selected date (prefer API so Day Close isn't blocked by stale state)
  const [liveRecalls, setLiveRecalls] = useState([])
+ const [livePendingExpenses, setLivePendingExpenses] = useState(null) // null = not loaded yet
  const loadRecalls = useCallback(async () => {
   if (!token || !date) { setLiveRecalls([]); return }
   try {
@@ -113,8 +114,37 @@ export default function DayClose() {
    setLiveRecalls(Array.isArray(state.recalls) ? state.recalls : [])
   }
  }, [token, date, API, state.recalls])
+
+ const loadPendingExpenses = useCallback(async () => {
+  if (!token || !date) { setLivePendingExpenses([]); return }
+  try {
+   const params = new URLSearchParams({
+    from: date,
+    to: date,
+    status: 'pending',
+    limit: '200',
+    page: '1',
+   })
+   const res = await fetch(`${API}/api/expenses?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+   })
+   if (!res.ok) throw new Error('expenses fetch failed')
+   const data = await res.json()
+   const rows = Array.isArray(data) ? data : (data?.rows || [])
+   setLivePendingExpenses(rows.map(e => ({ ...e, id: e.id || e._id })))
+  } catch {
+   setLivePendingExpenses(
+    (state.expenses || []).filter(e =>
+     String(e.date) === String(date) && String(e.status || 'pending') !== 'approved'
+    )
+   )
+  }
+ }, [token, date, API, state.expenses])
+
  useEffect(() => { loadRecalls() }, [loadRecalls])
- useLiveRefresh(loadRecalls)
+ useEffect(() => { loadPendingExpenses() }, [loadPendingExpenses])
+ useLiveRefresh(() => { loadRecalls(); loadPendingExpenses() })
 
  const pendingRecalls = useMemo(() => {
   // Any unpaid recall blocks day close — including older dates left open
@@ -124,10 +154,11 @@ export default function DayClose() {
  const hasOpenRecalls = pendingRecalls.length > 0
 
  const pendingExpenses = useMemo(() => {
+  if (Array.isArray(livePendingExpenses)) return livePendingExpenses
   return (state.expenses || []).filter(e =>
     String(e.date) === String(date) && String(e.status || 'pending') !== 'approved'
   )
- }, [state.expenses, date])
+ }, [livePendingExpenses, state.expenses, date])
  const hasPendingExpenses = pendingExpenses.length > 0
 
  // Handover amount is entered manually at close time
@@ -146,17 +177,31 @@ export default function DayClose() {
  const onCloseDay = async (e) => {
  e.preventDefault()
  if (isSelectedDateClosed) { toast.error('This date is already closed.'); return }
- if (hasPendingExpenses) {
-  toast.error(`Approve ${pendingExpenses.length} pending expense${pendingExpenses.length === 1 ? '' : 's'} before day close.`)
-  return
- }
-
- // Fresh server-side recall check right before confirm (don't trust stale UI alone)
+ // Fresh server-side checks right before confirm (don't trust stale UI alone)
  try {
-  const checkRes = await fetch(`${API}/api/recalls`, {
-   headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-   cache: 'no-store',
-  })
+  const expParams = new URLSearchParams({ from: date, to: date, status: 'pending', limit: '200', page: '1' })
+  const [checkRes, expRes] = await Promise.all([
+   fetch(`${API}/api/recalls`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    cache: 'no-store',
+   }),
+   fetch(`${API}/api/expenses?${expParams}`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    cache: 'no-store',
+   }),
+  ])
+  if (expRes.ok) {
+   const data = await expRes.json()
+   const list = Array.isArray(data) ? data : (data?.rows || [])
+   setLivePendingExpenses(list.map(e => ({ ...e, id: e.id || e._id })))
+   if (list.length > 0) {
+    toast.error(`Approve ${list.length} pending expense${list.length === 1 ? '' : 's'} before day close.`)
+    return
+   }
+  } else if (hasPendingExpenses) {
+   toast.error(`Approve ${pendingExpenses.length} pending expense${pendingExpenses.length === 1 ? '' : 's'} before day close.`)
+   return
+  }
   if (checkRes.ok) {
    const rows = await checkRes.json()
    const list = Array.isArray(rows) ? rows : []
@@ -170,6 +215,10 @@ export default function DayClose() {
    return
   }
  } catch {
+  if (hasPendingExpenses) {
+   toast.error(`Approve ${pendingExpenses.length} pending expense${pendingExpenses.length === 1 ? '' : 's'} before day close.`)
+   return
+  }
   if (hasOpenRecalls) {
    toast.error(`Clear ${pendingRecalls.length} open recall${pendingRecalls.length === 1 ? '' : 's'} before day close.`)
    return

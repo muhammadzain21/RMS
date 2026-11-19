@@ -13,7 +13,7 @@ import { useLiveRefresh } from '../../hooks/useLiveRefresh.js'
 import DatePicker from '../../components/DatePicker.jsx'
 import PageHero from '../../components/ui/PageHero.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '../../utils/reportDoc.js'
-import { THERMAL_SLIP_CSS, PROFESSIONAL_SLIP_CSS, openSlipPreviewDialog } from './printUtils.js'
+import { THERMAL_SLIP_CSS, PROFESSIONAL_SLIP_CSS, openSlipPreviewDialog, printSaleReceiptUtil } from './printUtils.js'
 import OrderViewDialog from './components/OrderViewDialog.jsx'
 
 function api() {
@@ -144,7 +144,7 @@ function billLabel(r, fallbackDate) {
   return '—'
 }
 
-function mapSaleRows(list, { date, staff = [], onView } = {}) {
+function mapSaleRows(list, { date, staff = [], onView, onPrint } = {}) {
   return (list || []).map(r => {
     const orderType = r.orderType || '—'
     const waiter = orderType === 'Dine-in'
@@ -175,16 +175,26 @@ function mapSaleRows(list, { date, staff = [], onView } = {}) {
       },
       r.deliveryDate || r.date || date || '—',
       {
-        v: 'View',
+        v: 'View / Print',
         node: (
-          <button
-            type="button"
-            onClick={() => onView?.(r)}
-            className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600"
-            title="View Order Details"
-          >
-            View
-          </button>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onView?.(r)}
+              className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600"
+              title="View Order Details"
+            >
+              View
+            </button>
+            <button
+              type="button"
+              onClick={() => onPrint?.(r)}
+              className="px-2 py-1 text-xs rounded bg-emerald-500 text-white hover:bg-emerald-600"
+              title="Print receipt"
+            >
+              Print
+            </button>
+          </div>
         ),
       },
     ]
@@ -210,8 +220,12 @@ export default function MyShift() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [viewSale, setViewSale] = useState(null)
+  const [printingId, setPrintingId] = useState('')
   const staff = state?.staff || []
   const menu = state?.menu || []
+  const tablesList = Array.isArray(state?.tables) && state.tables.length
+    ? state.tables
+    : (Array.isArray(state?.settings?.tables) ? state.settings.tables : [])
 
   useEffect(() => {
     if (businessDate && !date) setDate(businessDate)
@@ -279,6 +293,69 @@ export default function MyShift() {
     })
   }, [date])
 
+  const onPrintSale = useCallback(async (r) => {
+    if (!r?.id) {
+      toast.error('Sale not found')
+      return
+    }
+    if (printingId) return
+    setPrintingId(String(r.id))
+    try {
+      const res = await fetch(`${api()}/api/sales/${encodeURIComponent(r.id)}/timeline`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || 'Failed to load sale')
+      const sale = payload.sale || {}
+      const orderType = sale.orderType || r.orderType || 'Take-away'
+      const tableNo = sale.tableNo || r.tableNo || ''
+      const tableObj = orderType === 'Dine-in' && tableNo
+        ? tablesList.find(t => (t.name || t.label || t.code || String(t)) === tableNo)
+        : null
+      const lineTotal = (saleItem) => {
+        if (typeof saleItem?.price === 'number') return Number(saleItem.price || 0) * Number(saleItem.qty || 0)
+        const menuItem = (menu || []).find(m => String(m.id) === String(saleItem?.itemId))
+        if (!menuItem) return 0
+        return Number(menuItem.price || 0) * Number(saleItem.qty || 0)
+      }
+      printSaleReceiptUtil({
+        state,
+        items: Array.isArray(sale.items) ? sale.items : [],
+        orderType,
+        waiterId: sale.waiterId || r.waiterId || '',
+        tableNo,
+        floor: tableObj?.floor || '',
+        paymentMethod: sale.paymentMethod || r.paymentMethodRaw || 'Cash',
+        bankChannel: sale.bankChannel || '',
+        bankLast4: sale.bankLast4 || '',
+        bankRef: sale.bankRef || '',
+        staffId: sale.staffId || '',
+        staffName: sale.staffName || '',
+        staffSettlement: sale.staffSettlement || '',
+        cashReceived: sale.cashReceived || sale.total || sale.totalAmount || 0,
+        changeDue: sale.changeDue || 0,
+        payRemarks: sale.payRemarks || '',
+        lineTotal,
+        tokenNo: sale.tokenNo || r.tokenNo || '',
+        billNoOverride: sale.billNo || r.billNo || '',
+        customer: sale.customer || { name: r.customer || '', address: '', phone: '' },
+        itemsDiscount: sale.itemsDiscount || 0,
+        billDiscount: sale.billDiscount || sale.discount || 0,
+        taxAmt: sale.taxAmt || 0,
+        serviceAmt: sale.serviceAmt || 0,
+        createdAt: sale.createdAt || sale.date || null,
+        autoPrint: false,
+        previewInApp: true,
+      })
+    } catch (err) {
+      console.error(err)
+      toast.error(err?.message || 'Print failed')
+    } finally {
+      setPrintingId('')
+    }
+  }, [printingId, token, state, menu, tablesList])
+
   const sections = useMemo(() => {
     const openings = tables.openings || []
     const cashSales = tables.cashSales || []
@@ -289,7 +366,7 @@ export default function MyShift() {
     const payIn = tables.payIn || []
     const payOut = tables.payOut || []
     const expenses = tables.expenses || []
-    const saleOpts = { date, staff, onView: onViewSale }
+    const saleOpts = { date, staff, onView: onViewSale, onPrint: onPrintSale }
 
     return [
       {
@@ -443,7 +520,7 @@ export default function MyShift() {
         ] : null,
       },
     ].filter(s => s.rows.length > 0)
-  }, [tables, date, staff, onViewSale])
+  }, [tables, date, staff, onViewSale, onPrintSale])
 
   const printA4 = async () => {
     if (!data) { toast.error('Nothing to print'); return }

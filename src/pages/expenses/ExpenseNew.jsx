@@ -102,6 +102,7 @@ function emptyLine(names) {
     expenseHead: names[0] || 'Misc',
     description: '',
     amount: '',
+    imageUrl: '',
   }
 }
 
@@ -109,9 +110,14 @@ function emptyForm(date, names) {
   return {
     date,
     accountHead: 'cash',
-    imageUrl: '',
     lines: [emptyLine(names)],
   }
+}
+
+function firstExpenseImage(exp) {
+  if (exp?.imageUrl) return exp.imageUrl
+  const lines = Array.isArray(exp?.lines) ? exp.lines : []
+  return lines.find(l => l?.imageUrl)?.imageUrl || ''
 }
 
 function expenseToForm(exp, names, defaultDate) {
@@ -120,16 +126,21 @@ function expenseToForm(exp, names, defaultDate) {
         expenseHead: l.expenseHead || names[0] || 'Misc',
         description: l.description || '',
         amount: String(Number(l.amount || 0) || ''),
+        imageUrl: l.imageUrl || '',
       }))
     : [{
         expenseHead: exp.expenseHead || exp.category || names[0] || 'Misc',
         description: exp.description || '',
         amount: String(Number(exp.amount || 0) || ''),
+        imageUrl: exp.imageUrl || '',
       }]
+  // Legacy voucher-only image: attach to first line if lines have none
+  if (exp.imageUrl && lines.length && !lines.some(l => l.imageUrl)) {
+    lines[0] = { ...lines[0], imageUrl: exp.imageUrl }
+  }
   return {
     date: exp.date || defaultDate,
     accountHead: exp.accountHead === 'bank' ? 'bank' : 'cash',
-    imageUrl: exp.imageUrl || '',
     lines: lines.length ? lines : [emptyLine(names)],
   }
 }
@@ -299,11 +310,11 @@ export default function ExpenseNew() {
     setShowForm(true)
   }
 
-  const onPickImage = async (file) => {
+  const onPickLineImage = async (idx, file) => {
     if (!file) return
     try {
       const imageUrl = await readImageFile(file)
-      setForm(f => ({ ...f, imageUrl }))
+      setLine(idx, { imageUrl })
     } catch (err) {
       toast.error(err.message || 'Image upload failed')
     }
@@ -330,15 +341,17 @@ export default function ExpenseNew() {
         expenseHead: l.expenseHead,
         description: String(l.description || '').trim(),
         amount: Number(l.amount || 0),
+        imageUrl: String(l.imageUrl || ''),
       }))
       .filter(l => l.amount > 0)
     if (!lines.length) { toast.error('Enter at least one line with a positive amount'); return }
+    const imageUrl = lines.find(l => l.imageUrl)?.imageUrl || ''
     try {
       const body = JSON.stringify({
         date: editingId ? (form.date || defaultDate) : defaultDate,
         accountHead: form.accountHead,
         lines,
-        imageUrl: form.imageUrl || '',
+        imageUrl,
       })
       const url = editingId ? `${API}/api/expenses/${editingId}` : `${API}/api/expenses`
       const method = editingId ? 'PATCH' : 'POST'
@@ -464,7 +477,7 @@ export default function ExpenseNew() {
           e.userName || '-',
           e.status === 'approved' ? 'Approved' : 'Pending',
           e.description || '-',
-          e.imageUrl ? 'Yes' : '—',
+          firstExpenseImage(e) ? 'Yes' : '—',
         ]),
       })
     const html = wrapReportDoc({
@@ -622,9 +635,9 @@ export default function ExpenseNew() {
                     PKR {Number(e.amount || 0).toLocaleString()}
                   </td>
                   <td>
-                    {e.imageUrl ? (
+                    {firstExpenseImage(e) ? (
                       <button type="button" onClick={() => setShowView(e)} className="block" title="View image">
-                        <img src={e.imageUrl} alt="Expense" className="h-10 w-10 rounded-lg object-cover border border-[var(--color-border)]" />
+                        <img src={firstExpenseImage(e)} alt="Expense" className="h-10 w-10 rounded-lg object-cover border border-[var(--color-border)]" />
                       </button>
                     ) : (
                       <span className="text-xs font-medium text-[var(--color-text-muted)]">—</span>
@@ -678,7 +691,7 @@ export default function ExpenseNew() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={ev => { if (ev.target === ev.currentTarget) closeDialog() }}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-extrabold">{editingId ? 'Edit Expense' : 'Add Expense'}</h3>
               <button type="button" onClick={closeDialog} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
@@ -710,51 +723,52 @@ export default function ExpenseNew() {
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Expense image / receipt</label>
-                <div className="mt-1 flex flex-wrap items-center gap-3">
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border-2 border-dashed border-blue-200 dark:border-blue-800 px-3 py-2 text-sm font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onPickImage(f) }}
-                    />
-                    {form.imageUrl ? 'Change image' : 'Upload image'}
-                  </label>
-                  {form.imageUrl ? (
-                    <>
-                      <img src={form.imageUrl} alt="Expense preview" className="h-16 w-16 rounded-lg object-cover border border-[var(--color-border)]" />
-                      <button type="button" onClick={() => setForm(f => ({ ...f, imageUrl: '' }))} className="text-xs font-bold text-rose-600">Remove</button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Line items</span>
                   <button type="button" onClick={addRow} className="text-xs font-bold text-blue-600 inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" /> Add row</button>
                 </div>
                 <div className="space-y-2">
                   {form.lines.map((line, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-end rounded-lg border border-[var(--color-border)] p-2">
-                      <div className="col-span-12 sm:col-span-3">
-                        <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Head</label>
-                        <select value={line.expenseHead} onChange={e => setLine(idx, { expenseHead: e.target.value })} className="input mt-0.5 w-full text-sm">
-                          {names.map(h => <option key={h} value={h}>{h}</option>)}
-                        </select>
+                    <div key={idx} className="rounded-lg border border-[var(--color-border)] p-2 space-y-2">
+                      <div className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-12 sm:col-span-3">
+                          <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Head</label>
+                          <select value={line.expenseHead} onChange={e => setLine(idx, { expenseHead: e.target.value })} className="input mt-0.5 w-full text-sm">
+                            {names.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        </div>
+                        <div className="col-span-12 sm:col-span-3">
+                          <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Amount</label>
+                          <input type="number" value={line.amount} onChange={e => setLine(idx, { amount: e.target.value })} className="input mt-0.5 w-full text-sm" placeholder="0" />
+                        </div>
+                        <div className="col-span-10 sm:col-span-5">
+                          <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Description</label>
+                          <input value={line.description} onChange={e => setLine(idx, { description: e.target.value })} className="input mt-0.5 w-full text-sm" placeholder="Optional" />
+                        </div>
+                        <div className="col-span-2 sm:col-span-1 flex justify-end pb-0.5">
+                          {form.lines.length > 1 && (
+                            <button type="button" onClick={() => removeRow(idx)} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg" title="Remove row"><X className="h-4 w-4" /></button>
+                          )}
+                        </div>
                       </div>
-                      <div className="col-span-12 sm:col-span-3">
-                        <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Amount</label>
-                        <input type="number" value={line.amount} onChange={e => setLine(idx, { amount: e.target.value })} className="input mt-0.5 w-full text-sm" placeholder="0" />
-                      </div>
-                      <div className="col-span-10 sm:col-span-5">
-                        <label className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Description</label>
-                        <input value={line.description} onChange={e => setLine(idx, { description: e.target.value })} className="input mt-0.5 w-full text-sm" placeholder="Optional" />
-                      </div>
-                      <div className="col-span-2 sm:col-span-1 flex justify-end pb-0.5">
-                        {form.lines.length > 1 && (
-                          <button type="button" onClick={() => removeRow(idx)} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg" title="Remove row"><X className="h-4 w-4" /></button>
+                      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-dashed border-[var(--color-border)]">
+                        <span className="text-[10px] font-bold uppercase text-[var(--color-text-muted)]">Row image</span>
+                        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-blue-200 dark:border-blue-800 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onPickLineImage(idx, f) }}
+                          />
+                          {line.imageUrl ? 'Change' : 'Upload'}
+                        </label>
+                        {line.imageUrl ? (
+                          <>
+                            <img src={line.imageUrl} alt={`Line ${idx + 1} receipt`} className="h-12 w-12 rounded-lg object-cover border border-[var(--color-border)]" />
+                            <button type="button" onClick={() => setLine(idx, { imageUrl: '' })} className="text-xs font-bold text-rose-600">Remove</button>
+                          </>
+                        ) : (
+                          <span className="text-[11px] text-[var(--color-text-muted)]">Optional receipt for this line</span>
                         )}
                       </div>
                     </div>
@@ -790,22 +804,24 @@ export default function ExpenseNew() {
                 <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Approved by</span><span className="font-bold">{showView.approvedBy || '-'}{showView.approvedAt ? ` · ${format(new Date(showView.approvedAt), 'yyyy-MM-dd h:mm a')}` : ''}</span></div>
               )}
             </div>
-            {showView.imageUrl ? (
-              <div className="mb-4">
-                <div className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Receipt image</div>
-                <a href={showView.imageUrl} target="_blank" rel="noreferrer">
-                  <img src={showView.imageUrl} alt="Expense receipt" className="max-h-56 w-auto rounded-xl border border-[var(--color-border)] object-contain" />
-                </a>
-              </div>
-            ) : null}
             <table className="tbl text-sm mb-3">
-              <thead><tr><th>Head</th><th className="text-right">Amount</th><th>Description</th></tr></thead>
+              <thead><tr><th>Head</th><th className="text-right">Amount</th><th>Description</th><th>Image</th></tr></thead>
               <tbody>
-                {(Array.isArray(showView.lines) && showView.lines.length ? showView.lines : [{ expenseHead: displayHeads(showView), description: showView.description, amount: showView.amount }]).map((l, i) => (
+                {(Array.isArray(showView.lines) && showView.lines.length
+                  ? showView.lines
+                  : [{ expenseHead: displayHeads(showView), description: showView.description, amount: showView.amount, imageUrl: showView.imageUrl }]
+                ).map((l, i) => (
                   <tr key={i}>
                     <td className="font-semibold">{l.expenseHead || '—'}</td>
                     <td className="text-right font-bold whitespace-nowrap tabular-nums">PKR {Number(l.amount || 0).toLocaleString()}</td>
                     <td>{l.description || '—'}</td>
+                    <td>
+                      {l.imageUrl ? (
+                        <a href={l.imageUrl} target="_blank" rel="noreferrer">
+                          <img src={l.imageUrl} alt="Receipt" className="h-12 w-12 rounded-lg object-cover border border-[var(--color-border)]" />
+                        </a>
+                      ) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -813,7 +829,7 @@ export default function ExpenseNew() {
             <div className="text-right font-extrabold text-base">Total: PKR {Number(showView.amount || 0).toLocaleString()}</div>
             <div className="mt-4 flex justify-end gap-2">
               {canManage && (
-                <button type="button" onClick={() => { setShowView(null); startEdit(showView) }} className="ui-btn ui-btn-secondary">Edit / add image</button>
+                <button type="button" onClick={() => { setShowView(null); startEdit(showView) }} className="ui-btn ui-btn-secondary">Edit</button>
               )}
               <button type="button" onClick={() => setShowView(null)} className="ui-btn ui-btn-primary">Close</button>
             </div>
