@@ -130,7 +130,11 @@ export default function ReportHub({
       toast.error('Generate the report first')
       return
     }
-    await printReportDoc(buildDocOpts())
+    try {
+      await printReportDoc(buildDocOpts())
+    } catch (e) {
+      toast.error(e?.message || 'Print failed')
+    }
   }
 
   const onPdf = async () => {
@@ -138,7 +142,12 @@ export default function ReportHub({
       toast.error('Generate the report first')
       return
     }
-    await downloadReportDoc(buildDocOpts())
+    try {
+      await downloadReportDoc(buildDocOpts())
+      toast.success('PDF downloaded')
+    } catch (e) {
+      toast.error(e?.message || 'PDF failed')
+    }
   }
 
   return (

@@ -203,131 +203,18 @@ let mainWindow
 // =========================
 // License Validation System
 // =========================
-const LICENSE_SECRET = 'PizzaBar2024LicenseKey'
-const LICENSE_PREFIX = 'BJ' // constant prefix for simple keys like BJ-60 (60 days)
-const EXPIRY_WARN_DAYS = 7
-let licenseValid = false
-let licenseExpiryDate = null
-let licenseCheckInterval = null
+const { createLicenseSystem } = require('./license.cjs')
+const licenseApi = createLicenseSystem({
+  app,
+  getMainWindow: () => mainWindow,
+})
+const {
+  getLicenseInfo,
+  getLicenseKey,
+  checkLicenseBlocking,
+  startPeriodicLicenseCheck,
+} = licenseApi
 
-// Read license value from HKCU\Software\PizzaBar registry (set by installer or activation dialog)
-function readRegValue(name) {
-  try {
-    if (process.platform !== 'win32') return null
-    const out = execSync(`reg query "HKCU\\Software\\PizzaBar" /v ${name}`, { encoding: 'utf8' })
-    const re = new RegExp(`${name}\\s+REG_\\w+\\s+(.+)$`, 'mi')
-    const m = out.match(re)
-    return m ? m[1].trim() : null
-  } catch { return null }
-}
-
-function writeRegValue(name, value) {
-  try {
-    if (process.platform !== 'win32') return false
-    execSync(`reg add "HKCU\\Software\\PizzaBar" /v ${name} /t REG_SZ /d "${String(value)}" /f`, { stdio: 'ignore' })
-    return true
-  } catch { return false }
-}
-
-function deleteRegValue(name) {
-  try {
-    if (process.platform !== 'win32') return false
-    execSync(`reg delete "HKCU\\Software\\PizzaBar" /v ${name} /f`, { stdio: 'ignore' })
-    return true
-  } catch { return false }
-}
-
-function getLicenseKey() {
-  // Registry only — no license file is read from the app location
-  const fromReg = readRegValue('LicenseKey')
-  if (fromReg) return String(fromReg).toUpperCase()
-  return null
-}
-
-// Validate license key
-function validateLegacyKey(key) {
-  try {
-    if (!key || typeof key !== 'string') return { valid: false, error: 'No license key' }
-    const up = key.trim().toUpperCase()
-    const parts = up.split('-')
-    if (up === 'PIZZA-PERMANENT-LICENSE-KEY0') return { valid: true, expiryDate: null, daysRemaining: Infinity }
-    if (parts.length === 5 && parts[0] === 'PIZZA') {
-      const year = parts[1]
-      const monthDay = parts[2]
-      if (year && monthDay && year.length === 4 && monthDay.length === 4) {
-        const expiryDate = new Date(`${year}-${monthDay.slice(0, 2)}-${monthDay.slice(2, 4)}T23:59:59`)
-        const now = new Date()
-        if (now > expiryDate) return { valid: false, error: 'License expired', expired: true, expiryDate }
-        const daysRemaining = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))
-        return { valid: true, expiryDate, daysRemaining }
-      }
-    }
-    if (up.length === 24) return { valid: true, expiryDate: null, daysRemaining: Infinity }
-    return { valid: false, error: 'Invalid key' }
-  } catch { return { valid: false, error: 'Invalid key' } }
-}
-
-function getLicenseInfo() {
-  // Preferred: days-based config from registry
-  const rawDays = readRegValue('LicenseDays')
-  let days = rawDays ? parseInt(String(rawDays).trim(), 10) : NaN
-  const prefix = readRegValue('LicensePrefix') || null
-  let installStr = readRegValue('LicenseInstallDate') || null
-
-  // If not configured, try to parse from simple key like BJ-60
-  if (!rawDays) {
-    const k = getLicenseKey()
-    if (k && typeof k === 'string') {
-      const m = k.trim().toUpperCase().match(/^([A-Z]{2,5})[-:](\d{1,4})$/)
-      if (m) {
-        if (!prefix) writeRegValue('LicensePrefix', m[1])
-        days = parseInt(m[2], 10)
-        writeRegValue('LicenseDays', String(days))
-      }
-    }
-  }
-
-  // Ensure install date exists when days are configured
-  if (!installStr && Number.isFinite(days) && days > 0) {
-    const nowIso = new Date().toISOString().slice(0, 10)
-    writeRegValue('LicenseInstallDate', nowIso)
-    installStr = nowIso
-  }
-
-  if (Number.isFinite(days) && days > 0 && installStr) {
-    const [y, m, d] = String(installStr).split('-').map(n => parseInt(n, 10))
-    const start = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0)
-    const expiry = new Date(start.getTime() + days * 24 * 60 * 60 * 1000)
-    const now = new Date()
-    const remaining = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))
-    const valid = remaining >= 0
-    return { valid, expiryDate: expiry, daysRemaining: valid ? remaining : -1 }
-  }
-
-  // Fallback: legacy key logic
-  const legacy = validateLegacyKey(getLicenseKey())
-  return legacy
-}
-
-// Check license — never quits; renderer shows a blocking dialog to enter a new key
-function checkLicenseBlocking() {
-  const result = getLicenseInfo()
-  licenseValid = !!result.valid
-  licenseExpiryDate = result.expiryDate || null
-  return true
-}
-
-// Periodic license check — broadcasts status; expired state is handled by the
-// renderer's license gate (re-entry dialog) instead of force-quitting
-function startPeriodicLicenseCheck() {
-  if (licenseCheckInterval) clearInterval(licenseCheckInterval)
-  licenseCheckInterval = setInterval(() => {
-    const result = getLicenseInfo()
-    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('license:status', result) } catch {}
-  }, 60 * 60 * 1000) // Every hour
-}
-
-// IPC handlers for license
 ipcMain.handle('license:getStatus', async () => {
   return { ...getLicenseInfo(), dev: !app.isPackaged }
 })
@@ -336,34 +223,9 @@ ipcMain.handle('license:getKey', async () => {
   return getLicenseKey()
 })
 
-// Activate a new license key without reinstalling.
-// Accepts PREFIX-DAYS keys (e.g., BJ-60) and legacy PIZZA-* keys.
 ipcMain.handle('license:activate', async (_event, key) => {
   try {
-    const k = String(key || '').trim().toUpperCase()
-    if (!k) return { ok: false, error: 'Enter a license key' }
-
-    const m = k.match(/^([A-Z]{2,5})[-:](\d{1,4})$/)
-    if (m) {
-      // PREFIX-DAYS: expiry counts from activation date
-      writeRegValue('LicenseKey', k)
-      writeRegValue('LicensePrefix', m[1])
-      writeRegValue('LicenseDays', m[2])
-      writeRegValue('LicenseInstallDate', new Date().toISOString().slice(0, 10))
-    } else {
-      // Legacy PIZZA-* key: clear days config so the key itself is authoritative
-      const v = validateLegacyKey(k)
-      if (!v.valid) return { ok: false, error: v.error || 'Invalid license key' }
-      writeRegValue('LicenseKey', k)
-      deleteRegValue('LicensePrefix')
-      deleteRegValue('LicenseDays')
-      deleteRegValue('LicenseInstallDate')
-    }
-
-    const status = { ...getLicenseInfo(), dev: !app.isPackaged }
-    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('license:status', status) } catch {}
-    if (!status.valid) return { ok: false, error: 'License expired or invalid', status }
-    return { ok: true, status }
+    return licenseApi.activate(key)
   } catch (e) {
     return { ok: false, error: String(e?.message || e) }
   }

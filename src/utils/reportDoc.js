@@ -273,7 +273,19 @@ export function reportHdr(settings = {}, { tagline = 'Point of Sale', reportLabe
 }
 
 export function reportMeta({ left = [], right = [] } = {}) {
-  const col = (items) => items.map(([l, v, b]) => `<div><span class="lbl">${escDoc(l)}</span> ${b ? `<b>${escDoc(v)}</b>` : escDoc(v)}</div>`).join('')
+  const normalize = (item) => {
+    if (Array.isArray(item)) {
+      return { l: item[0], v: item[1], b: !!item[2] }
+    }
+    if (item && typeof item === 'object') {
+      return { l: item.label ?? item.l ?? '', v: item.value ?? item.v ?? '', b: !!(item.bold ?? item.b) }
+    }
+    return { l: '', v: String(item ?? ''), b: false }
+  }
+  const col = (items) => (Array.isArray(items) ? items : []).map((item) => {
+    const { l, v, b } = normalize(item)
+    return `<div><span class="lbl">${escDoc(l)}</span> ${b ? `<b>${escDoc(v)}</b>` : escDoc(v)}</div>`
+  }).join('')
   return `<div class="meta"><div class="col">${col(left)}</div><div class="col">${col(right)}</div></div>`
 }
 
