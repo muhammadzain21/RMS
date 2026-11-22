@@ -31,10 +31,14 @@ export async function runInventoryReport({ type, from, to, API, token, state, su
   switch (type) {
     case 'stock': {
       const rows = stockRows(ingredients).map(r => [r[0], r[1], r[2], r[3], r[4]])
+      const qty = rows.reduce((a, r) => a + Number(r[3] || 0), 0)
       return {
         headers: ['Item', 'Category', 'Unit', 'Qty', 'Unit Cost'],
         rows,
-        summary: [{ label: 'Items', amount: String(rows.length) }],
+        summary: [
+          { label: 'Items', amount: String(rows.length) },
+          { label: 'Total Qty', amount: String(qty) },
+        ],
       }
     }
     case 'stock_valuation': {
@@ -64,10 +68,19 @@ export async function runInventoryReport({ type, from, to, API, token, state, su
         fmtMoney(it.cost ?? it.unitCost ?? 0),
         fmtMoney(Number(it.qty || 0) * Number(it.cost ?? it.unitCost ?? 0)),
       ])
-      return {
-        headers: ['Item', 'Unit', 'Closing Qty', 'Unit Cost', 'Value'],
-        rows,
-        summary: [{ label: 'As of', amount: to }, { label: 'Items', amount: String(rows.length) }],
+      {
+        const value = rows.reduce((a, r) => a + money(String(r[4]).replace(/,/g, '')), 0)
+        const qty = rows.reduce((a, r) => a + Number(r[2] || 0), 0)
+        return {
+          headers: ['Item', 'Unit', 'Closing Qty', 'Unit Cost', 'Value'],
+          rows,
+          summary: [
+            { label: 'As of', amount: to },
+            { label: 'Items', amount: String(rows.length) },
+            { label: 'Total Qty', amount: String(qty) },
+            { label: 'Total Value', amount: fmtMoney(value) },
+          ],
+        }
       }
     }
     case 'stock_variance':

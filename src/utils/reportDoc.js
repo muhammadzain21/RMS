@@ -300,18 +300,26 @@ export function reportSummary(rows = []) {
  * Generic data table. headers: strings or {t, align:'r'|'c'}; rows: arrays of
  * primitives or {v, align:'r'|'c', cls, raw}. `numbered` prepends a # column.
  */
-export function reportTable({ headers = [], rows = [], numbered = false, emptyText = 'No records' } = {}) {
+export function reportTable({ headers = [], rows = [], numbered = false, emptyText = 'No records', totals = null } = {}) {
   const ths = headers.map((h) => {
     const o = typeof h === 'object' && h !== null ? h : { t: h }
     return `<th${o.align === 'r' ? ' class="r"' : o.align === 'c' ? ' class="c"' : ''}>${escDoc(o.t ?? '')}</th>`
   }).join('')
-  const body = rows.map((r, i) => `<tr>${numbered ? `<td class="c">${i + 1}</td>` : ''}${r.map((c) => {
+  const body = rows.map((r, i) => `<tr>${numbered ? `<td class="c">${i + 1}</td>` : ''}${(Array.isArray(r) ? r : []).map((c) => {
     const o = typeof c === 'object' && c !== null ? c : { v: c }
     const cls = [o.align === 'r' ? 'r' : o.align === 'c' ? 'c' : '', o.cls || ''].filter(Boolean).join(' ')
     return `<td${cls ? ` class="${cls}"` : ''}>${o.raw ? String(o.v ?? '') : escDoc(o.v ?? '')}</td>`
   }).join('')}</tr>`).join('')
   const colspan = headers.length + (numbered ? 1 : 0)
-  return `<table class="tbl"><thead><tr>${numbered ? '<th class="c">#</th>' : ''}${ths}</tr></thead><tbody>${body || `<tr><td colspan="${colspan}" style="text-align:center;color:var(--mut);padding:12px">${escDoc(emptyText)}</td></tr>`}</tbody></table>`
+  let foot = ''
+  if (Array.isArray(totals) && totals.some(v => v != null && String(v).trim() !== '')) {
+    foot = `<tfoot><tr>${numbered ? '<td class="c"><b>Σ</b></td>' : ''}${headers.map((_, j) => {
+      const v = totals[j]
+      const text = v == null || v === '' ? '' : String(v)
+      return `<td class="r"><b>${escDoc(text)}</b></td>`
+    }).join('')}</tr></tfoot>`
+  }
+  return `<table class="tbl"><thead><tr>${numbered ? '<th class="c">#</th>' : ''}${ths}</tr></thead><tbody>${body || `<tr><td colspan="${colspan}" style="text-align:center;color:var(--mut);padding:12px">${escDoc(emptyText)}</td></tr>`}</tbody>${foot}</table>`
 }
 
 /**

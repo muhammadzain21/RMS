@@ -86,10 +86,19 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
         }
       }
       // Add package deals as named category lines already in deals report; item lines under deal have 0 amount
-      return {
-        headers: ['Item', 'Qty', 'Amount (PKR)'],
-        rows: mapToRows(map, (_, v) => [v.name, v.qty, fmtMoney(v.amount)]),
-        summary: [{ label: 'Lines', amount: String(map.size) }],
+      {
+        const rows = mapToRows(map, (_, v) => [v.name, v.qty, fmtMoney(v.amount)])
+        const qty = [...map.values()].reduce((a, v) => a + Number(v.qty || 0), 0)
+        const amount = [...map.values()].reduce((a, v) => a + Number(v.amount || 0), 0)
+        return {
+          headers: ['Item', 'Qty', 'Amount (PKR)'],
+          rows,
+          summary: [
+            { label: 'Items', amount: String(map.size) },
+            { label: 'Total Qty', amount: String(qty) },
+            { label: 'Total Amount', amount: fmtMoney(amount) },
+          ],
+        }
       }
     }
     case 'item_details': {
@@ -108,7 +117,19 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
           ])
         }
       }
-      return { headers: ['Date', 'Bill #', 'Token', 'Item', 'Qty', 'Type', 'Payment', 'Amount'], rows, summary: [{ label: 'Lines', amount: String(rows.length) }] }
+      {
+        const qty = rows.reduce((a, r) => a + Number(r[4] || 0), 0)
+        const amount = rows.reduce((a, r) => a + (Number(String(r[7]).replace(/,/g, '')) || 0), 0)
+        return {
+          headers: ['Date', 'Bill #', 'Token', 'Item', 'Qty', 'Type', 'Payment', 'Amount'],
+          rows,
+          summary: [
+            { label: 'Lines', amount: String(rows.length) },
+            { label: 'Total Qty', amount: String(qty) },
+            { label: 'Total Amount', amount: fmtMoney(amount) },
+          ],
+        }
+      }
     }
     case 'category_wise': {
       const map = new Map()
@@ -135,10 +156,18 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
           map.set(cat, row)
         }
       }
-      return {
-        headers: ['Category', 'Qty', 'Amount (PKR)'],
-        rows: mapToRows(map, (k, v) => [k, v.qty, fmtMoney(v.amount)]),
-        summary: [{ label: 'Categories', amount: String(map.size) }],
+      {
+        const amount = [...map.values()].reduce((a, v) => a + Number(v.amount || 0), 0)
+        const qty = [...map.values()].reduce((a, v) => a + Number(v.qty || 0), 0)
+        return {
+          headers: ['Category', 'Qty', 'Amount (PKR)'],
+          rows: mapToRows(map, (k, v) => [k, v.qty, fmtMoney(v.amount)]),
+          summary: [
+            { label: 'Categories', amount: String(map.size) },
+            { label: 'Total Qty', amount: String(qty) },
+            { label: 'Total Amount', amount: fmtMoney(amount) },
+          ],
+        }
       }
     }
     case 'branch_wise': {

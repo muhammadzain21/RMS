@@ -12,12 +12,12 @@ export default function InventoryReports() {
       extraFilters={({ extra, setExtra, state, reportType }) => {
         if (reportType !== 'supplier_ledger') return null
         return (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">Supplier</label>
+          <div className="flex min-w-[14rem] flex-col gap-1">
+            <label className="text-xs font-semibold text-slate-500">Supplier</label>
             <select
               value={extra.supplierId || ''}
               onChange={e => setExtra(x => ({ ...x, supplierId: e.target.value }))}
-              className="px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800"
+              className="rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-600 dark:bg-slate-800"
             >
               <option value="">Select supplier…</option>
               {(state.suppliers || []).map(s => (

@@ -1,5 +1,5 @@
 import {
-  emptyResult, filterSales, fetchSalesRange, fetchJson, fmtMoney, saleTotal,
+  emptyResult, filterSales, fetchSalesRange, fetchJson, fmtMoney, money, saleTotal,
 } from './common.js'
 
 function lineQty(it) {
@@ -122,10 +122,18 @@ export async function runConsumptionReport({ type, from, to, API, token, state }
           const cost = Number(ingredientsByName.get(String(ing).trim().toLowerCase())?.costPrice ?? 0)
           return [ing, Number(amt.toFixed?.(3) ?? amt), unit, fmtMoney(cost * amt)]
         })
-      return {
-        headers: ['Ingredient', 'Consumed', 'Unit', 'Est. Cost'],
-        rows,
-        summary: [{ label: 'Ingredients', amount: String(rows.length) }],
+      {
+        const cost = rows.reduce((a, r) => a + money(String(r[3]).replace(/,/g, '')), 0)
+        const consumed = rows.reduce((a, r) => a + Number(r[1] || 0), 0)
+        return {
+          headers: ['Ingredient', 'Consumed', 'Unit', 'Est. Cost'],
+          rows,
+          summary: [
+            { label: 'Ingredients', amount: String(rows.length) },
+            { label: 'Total Consumed', amount: String(Number(consumed.toFixed(3))) },
+            { label: 'Est. Cost', amount: fmtMoney(cost) },
+          ],
+        }
       }
     }
     case 'date_production': {
@@ -141,10 +149,20 @@ export async function runConsumptionReport({ type, from, to, API, token, state }
       const rows = [...map.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([d, v]) => [d, v.bills, v.qty, fmtMoney(v.amount)])
-      return {
-        headers: ['Date', 'Bills', 'Items Qty', 'Sales (PKR)'],
-        rows,
-        summary: [{ label: 'Days', amount: String(rows.length) }],
+      {
+        const bills = rows.reduce((a, r) => a + Number(r[1] || 0), 0)
+        const qty = rows.reduce((a, r) => a + Number(r[2] || 0), 0)
+        const amount = [...map.values()].reduce((a, v) => a + Number(v.amount || 0), 0)
+        return {
+          headers: ['Date', 'Bills', 'Items Qty', 'Sales (PKR)'],
+          rows,
+          summary: [
+            { label: 'Days', amount: String(rows.length) },
+            { label: 'Bills', amount: String(bills) },
+            { label: 'Items Qty', amount: String(qty) },
+            { label: 'Total Sales', amount: fmtMoney(amount) },
+          ],
+        }
       }
     }
     case 'kitchen_sale': {
@@ -161,10 +179,18 @@ export async function runConsumptionReport({ type, from, to, API, token, state }
           map.set(kitchen, row)
         }
       }
-      return {
-        headers: ['Kitchen / Category', 'Qty', 'Amount (PKR)'],
-        rows: [...map.entries()].map(([k, v]) => [k, v.qty, fmtMoney(v.amount)]),
-        summary: [{ label: 'Kitchens', amount: String(map.size) }],
+      {
+        const amount = [...map.values()].reduce((a, v) => a + Number(v.amount || 0), 0)
+        const qty = [...map.values()].reduce((a, v) => a + Number(v.qty || 0), 0)
+        return {
+          headers: ['Kitchen / Category', 'Qty', 'Amount (PKR)'],
+          rows: [...map.entries()].map(([k, v]) => [k, v.qty, fmtMoney(v.amount)]),
+          summary: [
+            { label: 'Kitchens', amount: String(map.size) },
+            { label: 'Total Qty', amount: String(qty) },
+            { label: 'Total Amount', amount: fmtMoney(amount) },
+          ],
+        }
       }
     }
     case 'kitchen_closing': {
