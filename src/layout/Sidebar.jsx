@@ -53,8 +53,10 @@ export function getVisibleSections(user, enabledPaths) {
  }
  if (user?.permissions && Array.isArray(user.permissions)) {
  const allowedPaths = new Set(user.permissions.filter(p => p.visible && p.path !== '/my').map(p => p.path))
+ // Only auto-include warehouse for Managers on role-based access.
+ // Custom pageAccess must be exact — do not inject extra pages.
  const roleName = String(user?.role || '')
- if (roleName === 'Manager') {
+ if (roleName === 'Manager' && !user?.useCustomPermissions) {
   for (const p of ['/warehouse/stock', '/warehouse/suppliers', '/warehouse/purchase-history', '/warehouse/purchases', '/warehouse/demands', '/warehouse/transfers', '/warehouse/transfer-history', '/warehouse/finance']) {
    if (!allowedPaths.has(p)) {
     const perm = user.permissions.find(x => x.path === p)
@@ -117,8 +119,8 @@ const NavItem = ({ item, onClick }) => {
  <aside
  className={`
  no-print hidden md:flex flex-none flex-col
- ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-60 min-w-[15rem]'}
- sticky top-0 h-full max-h-full self-stretch overflow-y-auto overflow-x-visible app-drawer-safe
+ ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-52 xl:w-56 min-w-0'}
+ sticky top-0 h-full max-h-full self-stretch overflow-hidden app-drawer-safe
  ${SB_BG} border-r ${SB_BORDER}
  transition-[width] duration-200 z-[1000]
  `}

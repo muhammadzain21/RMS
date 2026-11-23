@@ -69,9 +69,24 @@ async function resolveKotPrintTarget(req, { type, printerName, host } = {}) {
   return { settings, printerName: name, host: ip }
 }
 
-/** Keep one Chromium alive — launching per request is ~2s. */
+/** Keep one Chromium and one page alive — launching per request is ~2s. */
 let printBrowser = null
 let printBrowserLaunch = null
+let printPage = null
+let printQueue = Promise.resolve()
+
+function enqueuePrint(task) {
+  const run = printQueue.then(task, task)
+  printQueue = run.then(() => {}, () => {})
+  return run
+}
+
+/** Call once at server boot so the first KOT/bill is not waiting on Chromium launch. */
+export function warmPrintBrowser() {
+  getPrintBrowser()
+    .then(() => { try { console.log('[print] Chromium ready') } catch {} })
+    .catch((e) => { try { console.warn('[print] Chromium warm failed:', e?.message || e) } catch {} })
+}
 
 async function getPrintBrowser() {
   if (printBrowser?.connected) return printBrowser
@@ -90,6 +105,7 @@ async function getPrintBrowser() {
     printBrowserLaunch = null
     browser.on('disconnected', () => {
       if (printBrowser === browser) printBrowser = null
+      printPage = null
     })
     return browser
   }).catch((err) => {
@@ -99,27 +115,44 @@ async function getPrintBrowser() {
   return printBrowserLaunch
 }
 
+async function getPrintPage() {
+  const browser = await getPrintBrowser()
+  if (printPage && !printPage.isClosed()) return printPage
+  printPage = await browser.newPage()
+  await printPage.setViewport({ width: 302, height: 1400, deviceScaleFactor: 1 })
+  return printPage
+}
+
 async function htmlToTempPdf(html) {
   const tmpDir = os.tmpdir()
   const fileBase = `print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const pdfPath = path.join(tmpDir, `${fileBase}.pdf`)
-  const browser = await getPrintBrowser()
-  const page = await browser.newPage()
+  const page = await getPrintPage()
   try {
-    // networkidle0 is slow; slips are inline HTML — domcontentloaded is enough
-    await page.setContent(String(html || ''), { waitUntil: 'domcontentloaded', timeout: 8000 })
-    try { await page.emulateMediaType('print') } catch {}
-    await page.addStyleTag({
-      content: '@page { size: 80mm auto; margin: 0 } html, body { margin: 0; padding: 2mm 3mm; width: 72mm; height: auto; min-height: 0; overflow: visible }',
-    }).catch(() => {})
+    // Slips are inline HTML — don't wait on network or webfonts
+    await page.setContent(String(html || ''), { waitUntil: 'domcontentloaded', timeout: 4000 })
+    const measured = await page.evaluate(() => {
+      const text = String((document.body && document.body.innerText) || '').trim()
+      const h = Math.max(
+        document.body ? document.body.scrollHeight : 0,
+        document.documentElement ? document.documentElement.scrollHeight : 0,
+        160,
+      )
+      return { chars: text.length, heightPx: h }
+    }).catch(() => ({ chars: 1, heightPx: 480 }))
+    const heightMm = Math.min(600, Math.max(60, Math.ceil(Number(measured.heightPx || 240) * 25.4 / 96) + 10))
     await page.pdf({
       path: pdfPath,
       printBackground: true,
-      preferCSSPageSize: true,
+      preferCSSPageSize: false,
+      width: '80mm',
+      height: `${heightMm}mm`,
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
     })
-  } finally {
-    await page.close().catch(() => {})
+  } catch (err) {
+    try { await printPage?.close() } catch {}
+    printPage = null
+    throw err
   }
   return pdfPath
 }
@@ -167,7 +200,7 @@ router.post('/', async (req, res) => {
     })
     if (!printerName) return res.status(400).json({ ok: false, error: 'No printer configured' })
 
-    pdfPath = await htmlToTempPdf(html)
+    pdfPath = await enqueuePrint(() => htmlToTempPdf(html))
     await printPdf(pdfPath, { printer: printerName, scale: 'noscale' })
     res.json({ ok: true })
   } catch (e) {

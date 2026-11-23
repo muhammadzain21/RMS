@@ -1,7 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react'
-import BankPaymentDialog, { bankChannelLabel } from './BankPaymentDialog.jsx'
-import CardPaymentDialog from './CardPaymentDialog.jsx'
-import StaffPaymentDialog from './StaffPaymentDialog.jsx'
 
 const ORDER_TYPES = ['Dine-in', 'Take-away', 'Delivery', 'Foodpanda']
 
@@ -12,22 +9,8 @@ export default function BillSummary({
   holdSale,
   setShowHeld,
   heldCount = 0,
-  // Payment method
+  // Payment method — selected in the Pay dialog, not on this cart
   paymentMethod = 'cash',
-  setPaymentMethod = ()=>{},
-  // Bank transfer details
-  bankChannel = 'ubl',
-  setBankChannel = ()=>{},
-  bankLast4 = '',
-  setBankLast4 = ()=>{},
-  bankRef = '',
-  setBankRef = ()=>{},
-  // Staff purchase details
-  staff = [],
-  staffId = '',
-  setStaffId = ()=>{},
-  staffName = '',
-  setStaffName = ()=>{},
   // Totals & discounts
   totalItems = 0,
   totalQty = 0,
@@ -87,17 +70,6 @@ export default function BillSummary({
   const tipAmount = paymentMethod === 'cash'
     ? Math.max(0, (Number(cashReceived) || 0) - (Number(totalPayment) || 0))
     : 0
-  // Bank details dialog
-  const [showBankDialog, setShowBankDialog] = useState(false)
-  const [showCardDialog, setShowCardDialog] = useState(false)
-  // Staff purchase dialog
-  const [showStaffDialog, setShowStaffDialog] = useState(false)
-  const selectMethod = (key) => {
-    setPaymentMethod(key)
-    if (key === 'bank') setShowBankDialog(true)
-    if (key === 'card') setShowCardDialog(true)
-    if (key === 'staff') setShowStaffDialog(true)
-  }
   // When restriction fields are off, Delivery / Total / Amount move up.
   // Invisible row spacers at the bottom keep bill+cart height stable.
   const hiddenFieldCount = [
@@ -131,79 +103,6 @@ export default function BillSummary({
           >{t}</button>
         ))}
       </div>
-      {/* Payment Method buttons row */}
-      <div className="flex flex-wrap gap-1">
-        {[
-          {key:'cash',label:'Cash',active:'from-emerald-500 to-emerald-600',border:'border-emerald-400',inactive:'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900/30'},
-          {key:'bank',label:'Bank',active:'from-blue-500 to-blue-600',border:'border-blue-400',inactive:'border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30'},
-          {key:'card',label:'Card',active:'from-indigo-500 to-indigo-600',border:'border-indigo-400',inactive:'border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/30'},
-          {key:'staff',label:'Staff',active:'from-violet-500 to-violet-600',border:'border-violet-400',inactive:'border-violet-200 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-900/30'},
-        ].map((pm)=> (
-          <button
-            key={pm.key}
-            type="button"
-            onClick={()=> selectMethod(pm.key)}
-            className={`flex-1 min-w-[70px] px-2 py-1.5 rounded-lg border-2 text-xs font-semibold transition-all duration-150 ${
-              paymentMethod===pm.key
-                ? `bg-gradient-to-br ${pm.active} text-white ${pm.border} shadow-md scale-105`
-                : `bg-white ${pm.inactive}`
-            }`}
-          >{pm.label}</button>
-        ))}
-      </div>
-      {/* Bank summary chip — tap to edit destination / digits */}
-      {paymentMethod === 'bank' && (
-        <button
-          type="button"
-          onClick={()=> setShowBankDialog(true)}
-          className="w-full flex items-center justify-between rounded-lg border-2 border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/30 px-3 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-        >
-          <span>{`${bankChannelLabel(bankChannel) || 'Select bank'}${bankLast4 ? ` ····${bankLast4}` : ''}`}</span>
-          <span className="text-[10px] underline">Edit</span>
-        </button>
-      )}
-      <BankPaymentDialog
-        open={showBankDialog}
-        channel={bankChannel}
-        last4={bankLast4}
-        onConfirm={({ channel, last4 })=>{ setBankChannel(channel); setBankLast4(last4); setBankRef(''); setShowBankDialog(false) }}
-        onCancel={()=>{ setShowBankDialog(false); if (!bankLast4) setPaymentMethod('cash') }}
-      />
-      {/* Credit card chip */}
-      {paymentMethod === 'card' && (
-        <button
-          type="button"
-          onClick={()=> setShowCardDialog(true)}
-          className="w-full flex items-center justify-between rounded-lg border-2 border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/30 px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-        >
-          <span>{bankLast4 ? `Card ····${bankLast4}` : 'Set card last 4 digits'}</span>
-          <span className="text-[10px] underline">Edit</span>
-        </button>
-      )}
-      <CardPaymentDialog
-        open={showCardDialog}
-        last4={bankLast4}
-        onConfirm={({ last4 })=>{ setBankLast4(last4); setBankChannel(''); setBankRef(''); setShowCardDialog(false) }}
-        onCancel={()=>{ setShowCardDialog(false); if (!bankLast4) setPaymentMethod('cash') }}
-      />
-      {/* Staff purchase chip — tap to change staff member */}
-      {paymentMethod === 'staff' && (
-        <button
-          type="button"
-          onClick={()=> setShowStaffDialog(true)}
-          className="w-full flex items-center justify-between rounded-lg border-2 border-violet-200 dark:border-violet-800 bg-violet-50/70 dark:bg-violet-950/30 px-3 py-2 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
-        >
-          <span>{staffName ? `${staffName} — salary deduct unless paid` : 'Select staff member'}</span>
-          <span className="text-[10px] underline">Edit</span>
-        </button>
-      )}
-      <StaffPaymentDialog
-        open={showStaffDialog}
-        staff={staff}
-        staffId={staffId}
-        onConfirm={({ staffId: sid, staffName: sname })=>{ setStaffId(sid); setStaffName(sname); setShowStaffDialog(false) }}
-        onCancel={()=>{ setShowStaffDialog(false); if (!staffId) setPaymentMethod('cash') }}
-      />
       <div className="flex gap-1.5">
         <button type="button" className="flex-1 px-2 py-1.5 bg-amber-500 text-white rounded text-xs sm:text-sm dark:bg-amber-700" onClick={holdSale}>Hold sale</button>
         <button type="button" className="flex-1 px-2 py-1.5 bg-slate-400 text-white rounded text-xs sm:text-sm dark:bg-slate-600" onClick={()=>setShowHeld(true)}>
@@ -384,12 +283,6 @@ export default function BillSummary({
             </div>
           </div>
         )}
-      </div>
-      ) : paymentMethod === 'staff' ? (
-      <div className="border-t border-violet-200 dark:border-violet-800 pt-2 mt-2">
-        <div className="text-xs sm:text-sm font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded px-2 py-1.5">
-          Staff purchase — deducted from salary unless paid earlier
-        </div>
       </div>
       ) : null}
 

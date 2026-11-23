@@ -19,8 +19,24 @@ export default function Layout() {
   const riderShare = useRiderLocation()
   const sharingLive = Boolean(riderShare?.sharing || riderShare?.reconnecting)
 
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.innerWidth < 1280) return true
+    } catch {}
+    return false
+  })
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Keep Sell usable at 100% zoom on laptop widths without forcing browser zoom-out
+  useEffect(() => {
+    const onResize = () => {
+      try {
+        if (window.innerWidth < 1100) setCollapsed(true)
+      } catch {}
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try { return localStorage.getItem('sidebarHidden') === '1' } catch { return false }
   })
@@ -112,7 +128,7 @@ export default function Layout() {
           sidebarHidden={sidebarHidden}
           onToggleSidebarHidden={toggleSidebarHidden}
         />
-        <main className="px-4 py-4 sm:px-6 sm:py-6 overflow-x-auto flex-1 min-h-0 bg-transparent pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+        <main className="px-2 py-2 sm:px-3 sm:py-3 lg:px-4 lg:py-4 overflow-x-hidden flex-1 min-h-0 bg-transparent pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
           <ErrorBoundary key={pageKey}>
             <Outlet key={pageKey} />
           </ErrorBoundary>

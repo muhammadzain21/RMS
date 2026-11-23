@@ -301,71 +301,8 @@ export default function SalesHistory() {
  createdAt: sale.detail.createdAt || sale.detail.date || null,
  }
  
- console.log(' Reprinting sale:', sale.billNo, saleData)
- // Try to embed logo as data URL to avoid file:// or data: origin issues inside iframe
- const pickLogoPath = () => {
- const s = state?.settings || {}
- // Prefer settings-provided logos; avoid referencing a non-existent public file in packaged apps.
- if (s.receiptLogo && /^(data:|https?:|file:)/i.test(s.receiptLogo)) return s.receiptLogo
- if (s.logoUrl && /^(data:|https?:|file:)/i.test(s.logoUrl)) return s.logoUrl
- if (s.logo && /^(data:|https?:|file:)/i.test(s.logo)) return s.logo
- return ''
- }
- const toAbsolute = (u)=>{
- try{
- if (!u) return ''
- if (/^(data:|https?:|file:)/i.test(u)) return u
- const isFileProto = String(window.location.protocol).startsWith('file')
- if (u.startsWith('/')) {
- if (isFileProto) return new URL('.' + u, window.location.href).href
- return window.location.origin + u
- }
- return new URL(u, window.location.href).href
- }catch{ return u }
- }
- const loadAsDataURL = (src) => new Promise((resolve) => {
- // Try fetch->blob->FileReader first (works for http/https same-origin)
- try{
- if (/^https?:/i.test(src)) {
- fetch(src, { mode: 'cors' }).then(r => r.ok ? r.blob() : Promise.reject()).then(blob => {
- const fr = new FileReader()
- fr.onload = () => resolve(String(fr.result||''))
- fr.onerror = () => resolve('')
- fr.readAsDataURL(blob)
- }).catch(()=>{
- // Fallback to canvas path
- tryCanvas()
- })
- return
- }
- }catch{}
- tryCanvas()
- function tryCanvas(){
- try{
- const img = new Image()
- img.crossOrigin = 'anonymous'
- img.onload = () => {
- try{
- const canvas = document.createElement('canvas')
- canvas.width = img.naturalWidth
- canvas.height = img.naturalHeight
- const ctx = canvas.getContext('2d')
- ctx.drawImage(img, 0, 0)
- const data = canvas.toDataURL('image/png')
- resolve(data)
- }catch{ resolve('') }
- }
- img.onerror = () => resolve('')
- img.src = src
- }catch{ resolve('') }
- }
- })
- const logoCandidate = pickLogoPath()
- const logoAbs = toAbsolute(logoCandidate)
- const logoDataUrl = logoAbs ? await loadAsDataURL(logoAbs) : ''
- const effectiveLogo = logoDataUrl || logoCandidate
- // Show in-app preview with toolbar (Print and OK buttons)
- printSaleReceiptUtil({ ...saleData, autoPrint: false, previewInApp: true, logoUrl: effectiveLogo })
+ // Bill print shrinks the logo itself — don't re-encode the full image before the dialog opens
+ printSaleReceiptUtil({ ...saleData, autoPrint: false, previewInApp: true })
  } catch (error) {
  console.error(' Error reprinting sale:', error)
  toast.error('Error reprinting receipt. Please try again.')

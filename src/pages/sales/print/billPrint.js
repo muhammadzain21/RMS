@@ -9,6 +9,37 @@ function resolveBankQrDataUrl(settings = {}) {
   return String(settings.bankQrImage || '').trim()
 }
 
+const slipImageCache = new Map()
+
+/** Thermal slips only show a tiny logo/QR. Full settings images are hundreds of KB and slow both the dialog and PDF print. */
+function shrinkImageForSlip(src, maxPx = 160) {
+  const raw = String(src || '')
+  if (!raw.startsWith('data:image')) return Promise.resolve(raw)
+  const key = `${maxPx}:${raw.length}:${raw.slice(0, 64)}`
+  if (slipImageCache.has(key)) return Promise.resolve(slipImageCache.get(key))
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const nw = img.naturalWidth || maxPx
+        const nh = img.naturalHeight || maxPx
+        const scale = Math.min(1, maxPx / Math.max(nw, nh))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(nw * scale))
+        canvas.height = Math.max(1, Math.round(nh * scale))
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        const out = canvas.toDataURL('image/jpeg', 0.72)
+        slipImageCache.set(key, out)
+        resolve(out)
+      } catch {
+        resolve(raw)
+      }
+    }
+    img.onerror = () => resolve(raw)
+    img.src = raw
+  })
+}
+
 // Core: Sale receipt printer (used on payment and reprint)
 export async function printSaleReceiptUtil(opts = {}) {
   try {
@@ -159,9 +190,8 @@ export async function printSaleReceiptUtil(opts = {}) {
         return new URL(u, window.location.href).href
       } catch { return u }
     }
-    const logoAbs = toAbsolute(logoUrl)
-    const logoAbsList = logoCandidates.map(toAbsolute)
-    const bankQrSrc = resolveBankQrDataUrl(state?.settings || {})
+    const logoAbs = await shrinkImageForSlip(toAbsolute(logoUrl), 160)
+    const bankQrSrc = await shrinkImageForSlip(resolveBankQrDataUrl(state?.settings || {}), 180)
     const bankQrLabel = String(state?.settings?.bankQrLabel || 'Scan to pay').trim() || 'Scan to pay'
     const bankQrHint = String(state?.settings?.bankQrPayload || '').trim()
     const showBankPay = Boolean(state?.settings?.printBankQrOnBill) && (bankQrSrc || bankQrHint)
@@ -242,26 +272,6 @@ export async function printSaleReceiptUtil(opts = {}) {
 
   ${bankQrHtml}
   ${state?.settings?.billingFooter ? `<div class="footer">${escapeHtml(state.settings.billingFooter)}</div>` : ''}
-
-  <script>
-    (function(){
-      try{
-        var list = ${JSON.stringify(logoAbsList)}.filter(Boolean)
-        var imgEl = document.getElementById('receiptLogo')
-        if(!imgEl || !list.length){ if(imgEl) imgEl.style.display='none'; return }
-        var i = 0
-        var tryNext = function(){
-          if(i>=list.length){ imgEl.style.display='none'; return }
-          var src = list[i++]
-          var probe = new Image()
-          probe.onload = function(){ imgEl.src = src; imgEl.style.display='block' }
-          probe.onerror = tryNext
-          probe.src = src
-        }
-        tryNext()
-      }catch(e){}
-    })();
-  </script>
 </body>
 </html>`
 

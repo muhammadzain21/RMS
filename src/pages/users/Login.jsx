@@ -300,11 +300,13 @@ export default function Login() {
 
   return (
     <div
-      className="relative min-h-[100dvh] overflow-y-auto text-slate-900"
+      className="relative box-border flex min-h-[100dvh] w-full max-w-[100vw] items-center justify-center overflow-x-hidden overflow-y-auto text-slate-900"
       style={{
         fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingTop: 'max(12px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(12px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(12px, env(safe-area-inset-right, 0px))',
         background: 'linear-gradient(180deg, #f4f8ff 0%, #eef4ff 40%, #ffffff 100%)',
       }}
     >
@@ -323,10 +325,10 @@ export default function Login() {
         />
       </div>
 
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl items-center p-4 sm:p-6 lg:p-8">
-        <div className="grid w-full overflow-hidden rounded-[2rem] border border-blue-100 bg-white shadow-[0_30px_80px_-40px_rgba(37,99,235,0.35)] lg:grid-cols-2">
+      <div className="relative z-10 flex w-full max-w-5xl items-center justify-center">
+        <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-[0_30px_80px_-40px_rgba(37,99,235,0.35)] min-[960px]:grid-cols-2 min-[960px]:rounded-[2rem]">
           {/* Brand half */}
-          <section className="relative flex min-h-[220px] flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#0ea5e9] px-6 py-7 text-white sm:min-h-[280px] sm:px-10 sm:py-10 lg:min-h-[640px]">
+          <section className="relative flex flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#0ea5e9] px-5 py-5 text-white sm:px-8 sm:py-8 min-[960px]:min-h-[560px] min-[960px]:px-10 min-[960px]:py-10">
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
               <div className="absolute -bottom-20 -left-10 h-64 w-64 rounded-full bg-sky-300/20 blur-2xl" />
@@ -345,26 +347,26 @@ export default function Login() {
                 <Sparkles size={12} /> EpicSpire RMS
               </div>
 
-              <div className="mt-6 flex items-center gap-4 lg:mt-12 lg:flex-col lg:items-start lg:gap-7">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-white shadow-xl shadow-blue-950/20 ring-4 ring-white/25 sm:h-20 sm:w-20 lg:h-28 lg:w-28 lg:rounded-[1.75rem]">
+              <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-4 min-[960px]:mt-10 min-[960px]:flex-col min-[960px]:items-start min-[960px]:gap-6">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-xl shadow-blue-950/20 ring-4 ring-white/25 sm:h-16 sm:w-16 min-[960px]:h-24 min-[960px]:w-24">
                   {logo
                     ? <img src={logo} alt={brand} className="h-full w-full object-cover" />
                     : <img src="/icon.ico" alt={brand} className="h-full w-full object-cover" />}
                 </div>
                 <div className="min-w-0">
                   <h1
-                    className="text-2xl font-bold leading-[1.1] tracking-tight text-white sm:text-3xl lg:text-[2.75rem]"
+                    className="text-xl font-bold leading-[1.1] tracking-tight text-white sm:text-2xl min-[960px]:text-4xl"
                     style={{ fontFamily: '"Fraunces", "Plus Jakarta Sans", serif' }}
                   >
                     {brand}
                   </h1>
-                  <p className="mt-2 max-w-sm text-sm leading-relaxed text-blue-50/90 sm:text-base lg:mt-3">
+                  <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-blue-50/90 sm:text-sm min-[960px]:mt-3 min-[960px]:text-base">
                     Sell faster. Run the kitchen. Manage every branch — from one calm workspace.
                   </p>
                 </div>
               </div>
 
-              <ul className="mt-6 hidden space-y-3 lg:mt-10 lg:block">
+              <ul className="mt-8 hidden space-y-3 min-[960px]:block">
                 {[
                   'Counter, KOT & delivery in one flow',
                   'Call center ready for busy nights',
@@ -380,7 +382,7 @@ export default function Login() {
               </ul>
             </div>
 
-            <div className="relative mt-6 space-y-2 border-t border-white/20 pt-5 text-sm text-blue-50">
+            <div className="relative mt-4 hidden space-y-2 border-t border-white/20 pt-4 text-sm text-blue-50 sm:block">
               {phone ? (
                 <div className="flex items-center gap-2">
                   <Phone size={15} className="shrink-0 text-white" />
@@ -403,7 +405,7 @@ export default function Login() {
           </section>
 
           {/* Form half */}
-          <section className="flex items-center bg-white px-5 py-7 sm:px-10 sm:py-10">
+          <section className="flex items-center bg-white px-4 py-6 sm:px-8 sm:py-8 min-[960px]:px-10">
             <div className="mx-auto w-full max-w-md">
               <div className="mb-6 flex items-start justify-between gap-3">
                 <div>

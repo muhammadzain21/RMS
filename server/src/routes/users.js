@@ -10,7 +10,7 @@ import { isHqUser } from '../utils/branchScope.js'
 function toPublicUser(u) {
   const custom = !!u.useCustomPermissions
   return {
-    id: u._id,
+    id: String(u._id || u.id || ''),
     username: u.username,
     role: u.role,
     homeBranchId: u.homeBranchId || '',
@@ -19,7 +19,7 @@ function toPublicUser(u) {
     staffId: u.staffId || '',
     useCustomPermissions: custom,
     pageAccess: custom
-      ? (u.permissions || []).filter(p => p.visible && p.path !== '/my').map(p => p.path)
+      ? (u.permissions || []).filter(p => p.visible && p.path && p.path !== '/my').map(p => String(p.path))
       : null,
   }
 }
@@ -38,17 +38,31 @@ function pageAccessUpdates(body, { grantable = null, preservePaths = [] } = {}) 
       }
     }
     const allowed = new Set(paths)
-    return {
-      useCustomPermissions: true,
-      permissions: defaultSidebarItems
+    const byPath = new Map(
+      defaultSidebarItems
         .filter(i => i.path !== '/my')
-        .map(i => ({
+        .map(i => [i.path, {
           path: i.path,
           label: i.label,
           visible: allowed.has(i.path),
           order: i.order,
-          section: i.section,
-        })),
+          section: i.section || '',
+        }])
+    )
+    // Keep nav-only / newly added paths that aren't in server defaults yet
+    for (const p of allowed) {
+      if (p === '/my' || byPath.has(p)) continue
+      byPath.set(p, {
+        path: p,
+        label: p,
+        visible: true,
+        order: 99,
+        section: 'Other',
+      })
+    }
+    return {
+      useCustomPermissions: true,
+      permissions: [...byPath.values()].sort((a, b) => (a.order || 0) - (b.order || 0)),
     }
   }
   return {}
@@ -251,7 +265,11 @@ router.patch('/:id', async (req, res, next) => {
       return res.status(400).json({ error: 'Branch is required for non-admin users' })
     }
 
-    const updated = await User.findByIdAndUpdate(req.params.id, updates, { new: true })
+    const updated = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    )
     if (!updated) return res.status(404).json({ error: 'Not found' })
     try {
       await Audit.create({

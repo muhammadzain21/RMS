@@ -5,7 +5,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
 import { UserPlus, Shield, Trash2 } from 'lucide-react'
 import PageHero from '../../components/PageHero.jsx'
-import { sidebarItems } from '../../layout/navConfig.js'
+import { sidebarItems, expandEnabledPaths } from '../../layout/navConfig.js'
 import { format } from 'date-fns'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, downloadCsvFile, exportDateStamp } from '../../utils/listReportExport.js'
@@ -126,7 +126,7 @@ export default function UserList() {
     || ''
   )
 
-  const enabledPaths = state?.settings?.enabledPaths
+  const enabledPaths = expandEnabledPaths(state?.settings?.enabledPaths)
   const isFeatureEnabled = (path) =>
     !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
   // Managers: only pages Admin gave them (including Permissions if granted)
@@ -396,9 +396,9 @@ export default function UserList() {
 
   const openEdit = (u) => {
     const custom = Array.isArray(u.pageAccess)
-    const fullAccess = custom ? [...u.pageAccess] : []
+    const fullAccess = custom ? u.pageAccess.map(String) : []
     setEditing({
-      id: u.id,
+      id: String(u.id || ''),
       username: u.username || '',
       role: u.role || roleOptions()[0] || '',
       homeBranchId: isAdminUser

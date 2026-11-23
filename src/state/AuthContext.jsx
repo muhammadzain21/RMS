@@ -285,7 +285,7 @@ export function AuthProvider({ children }) {
       })
       if (res.ok) {
         const updated = await res.json()
-        setUsers(prev => prev.map(u => u.id === id ? updated : u))
+        setUsers(prev => prev.map(u => String(u.id) === String(id) ? updated : u))
         return { ok: true }
       } else {
         let msg = 'Failed to update user'

@@ -45,7 +45,7 @@ import kotsRouter from './routes/kots.js'
 import voidsRouter from './routes/voids.js'
 import recallsRouter from './routes/recalls.js'
 import heldsRouter from './routes/helds.js'
-import printRouter from './routes/print.js'
+import printRouter, { warmPrintBrowser } from './routes/print.js'
 import biometricRouter from './biometric/routes/index.js'
 import biometricConfigRouter from './routes/biometricConfig.js'
 import inventorySnapshotsRouter, { takeSnapshot } from './routes/inventorySnapshots.js'
@@ -238,7 +238,11 @@ async function start() {
       }
     } catch (e) { console.error('SuperAdmin seed failed:', e?.message) }
 
-    app.listen(PORT, '0.0.0.0', () => console.log(`Server listening on http://localhost:${PORT}`))
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server listening on http://localhost:${PORT}`)
+      // First browser print was waiting ~2s on Puppeteer launch
+      warmPrintBrowser()
+    })
 
     // Start biometric attendance poller
     try {

@@ -102,7 +102,6 @@ export default function SalesNew() {
     [currentParentId, kidsOf, withMeta]
   )
   const [selectedCategory, setSelectedCategory] = useState('')
-  const [search, setSearch] = useState('')
   const categoryBarSelected = categoryPath.length
     ? String(categoryPath[0].name || '')
     : selectedCategory
@@ -224,10 +223,6 @@ export default function SalesNew() {
     const cat = String(selectedCategory||'').trim().toLowerCase()
     let list = menu
     if (cat) list = list.filter(m => String(m.category||'').trim().toLowerCase() === cat)
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(m => String(m.name||'').toLowerCase().includes(q))
-    }
     // Sort by sortOrder (lower = first), then by name
     return [...list].sort((a, b) => {
       const orderA = Number(a.sortOrder ?? 0)
@@ -235,7 +230,7 @@ export default function SalesNew() {
       if (orderA !== orderB) return orderA - orderB
       return String(a.name||'').localeCompare(String(b.name||''))
     })
-  }, [menu, selectedCategory, search])
+  }, [menu, selectedCategory])
 
   // Cart state
   const [items, setItems] = useState([]) // [{itemId, qty, mods?, custom?}]
@@ -398,7 +393,6 @@ export default function SalesNew() {
     setItems([])
     setSelectedCategory('')
     setCategoryPath([])
-    setSearch('')
     // Payment method
     setPaymentMethod('cash')
     setBankChannel('ubl')
@@ -754,7 +748,7 @@ export default function SalesNew() {
         if (last4 && !/^\d{4}$/.test(String(last4))) { toast.error('Last 4 digits must be exactly 4 digits'); return }
       }
       if (method === 'staff' && !staffIdPay) { toast.error('Select the staff member'); return }
-      const tipAmount = (method === 'cash' || method === 'card' || method === 'bank')
+      const tipAmount = (method === 'cash' || method === 'card' || method === 'bank' || method === 'foodpanda')
         ? Math.max(0, (Number(cashIn) || 0) - (Number(ord.totalAmount) || 0))
         : 0
       // 1) Create sale
@@ -784,7 +778,7 @@ export default function SalesNew() {
         bankLast4: (method === 'bank' || method === 'card') ? String(last4 || '') : '',
         bankRef: '',
         tipAmount,
-        cashReceived: (method === 'cash' || method === 'card' || method === 'bank') ? Number(cashIn || 0) : 0,
+        cashReceived: (method === 'cash' || method === 'card' || method === 'bank' || method === 'foodpanda') ? Number(cashIn || 0) : 0,
         staffId: method === 'staff' ? String(staffIdPay) : '',
         staffName: method === 'staff' ? staffNamePay : '',
         staffSettlement: method === 'staff' ? 'pay_later' : '',
@@ -1773,9 +1767,9 @@ export default function SalesNew() {
 
   return (
     <>
-    <form onSubmit={submit} className="p-2 sm:p-3 grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-full lg:overflow-hidden">
-      {/* Left: categories + search, then items list */}
-      <div className="lg:col-span-7 space-y-3 lg:flex lg:flex-col lg:min-h-0 lg:overflow-hidden">
+    <form onSubmit={submit} className="p-1 sm:p-2 grid grid-cols-1 md:grid-cols-12 gap-2 md:h-full md:overflow-hidden md:min-h-0">
+      {/* Left: categories, then items list */}
+      <div className="md:col-span-7 space-y-2 md:flex md:flex-col md:min-h-0 md:overflow-hidden">
         <CategoryBar
           categories={categories}
           selectedCategory={categoryBarSelected}
@@ -1796,12 +1790,6 @@ export default function SalesNew() {
       payAddress={payAddress}
       setPayAddress={setPayAddress}
     />
-        <input
-          className="w-full px-3 py-2 border-2 border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm text-sm"
-          placeholder="Search items..."
-          value={search}
-          onChange={e=>setSearch(e.target.value)}
-        />
         <ItemsList
           selectedCategory={selectedCategory}
           itemsInCategory={itemsInCategory}
@@ -1827,7 +1815,7 @@ export default function SalesNew() {
       </div>
 
       {/* Right: cart table + bill summary */}
-      <div className="lg:col-span-5 space-y-3 lg:flex lg:flex-col lg:min-h-0 lg:overflow-hidden">
+      <div className="md:col-span-5 space-y-2 md:flex md:flex-col md:min-h-0 md:overflow-hidden">
         <CartTable
           items={items}
           menu={menu}
@@ -1852,18 +1840,6 @@ export default function SalesNew() {
           setShowHeld={onOpenHeld}
           heldCount={heldCount || (helds?.length||0)}
           paymentMethod={paymentMethod}
-          setPaymentMethod={setPaymentMethod}
-          bankChannel={bankChannel}
-          setBankChannel={setBankChannel}
-          bankLast4={bankLast4}
-          setBankLast4={setBankLast4}
-          bankRef={bankRef}
-          setBankRef={setBankRef}
-          staff={staffForPurchase}
-          staffId={payStaffId}
-          setStaffId={setPayStaffId}
-          staffName={payStaffName}
-          setStaffName={setPayStaffName}
           totalItems={totalItems}
           totalQty={totalQty}
           subTotal={subTotal}
@@ -1922,6 +1898,14 @@ export default function SalesNew() {
     <PaymentMethodDialog
       open={showPayMethod}
       totalAmount={Number(recallToPay?.totalAmount || 0)}
+      items={Array.isArray(recallToPay?.items) ? recallToPay.items : []}
+      tableNo={recallToPay?.tableNo || ''}
+      waiterName={
+        recallToPay?.waiterName
+        || (staff || []).find(s => String(s.id) === String(recallToPay?.waiterId || ''))?.name
+        || ''
+      }
+      orderType={recallToPay?.orderType || orderType || ''}
       initialMethod={recallToPay?.paymentMethod || paymentMethod || 'cash'}
       initialBankChannel={recallToPay?.bankChannel || bankChannel || 'ubl'}
       initialLast4={String(recallToPay?.bankLast4 || bankLast4 || '')}

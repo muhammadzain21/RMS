@@ -26,9 +26,10 @@ async function getUserWithPermissions(user) {
   }
 
   if (user.useCustomPermissions && Array.isArray(user.permissions)) {
+    // Custom pageAccess is authoritative — merge only to attach labels/new paths
     userData.permissions = mergePermissions(user.permissions)
   } else if (user.role && user.role !== 'Admin' && user.role !== 'SuperAdmin') {
-    const role = await Role.findOne({ name: user.role })
+    const role = await Role.findOne({ name: user.role }).lean()
     if (role) {
       userData.permissions = mergePermissions(role.permissions)
     }

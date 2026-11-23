@@ -82,21 +82,14 @@
           document.documentElement.style.colorScheme = 'dark'
         }
       } catch (e) {}
-      // Browser UI scale 60% via transform (NOT css zoom — zoom breaks 100dvh layouts)
+      // Browser uses real CSS breakpoints (no 60% transform).
+      // A scaled #root makes login and dialogs miss the window.
       try {
-        if (!/Electron/i.test(navigator.userAgent || '')) {
-          // Clear broken css zoom from earlier builds
-          try { document.documentElement.style.zoom = '' } catch (e2) {}
-          try { localStorage.removeItem('browser_zoom_factor') } catch (e2) {}
-          var scale = '0.6'
-          try {
-            var saved = localStorage.getItem('browser_ui_scale')
-            if (saved && Number(saved) >= 0.5 && Number(saved) <= 1) scale = saved
-            else localStorage.setItem('browser_ui_scale', scale)
-          } catch (e2) {}
-          document.documentElement.style.setProperty('--browser-ui-scale', scale)
-          document.documentElement.classList.add('browser-ui-scaled')
-        }
+        document.documentElement.style.zoom = ''
+        document.documentElement.classList.remove('browser-ui-scaled')
+        document.documentElement.style.removeProperty('--browser-ui-scale')
+        localStorage.removeItem('browser_zoom_factor')
+        localStorage.removeItem('browser_ui_scale')
       } catch (e) {}
       // Network-only SW — required for Chrome "Install app" prompt. No caching.
       if ('serviceWorker' in navigator) {

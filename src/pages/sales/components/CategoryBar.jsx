@@ -8,37 +8,41 @@ export default function CategoryBar({
 }) {
   const gridStyle = { gridTemplateColumns: `repeat(${tilesPerRow}, minmax(0, 1fr))` }
   return (
-    <div className="grid gap-2 overflow-y-auto h-[34vh] min-h-[280px] lg:shrink-0 py-1.5 px-2 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 shadow-sm" style={gridStyle}>
+    <div
+      className="grid gap-0 content-start auto-rows-auto overflow-y-auto h-[26vh] min-h-[180px] lg:h-[28vh] lg:min-h-[200px] lg:shrink-0 p-0 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 shadow-sm"
+      style={gridStyle}
+    >
       {(categories || []).map((cat, i) => {
         const isObj = cat && typeof cat === 'object'
         const name = String(isObj ? cat.name || '' : cat)
         const imageUrl = isObj ? cat.imageUrl || '' : ''
         const isActive = String(selectedCategory || '') === name
         return (
-          <div key={isObj ? (cat.id || cat._id || i) : i} className="flex flex-col items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => onSelectCategory(isObj ? cat : name)}
-              className={`w-full h-[72px] sm:h-[84px] md:h-[96px] rounded-lg border-2 overflow-hidden select-none transition-all duration-200 p-1 ${isActive ? 'border-blue-500 shadow-md shadow-blue-500/20 scale-105' : 'border-gray-200 dark:border-gray-600 shadow-sm hover:border-blue-300 hover:shadow-md'}`}
-              title={name}
-            >
-              {imageUrl ? (
+          <button
+            key={isObj ? (cat.id || cat._id || i) : i}
+            type="button"
+            onClick={() => onSelectCategory(isObj ? cat : name)}
+            className={`w-full h-[56px] sm:h-[64px] md:h-[72px] -mb-px -mr-px rounded-none border overflow-hidden select-none transition-colors duration-150 p-0.5 flex flex-col ${isActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 z-[1]' : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 hover:bg-blue-50/60 dark:hover:bg-gray-800'}`}
+            title={name}
+          >
+            {imageUrl ? (
+              <>
                 <img
                   src={imageUrl}
                   alt={name}
-                  className="w-full h-full object-cover"
+                  className="w-full flex-1 min-h-0 object-cover"
                   onError={(e) => { e.target.style.display = 'none' }}
                 />
-              ) : (
-                <div className={`w-full h-full flex items-center justify-center font-bold text-xs sm:text-sm md:text-base uppercase leading-tight text-center break-words ${isActive ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-100 hover:bg-blue-50 dark:hover:bg-gray-700'}`}>
+                <span className="font-bold text-[10px] sm:text-xs uppercase leading-tight break-words text-center text-gray-700 dark:text-gray-200 w-full shrink-0 px-0.5 py-0.5 truncate">
                   {name}
-                </div>
-              )}
-            </button>
-            {imageUrl && (
-              <span className="font-bold text-xs sm:text-sm md:text-base uppercase leading-tight break-words text-center text-gray-700 dark:text-gray-200 w-full">{name}</span>
+                </span>
+              </>
+            ) : (
+              <div className={`w-full h-full flex items-center justify-center font-bold text-xs sm:text-sm uppercase leading-tight text-center break-words px-1 ${isActive ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-100'}`}>
+                {name}
+              </div>
             )}
-          </div>
+          </button>
         )
       })}
     </div>

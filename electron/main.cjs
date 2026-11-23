@@ -705,6 +705,108 @@ ipcMain.handle('printing:check', async (_event, opts = {}) => {
   }
 })
 
+function resolvePdfToPrinter() {
+  const candidates = [
+    path.join(__dirname, '..', 'server', 'node_modules', 'pdf-to-printer'),
+    process.resourcesPath ? path.join(process.resourcesPath, 'app', 'server', 'node_modules', 'pdf-to-printer') : '',
+  ].filter(Boolean)
+  for (const candidate of candidates) {
+    try {
+      const sumatraPdfPath = path.join(candidate, 'dist', 'SumatraPDF-3.4.6-32.exe')
+      if (!fs.existsSync(sumatraPdfPath)) continue
+      const mod = require(candidate)
+      const print = mod && (mod.print || (mod.default && mod.default.print))
+      if (typeof print === 'function') return { print, sumatraPdfPath }
+    } catch (e) {
+      console.warn('[print] pdf-to-printer load failed:', candidate, e && e.message || e)
+    }
+  }
+  try {
+    const mod = require('pdf-to-printer')
+    const print = mod && (mod.print || (mod.default && mod.default.print))
+    if (typeof print === 'function') return { print, sumatraPdfPath: '' }
+  } catch {}
+  return null
+}
+
+/**
+ * Windows named thermal printers drop Chromium silent GDI jobs as a short blank feed.
+ * The working path (browser) is a narrow PDF + pdf-to-printer. Do the same here, using
+ * Electron's already-running Chromium so we don't pay a Puppeteer cold start.
+ */
+async function silentPrintHtmlPdf(html, printerName) {
+  const ptp = resolvePdfToPrinter()
+  if (!ptp) throw new Error('pdf-to-printer is not available')
+  const printFn = ptp.print
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const tmp = app.getPath('temp')
+  const htmlPath = path.join(tmp, `slip-${id}.html`)
+  const pdfPath = path.join(tmp, `slip-${id}.pdf`)
+  const printWin = new BrowserWindow({
+    show: false,
+    // ~80mm at 96dpi so the slip lays out at roll width before PDF
+    width: 302,
+    height: 1400,
+    webPreferences: { backgroundThrottling: false },
+  })
+  try {
+    await fsp.writeFile(htmlPath, String(html || ''), 'utf8')
+    await new Promise((resolve, reject) => {
+      const onFail = (_e, code, desc) => reject(new Error(desc || `load failed (${code})`))
+      printWin.webContents.once('did-finish-load', () => resolve())
+      printWin.webContents.once('did-fail-load', onFail)
+      printWin.loadFile(htmlPath).catch(reject)
+    })
+    try {
+      await printWin.webContents.insertCSS('html,body{width:72mm !important;max-width:72mm !important;margin:0 !important;background:#fff !important;}')
+    } catch {}
+    const measured = await printWin.webContents.executeJavaScript(`
+      new Promise((resolve) => {
+        const finish = () => {
+          const text = String((document.body && document.body.innerText) || '').trim()
+          const h = Math.max(
+            document.body ? document.body.scrollHeight : 0,
+            document.documentElement ? document.documentElement.scrollHeight : 0,
+            120
+          )
+          resolve({ chars: text.length, heightPx: h })
+        }
+        const kick = () => requestAnimationFrame(() => requestAnimationFrame(finish))
+        if (document.fonts && document.fonts.ready) {
+          Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 180))]).then(kick)
+        } else kick()
+      })
+    `, true)
+    if (!measured || !measured.chars) {
+      throw new Error('Slip had no visible text')
+    }
+    // printToPDF pageSize is inches (not microns). 80000 here was a postage-stamp page.
+    const widthIn = 80 / 25.4
+    const heightIn = Math.min(24, Math.max(2.2, (Number(measured.heightPx || 400) / 96) + 0.35))
+    const pdf = await printWin.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: false,
+      pageSize: { width: widthIn, height: heightIn },
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    })
+    if (!pdf || !pdf.length) throw new Error('Empty slip PDF')
+    await fsp.writeFile(pdfPath, pdf)
+    await printFn(pdfPath, {
+      printer: printerName,
+      silent: true,
+      scale: 'noscale',
+      ...(ptp.sumatraPdfPath ? { sumatraPdfPath: ptp.sumatraPdfPath } : {}),
+    })
+    return { ok: true, deviceName: printerName, via: 'pdf' }
+  } finally {
+    try { if (printWin && !printWin.isDestroyed()) printWin.destroy() } catch {}
+    setTimeout(() => {
+      fsp.unlink(htmlPath).catch(() => {})
+      fsp.unlink(pdfPath).catch(() => {})
+    }, 8000)
+  }
+}
+
 function resolveChromiumPrinterName(requested, list) {
   const want = String(requested || '').trim()
   if (!want) return ''
@@ -736,14 +838,7 @@ function resolveChromiumPrinterName(requested, list) {
 // Interactive (silent:false): window must be shown briefly or Windows hides the picker.
 ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent }) => {
   const useSilent = silent === true || (silent !== false && !!deviceName)
-  const printWin = new BrowserWindow({
-    show: false,
-    width: 420,
-    height: 640,
-    autoHideMenuBar: true,
-    skipTaskbar: true,
-    webPreferences: { backgroundThrottling: false },
-  })
+  let printWin = null
   let destroyDelayMs = 200
   try {
     const printers = await listSystemPrinters()
@@ -768,14 +863,46 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
       }
     }
 
+    // Named silent jobs: 80mm PDF → Windows spooler (same idea as the browser path).
+    // Do not fall back to GDI — that driver feeds a short blank strip.
+    if (useSilent && resolvedName) {
+      try {
+        const pdfResult = await silentPrintHtmlPdf(html, resolvedName)
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            applySavedZoom(mainWindow)
+            mainWindow.focus()
+          }
+        } catch {}
+        return pdfResult
+      } catch (pdfErr) {
+        const message = String(pdfErr && pdfErr.message || pdfErr || 'print failed')
+        console.error('[print] PDF silent print failed:', message)
+        return { ok: false, error: message }
+      }
+    }
+
+    printWin = new BrowserWindow({
+      show: false,
+      width: 420,
+      height: 640,
+      autoHideMenuBar: true,
+      skipTaskbar: true,
+      webPreferences: { backgroundThrottling: false },
+    })
+
     await new Promise((resolve, reject) => {
       const onFail = (e) => reject(e)
       printWin.webContents.once('did-finish-load', () => resolve())
       printWin.webContents.once('did-fail-load', (_e, code, desc) => onFail(new Error(desc || `load failed (${code})`)))
-      printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || ''))).catch(onFail)
+      const fileId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const htmlPath = path.join(app.getPath('temp'), `slip-view-${fileId}.html`)
+      fsp.writeFile(htmlPath, String(html || ''), 'utf8')
+        .then(() => printWin.loadFile(htmlPath))
+        .then(() => { setTimeout(() => fsp.unlink(htmlPath).catch(() => {}), 15000) })
+        .catch(onFail)
     })
-    // Let images / layout settle — 40ms was printing blank slips
-    await new Promise((r) => setTimeout(r, 250))
+    await new Promise((r) => setTimeout(r, 200))
 
     if (!useSilent) {
       try {
@@ -792,6 +919,8 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
             silent: useSilent,
             printBackground: true,
             margins: { marginType: 'none' },
+            // 80mm roll — letter/A4 GDI jobs come out as a blank feed on thermal drivers
+            pageSize: useSilent ? { width: 80000, height: 200000 } : undefined,
             deviceName: resolvedName || undefined,
           },
           (success, failureReason) => resolve({ success: !!success, failureReason })

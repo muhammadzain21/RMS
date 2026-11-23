@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../../state/AuthContext.jsx'
 import { useData } from '../../state/DataContext.jsx'
 import { toast } from 'react-hot-toast'
-import { sidebarItems, defaultPermissionItems } from '../../layout/navConfig.js'
+import { sidebarItems, defaultPermissionItems, expandEnabledPaths } from '../../layout/navConfig.js'
 
 // Custom Confirm Modal
 function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, confirmText = 'Delete', loading }) {
@@ -40,7 +40,7 @@ export default function SidebarPermissions() {
   const isAdminUser = currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin' || !!currentUser?.isHq
 
   // Pages disabled via the SuperAdmin portal are hidden from this list entirely
-  const enabledPaths = state?.settings?.enabledPaths
+  const enabledPaths = expandEnabledPaths(state?.settings?.enabledPaths)
   const isFeatureEnabled = (path) =>
     !Array.isArray(enabledPaths) || enabledPaths.length === 0 || enabledPaths.includes(path)
   const hiddenBySuperAdmin = sidebarItems.filter(i => !i.hidden && !isFeatureEnabled(i.path)).length > 0
