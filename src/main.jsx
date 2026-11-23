@@ -227,6 +227,21 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 )
 
+// Hide HTML boot splash once React has painted
+try {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      try { window.__dismissAppSplash?.() } catch {}
+    })
+  })
+  // Also after fonts / first layout settle
+  setTimeout(() => {
+    try { window.__dismissAppSplash?.() } catch {}
+  }, 250)
+} catch {
+  try { window.__dismissAppSplash?.() } catch {}
+}
+
 // Keep PWA installable, but refresh SW so map tiles / API are not intercepted
 try {
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && !isElectron) {

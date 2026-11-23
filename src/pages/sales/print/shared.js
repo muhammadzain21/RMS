@@ -151,23 +151,69 @@ async function tryServerPrint(html, type = 'bill', printerName = '') {
   }
 }
 
-// Silent print chain: Electron native silent print first (same Chromium engine as
-// manual printing, so thermal drivers render identically), then server-side
-// pdf-to-printer (SumatraPDF) as fallback for browser/dev mode.
-// Returns true when the job was accepted by the printer.
-export async function trySilentPrint(html, type, deviceName) {
+async function resolveInstalledPrinterName(requested) {
+  const want = String(requested || '').trim()
+  if (!want || !window?.printing?.listPrinters) return want
   try {
-    if (window && window.printing && window.printing.printHTML) {
-      const out = await window.printing.printHTML(html, deviceName, { silent: true })
+    const list = await window.printing.listPrinters()
+    const rows = Array.isArray(list) ? list : []
+    const key = want.toLowerCase()
+    const hit = rows.find((p) => {
+      const n = String(p.name || '').trim()
+      const d = String(p.displayName || p.deviceName || '').trim()
+      return n === want || d === want || n.toLowerCase() === key || d.toLowerCase() === key
+    }) || rows.find((p) => {
+      const n = String(p.name || '').trim().toLowerCase()
+      const d = String(p.displayName || p.deviceName || '').trim().toLowerCase()
+      return (n && (n.includes(key) || key.includes(n))) || (d && (d.includes(key) || key.includes(d)))
+    })
+    if (hit) return String(hit.name || hit.displayName || hit.deviceName || want).trim()
+  } catch {}
+  return want
+}
+
+// Silent print chain: Electron native silent print first (same Chromium engine as
+// manual printing). Server Puppeteer fallback is browser/dev only — it is slow
+// (~2–3s cold launch) and must not run inside Electron after a local miss.
+export async function trySilentPrint(html, type, deviceName) {
+  const hasElectronPrint = !!(window && window.printing && window.printing.printHTML)
+  const name = await resolveInstalledPrinterName(deviceName)
+  try {
+    if (hasElectronPrint) {
+      const out = await window.printing.printHTML(html, name, { silent: true })
       if (out && out.ok) {
         nudgeAppShellLayout()
         return true
       }
-      if (out && out.error) console.warn('[trySilentPrint] Electron print failed:', out.error)
+      if (out && out.error) console.warn('[trySilentPrint] Electron silent failed:', out.error, '| device:', name)
+      // Stay local — do not hit /api/print (Puppeteer) from Electron
+      return false
     }
   } catch (e) {
     console.warn('[trySilentPrint] Electron print error:', e)
+    if (hasElectronPrint) return false
   }
-  if (await tryServerPrint(html, type, deviceName)) return true
+  if (await tryServerPrint(html, type, name)) return true
+  return false
+}
+
+/** Electron: open system print dialog from an isolated window (reliable fallback). */
+export async function tryElectronPrintDialog(html, deviceName = '') {
+  try {
+    if (!window?.printing) return false
+    const name = deviceName ? await resolveInstalledPrinterName(deviceName) : ''
+    if (typeof window.printing.printHTMLDialog === 'function' && !name) {
+      const out = await window.printing.printHTMLDialog(html)
+      nudgeAppShellLayout()
+      return !!(out && out.ok)
+    }
+    if (typeof window.printing.printHTML === 'function') {
+      const out = await window.printing.printHTML(html, name || '', { silent: false })
+      nudgeAppShellLayout()
+      return !!(out && out.ok)
+    }
+  } catch (e) {
+    console.warn('[tryElectronPrintDialog]', e)
+  }
   return false
 }

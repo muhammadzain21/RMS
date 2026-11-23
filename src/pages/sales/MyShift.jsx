@@ -57,67 +57,73 @@ function StatCard({ title, value, icon: Icon, iconColor = 'bg-blue-500' }) {
   )
 }
 
-/** Responsive detail table — only rendered when rows exist. */
-function SectionTable({ title, icon: Icon, headers, rows, footer }) {
-  if (!rows || !rows.length) return null
+/** Responsive detail table. */
+function SectionTable({ title, icon: Icon, headers, rows, footer, emptyText }) {
+  const hasRows = Array.isArray(rows) && rows.length > 0
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5 shadow-sm">
       <div className="mb-3 flex items-center gap-2 font-semibold text-[var(--color-text-primary)]">
         {Icon ? <Icon className="h-4 w-4 shrink-0 text-blue-500" /> : null}
         <span className="truncate">{title}</span>
         <span className="ml-auto shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          {rows.length}
+          {hasRows ? rows.length : 0}
         </span>
       </div>
-      <div className="overflow-x-auto -mx-1 px-1">
-        <table className="w-full min-w-[1100px] text-sm">
-          <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-            <tr>
-              {headers.map(h => (
-                <th
-                  key={h.key || h.label}
-                  className={`px-3 py-2.5 whitespace-nowrap ${h.align === 'r' ? 'text-right' : 'text-left'}`}
-                >
-                  {h.label}
-                </th>
+      {!hasRows ? (
+        <div className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-700">
+          {emptyText || 'No entries'}
+        </div>
+      ) : (
+        <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full min-w-[1100px] text-sm">
+            <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+              <tr>
+                {headers.map(h => (
+                  <th
+                    key={h.key || h.label}
+                    className={`px-3 py-2.5 whitespace-nowrap ${h.align === 'r' ? 'text-right' : 'text-left'}`}
+                  >
+                    {h.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((cells, i) => (
+                <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
+                  {cells.map((c, j) => (
+                    <td
+                      key={j}
+                      className={`px-3 py-2.5 font-semibold text-slate-800 dark:text-slate-100 ${
+                        c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : 'whitespace-nowrap'
+                      }`}
+                      title={typeof (c?.v ?? c) === 'string' ? (c?.v ?? c) : undefined}
+                    >
+                      {c?.node ?? c?.v ?? c}
+                    </td>
+                  ))}
+                </tr>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((cells, i) => (
-              <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
-                {cells.map((c, j) => (
-                  <td
-                    key={j}
-                    className={`px-3 py-2.5 font-semibold text-slate-800 dark:text-slate-100 ${
-                      c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : 'whitespace-nowrap'
-                    }`}
-                    title={typeof (c?.v ?? c) === 'string' ? (c?.v ?? c) : undefined}
-                  >
-                    {c?.node ?? c?.v ?? c}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-          {footer ? (
-            <tfoot>
-              <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/50">
-                {footer.map((c, j) => (
-                  <td
-                    key={j}
-                    className={`px-3 py-2.5 font-bold text-slate-900 dark:text-slate-100 ${
-                      c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : ''
-                    }`}
-                  >
-                    {c?.v ?? c}
-                  </td>
-                ))}
-              </tr>
-            </tfoot>
-          ) : null}
-        </table>
-      </div>
+            </tbody>
+            {footer ? (
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/50">
+                  {footer.map((c, j) => (
+                    <td
+                      key={j}
+                      className={`px-3 py-2.5 font-bold text-slate-900 dark:text-slate-100 ${
+                        c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : ''
+                      }`}
+                    >
+                      {c?.v ?? c}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            ) : null}
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -518,8 +524,9 @@ export default function MyShift() {
           { v: 'Total' }, '', '', '', '', '', '',
           { v: `PKR ${money(expenses.reduce((s, r) => s + Number(r.amount || 0), 0))}`, align: 'r' },
         ] : null,
+        alwaysShow: true,
       },
-    ].filter(s => s.rows.length > 0)
+    ].filter(s => s.alwaysShow || s.rows.length > 0)
   }, [tables, date, staff, onViewSale, onPrintSale])
 
   const printA4 = async () => {
@@ -666,6 +673,9 @@ export default function MyShift() {
         <Link to="/sales/pay-in-out" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
           <ArrowLeftRight size={16} /> Pay In/Out
         </Link>
+        <Link to="/expenses/new" className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          <Receipt size={16} /> Expenses
+        </Link>
         <Link to="/sales/day-close" className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
           <Moon size={16} /> Day Closing
         </Link>
@@ -703,10 +713,11 @@ export default function MyShift() {
           headers={sec.headers}
           rows={sec.rows}
           footer={sec.footer}
+          emptyText={sec.key === 'expenses' ? 'No expenses for this business date' : 'No entries'}
         />
       ))}
 
-      {!loading && !sections.length && (
+      {!loading && !sections.some(s => s.rows.length > 0) && !sections.some(s => s.alwaysShow) && (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900">
           No detail entries for this day yet. Summary widgets above stay available whether the day is open or closed.
         </div>

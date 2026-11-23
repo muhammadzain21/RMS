@@ -3,6 +3,7 @@
  *
  * Branch PC: localStorage.cloud_sync_url = VPS origin
  * VPS / HQ: leave cloud_sync_url empty
+ * Toggle: localStorage.cloud_sync_enabled = '1' | '0' (URL can stay saved when off)
  *
  * Runs while the app is in use. Writes should call requestSync() so
  * call-center status and inventory land without waiting for the timer.
@@ -53,12 +54,38 @@ function normalizeCloudUrl(raw) {
   }
 }
 
-function cloudApi() {
+/** Saved VPS URL even when sync toggle is off. */
+export function getSavedCloudUrl() {
   try {
     return normalizeCloudUrl(localStorage.getItem('cloud_sync_url') || '')
   } catch {
     return ''
   }
+}
+
+/**
+ * Sync master switch. Missing key + existing URL → treat as enabled (upgrade-safe).
+ */
+export function isCloudSyncEnabled() {
+  try {
+    const v = localStorage.getItem('cloud_sync_enabled')
+    if (v === null || v === '') return Boolean(getSavedCloudUrl())
+    return v === '1' || v === 'true'
+  } catch {
+    return false
+  }
+}
+
+export function setCloudSyncEnabled(on) {
+  try {
+    localStorage.setItem('cloud_sync_enabled', on ? '1' : '0')
+  } catch {}
+}
+
+/** Active cloud origin used by the engine (empty when toggle is off). */
+function cloudApi() {
+  if (!isCloudSyncEnabled()) return ''
+  return getSavedCloudUrl()
 }
 
 export { normalizeCloudUrl }
@@ -304,12 +331,16 @@ let onlineListener = null
 let branchListener = null
 
 export function getSyncStatus() {
+  const saved = getSavedCloudUrl()
+  const enabled = isCloudSyncEnabled()
   return {
     running: !!timer,
     busy: running,
     lastError,
     lastOkAt,
-    cloud: cloudApi(),
+    enabled,
+    cloud: saved,
+    active: enabled ? saved : '',
     local: localApi(),
     branchId: resolveSyncBranchId(),
     offline: isBrowserOffline(),
@@ -317,6 +348,10 @@ export function getSyncStatus() {
 }
 
 export async function syncOnce(token) {
+  if (!isCloudSyncEnabled()) {
+    lastError = ''
+    return { skipped: true, reason: 'cloud sync is turned off' }
+  }
   const cloud = cloudApi()
   const local = String(localApi() || '').replace(/\/+$/, '')
   if (!cloud || !local || sameHost(cloud, local)) {

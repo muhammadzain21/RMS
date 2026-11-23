@@ -477,10 +477,7 @@ export default function BackupSecurity() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Backup & Security</h1>
-          <p className="text-sm text-gray-500">
-            Manage data by branch or globally · export / restore · auto backup · delete key
-            {branchLabel ? ` · ${branchLabel}` : ''}
-          </p>
+          {branchLabel ? <p className="text-sm text-gray-500">{branchLabel}</p> : null}
         </div>
       </div>
 
@@ -509,14 +506,13 @@ export default function BackupSecurity() {
         <>
           {isAllBranches ? (
             <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-              Select a branch in the header (<b>Working as</b>) to export, restore, or purge <b>that branch only</b>.
+              Select a branch in the header to export, restore, or purge.
             </div>
           ) : null}
 
           <Card>
             <CardHeader
               title={`Branch backup — ${branchLabel || 'select a branch'}`}
-              subtitle="Export / restore only this branch’s operational data (sales, inventory, staff, expenses, …)."
               icon=""
             />
             <CardBody>
@@ -533,16 +529,12 @@ export default function BackupSecurity() {
                   </label>
                 )}
               </div>
-              <p className="text-xs text-slate-500">
-                Branch restore replaces collections for the active branch from the file. Full global backups also work — only matching branch rows are applied.
-              </p>
             </CardBody>
           </Card>
 
           <Card>
             <CardHeader
               title={`Purge this branch${branchLabel ? ` — ${branchLabel}` : ''}`}
-              subtitle="Delete selected collections for the active header branch only. Shared menu/categories/users/warehouse and other branches are kept."
               icon=""
             />
             <CardBody>
@@ -582,7 +574,6 @@ export default function BackupSecurity() {
           <Card>
             <CardHeader
               title="Global backup & restore"
-              subtitle="Full database: all branches, warehouse, menu, users, biometric, … Restore replaces everything."
               icon=""
             />
             <CardBody>
@@ -598,16 +589,12 @@ export default function BackupSecurity() {
                 )}
                 <DangerButton onClick={() => deleteAllData(false)}>Delete all data (keep users)</DangerButton>
               </div>
-              <p className="text-xs text-slate-500">
-                Full restore drops listed collections then inserts every collection from the file (including warehouse, branches, expense heads, snapshots, …).
-              </p>
             </CardBody>
           </Card>
 
           <Card>
             <CardHeader
               title="Manage global collections"
-              subtitle="Select collections to purge across the whole system. Prefer Branch mode when cleaning one location."
               icon=""
             />
             <CardBody>
@@ -639,29 +626,23 @@ export default function BackupSecurity() {
       <Card>
         <CardHeader
           title="Automatic Backup"
-          subtitle="Runs a full (global) backup at the interval below"
           icon=""
         />
         <CardBody>
-          <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-4">
+          <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-4">
             <input
               type="checkbox"
               id="autoBackup"
               checked={backupCfg.autoBackupEnabled}
               onChange={e => setBackupCfg(v => ({ ...v, autoBackupEnabled: e.target.checked }))}
-              className="mt-1 w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+              className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
             />
-            <div>
-              <label htmlFor="autoBackup" className="font-medium text-gray-900 dark:text-white cursor-pointer">
-                Enable Automatic Backups
-              </label>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Automatically create full backups at the specified interval
-              </p>
-            </div>
+            <label htmlFor="autoBackup" className="font-medium text-gray-900 dark:text-white cursor-pointer">
+              Enable Automatic Backups
+            </label>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <InputGroup label="Backup Interval (minutes)" helpText="Minimum 1 minute">
+            <InputGroup label="Backup Interval (minutes)">
               <input
                 type="number"
                 min="1"
@@ -671,7 +652,7 @@ export default function BackupSecurity() {
                 onChange={e => setBackupCfg(v => ({ ...v, autoBackupIntervalMinutes: Math.max(1, Number(e.target.value) || 1) }))}
               />
             </InputGroup>
-            <InputGroup label="Backup Folder Path" helpText="Where backup files will be saved">
+            <InputGroup label="Backup Folder Path">
               <div className="flex gap-2">
                 <input
                   className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
@@ -695,7 +676,7 @@ export default function BackupSecurity() {
             </InputGroup>
           </div>
           <div className="flex justify-end pt-2">
-            <SecondaryButton onClick={saveBackupSettings}>Save Backup Settings</SecondaryButton>
+            <SecondaryButton onClick={saveBackupSettings}>Save Settings</SecondaryButton>
           </div>
         </CardBody>
       </Card>
@@ -703,14 +684,10 @@ export default function BackupSecurity() {
       <Card>
         <CardHeader
           title="Security Settings"
-          subtitle="Configure security options for data protection"
           icon={<Shield size={18} className="text-indigo-600" />}
         />
         <CardBody>
-          <InputGroup
-            label="Sale Delete Key"
-            helpText="Secret key required when deleting sales in Sales History. Keep this secure and share only with authorized staff."
-          >
+          <InputGroup label="Sale Delete Key">
             <input
               type="password"
               className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
@@ -720,7 +697,7 @@ export default function BackupSecurity() {
             />
           </InputGroup>
           <div className="flex justify-end pt-2">
-            <SecondaryButton onClick={saveBackupSettings}>Save Security Settings</SecondaryButton>
+            <SecondaryButton onClick={saveBackupSettings}>Save Settings</SecondaryButton>
           </div>
         </CardBody>
       </Card>

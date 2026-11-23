@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { useData } from '../../state/DataContext.jsx'
 import {
-  Server, Eye, EyeOff, ArrowRight, UtensilsCrossed, Wifi, Cloud,
+  Server, Eye, EyeOff, ArrowRight, Wifi, Cloud,
   CheckCircle, AlertCircle, Monitor, Settings2, Shield,
   MapPin, Phone, Apple, Check, Sparkles,
 } from 'lucide-react'
@@ -349,7 +349,7 @@ export default function Login() {
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-white shadow-xl shadow-blue-950/20 ring-4 ring-white/25 sm:h-20 sm:w-20 lg:h-28 lg:w-28 lg:rounded-[1.75rem]">
                   {logo
                     ? <img src={logo} alt={brand} className="h-full w-full object-cover" />
-                    : <UtensilsCrossed className="h-8 w-8 text-blue-600 sm:h-9 sm:w-9 lg:h-12 lg:w-12" strokeWidth={2.2} />}
+                    : <img src="/icon.ico" alt={brand} className="h-full w-full object-cover" />}
                 </div>
                 <div className="min-w-0">
                   <h1

@@ -1,6 +1,11 @@
-import { digitsPhone, saleMatchesCustomer, saleNetSpent } from '../../customers/customerLedgerUtils.js'
 import {
-  emptyResult, filterSales, fetchSalesRange, fetchJson, fmtMoney, money, saleTotal, saleDiscount,
+  aggregateCustomerSales,
+  digitsPhone,
+  saleMatchesCustomer,
+  saleNetSpent,
+} from '../../customers/customerLedgerUtils.js'
+import {
+  emptyResult, filterSales, fetchSalesRange, fetchAllCustomers, fetchJson, fmtMoney, money, saleTotal, saleDiscount,
 } from './common.js'
 
 function menuName(menuById, it) {
@@ -49,7 +54,7 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
   const menuById = new Map(menu.map(m => [String(m.id), m]))
   const ingredientsByName = new Map((state.ingredients || []).map(i => [String(i.name || '').trim().toLowerCase(), i]))
   const staffById = new Map((state.staff || []).map(s => [String(s.id || s._id), s]))
-  const customers = state.customers || []
+  let customers = state.customers || []
 
   let branchList = Array.isArray(branches) ? branches : []
   if (!branchList.length) {
@@ -222,14 +227,38 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
       }
     }
     case 'customer_ledger': {
-      const cust = customers.find(c => String(c.id || c._id) === String(customerId || ''))
+      try {
+        const full = await fetchAllCustomers(API, token)
+        if (full.length) customers = full
+      } catch {
+        // fall back to hydrated state.customers
+      }
+
+      const selectedId = String(customerId || '').trim()
+      const cust = selectedId
+        ? customers.find(c => String(c.id || c._id) === selectedId)
+        : null
+
+      // No customer selected → list everyone; click a row in the UI to open ledger
       if (!cust) {
+        const agg = aggregateCustomerSales(sales, customers)
+        const sorted = [...customers].sort((a, b) =>
+          String(a.name || a.phone || '').localeCompare(String(b.name || b.phone || ''), undefined, { sensitivity: 'base' }),
+        )
+        const rows = sorted.map((c) => {
+          const id = String(c.id || c._id || '')
+          const a = agg[id] || { visits: 0, spent: 0 }
+          return [c.name || '—', c.phone || '', a.visits, fmtMoney(a.spent)]
+        })
         return {
-          headers: ['Date', 'Bill #', 'Token', 'Type', 'Payment', 'Amount'],
-          rows: [],
-          summary: [{ label: 'Note', amount: 'Select a customer' }],
+          headers: ['Customer', 'Phone', 'Visits', 'Spent (PKR)'],
+          rows,
+          rowMeta: sorted.map(c => ({ customerId: String(c.id || c._id || '') })),
+          interactive: 'customer_pick',
+          summary: [{ label: 'Customers', amount: String(rows.length) }],
         }
       }
+
       const rows = sales
         .filter(s => saleMatchesCustomer(s, cust))
         .map(s => [
@@ -244,6 +273,9 @@ export async function runSalesReport({ type, from, to, API, token, state, custom
       return {
         headers: ['Date', 'Bill #', 'Token', 'Type', 'Payment', 'Amount'],
         rows,
+        interactive: 'customer_ledger',
+        selectedCustomerId: String(cust.id || cust._id || ''),
+        selectedCustomerName: cust.name || cust.phone || 'Customer',
         summary: [
           { label: 'Customer', amount: cust.name || '' },
           { label: 'Visits', amount: String(rows.length) },

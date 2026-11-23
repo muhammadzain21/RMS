@@ -45,6 +45,27 @@ function sendEscPosTcp(host, port, data) {
   })
 }
 
+/** Connect-only probe (no bytes written) for printer reachability checks. */
+function probeTcpPort(host, port) {
+  return new Promise((resolve) => {
+    const h = String(host || '').trim()
+    const p = Number(port) || 9100
+    if (!h) return resolve({ ok: false, error: 'missing host' })
+    const socket = net.connect({ host: h, port: p })
+    let settled = false
+    const done = (result) => {
+      if (settled) return
+      settled = true
+      try { socket.destroy() } catch {}
+      resolve(result)
+    }
+    socket.setTimeout(700)
+    socket.on('connect', () => done({ ok: true, host: h, port: p }))
+    socket.on('timeout', () => done({ ok: false, error: 'tcp timeout' }))
+    socket.on('error', (e) => done({ ok: false, error: String(e && e.message || e) }))
+  })
+}
+
 async function resolvePrinterHost(deviceName, explicitHost) {
   const direct = String(explicitHost || '').trim()
   if (looksLikeIpv4(direct)) return direct
@@ -492,63 +513,223 @@ ipcMain.handle('printing:raw', async (_event, { text, deviceName }) => {
   })
 })
 
-// Fast path: ESC/POS bytes straight to thermal LAN port 9100 (no Chromium / HTML / PDF)
-ipcMain.handle('printing:escpos', async (_event, { text, deviceName, host, port }) => {
+// Fast path: ESC/POS bytes straight to thermal LAN port 9100 (no Chromium / HTML / PDF).
+// Only when an explicit LAN IP is provided. Do NOT fall back to Windows RAW spooler —
+// RAW ESC/POS on a normal Windows printer driver prints a tiny blank slip.
+ipcMain.handle('printing:escpos', async (_event, { text, host, port }) => {
   try {
     const payload = text == null ? '' : String(text)
     if (!payload) return { ok: false, error: 'empty payload' }
-    const resolved = await resolvePrinterHost(deviceName, host)
-    if (resolved) {
-      const tcp = await sendEscPosTcp(resolved, port || 9100, payload)
-      if (tcp.ok) return tcp
-      console.warn('[print] escpos tcp failed:', tcp.error, '| host:', resolved)
+    const explicit = String(host || '').trim()
+    if (!looksLikeIpv4(explicit)) {
+      return { ok: false, error: 'no printer host' }
     }
-    // Fallback: Windows RAW spooler (still much faster than HTML)
-    if (printer && deviceName) {
-      return await new Promise((resolve) => {
-        try {
-          printer.printDirect({
-            data: payload,
-            printer: deviceName,
-            type: 'RAW',
-            success: (jobID) => resolve({ ok: true, jobID, via: 'spooler' }),
-            error: (err) => resolve({ ok: false, error: String(err) }),
-          })
-        } catch (e) {
-          resolve({ ok: false, error: String(e && e.message || e) })
-        }
-      })
-    }
-    return { ok: false, error: resolved ? 'tcp failed' : 'no printer host' }
+    const tcp = await sendEscPosTcp(explicit, port || 9100, payload)
+    if (tcp.ok) return tcp
+    console.warn('[print] escpos tcp failed:', tcp.error, '| host:', explicit)
+    return { ok: false, error: tcp.error || 'tcp failed', host: explicit }
   } catch (e) {
     return { ok: false, error: String(e && e.message || e) }
   }
 })
 
-// IPC: list printers (for settings UI)
-ipcMain.handle('printing:list', async () => {
+async function listSystemPrinters() {
   try {
     const win = BrowserWindow.getFocusedWindow() || mainWindow
-    if (!win) return []
     let list = []
-    try {
-      if (typeof win.webContents.getPrintersAsync === 'function') {
-        list = await win.webContents.getPrintersAsync()
-      } else if (typeof win.webContents.getPrinters === 'function') {
-        list = win.webContents.getPrinters()
-      }
-    } catch {}
+    if (win) {
+      try {
+        if (typeof win.webContents.getPrintersAsync === 'function') {
+          list = await win.webContents.getPrintersAsync()
+        } else if (typeof win.webContents.getPrinters === 'function') {
+          list = win.webContents.getPrinters()
+        }
+      } catch {}
+    }
     if (!Array.isArray(list) || list.length === 0) {
       try {
         if (printer && typeof printer.getPrinters === 'function') {
           const pList = printer.getPrinters() || []
-          list = pList.map(p => ({ name: p.name || p.deviceName || '', deviceName: p.deviceName || p.name || '', isDefault: Boolean(p.isDefault || p.default) }))
+          list = pList.map(p => ({
+            name: p.name || p.deviceName || '',
+            displayName: p.name || p.deviceName || '',
+            deviceName: p.deviceName || p.name || '',
+            isDefault: Boolean(p.isDefault || p.default),
+            status: p.status,
+          }))
         }
       } catch {}
     }
     return Array.isArray(list) ? list : []
-  } catch { return [] }
+  } catch {
+    return []
+  }
+}
+
+function normalizePrinterKey(s) {
+  return String(s || '').trim().toLowerCase()
+}
+
+async function getWindowsPrinterInfo(deviceName) {
+  const name = String(deviceName || '').trim()
+  if (!name) return null
+  try {
+    const safe = name.replace(/'/g, "''")
+    const stdout = await new Promise((resolve, reject) => {
+      execFile(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `$p = Get-Printer -Name '${safe}' -ErrorAction Stop; [pscustomobject]@{ Name=$p.Name; PrinterStatus=[string]$p.PrinterStatus; PortName=$p.PortName; JobCount=$p.JobCount } | ConvertTo-Json -Compress`,
+        ],
+        { timeout: 5000, windowsHide: true },
+        (err, out) => (err ? reject(err) : resolve(String(out || ''))),
+      )
+    })
+    const parsed = JSON.parse(String(stdout || '').trim() || 'null')
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function classifyPrinterStatus(statusText, chromeStatus) {
+  const s = String(statusText || '').toLowerCase()
+  if (/offline|error|not.?available|door.?open|paper.?out|paused|jam/.test(s)) {
+    return { reachable: false, label: statusText || 'Offline / error' }
+  }
+  if (/normal|idle|printing|warmup|busy|pending|ready/.test(s)) {
+    return { reachable: true, label: statusText || 'Ready' }
+  }
+  // Chromium printer status: 0 often means idle/OK
+  if (chromeStatus === 0 || chromeStatus === '0') {
+    return { reachable: true, label: 'Installed' }
+  }
+  if (statusText) return { reachable: true, label: String(statusText) }
+  return { reachable: true, label: 'Found on this PC' }
+}
+
+// IPC: list printers (for settings UI)
+ipcMain.handle('printing:list', async () => {
+  try {
+    return await listSystemPrinters()
+  } catch {
+    return []
+  }
 })
+
+/**
+ * Check whether a saved Windows printer name (and optional LAN IP) is installed / reachable.
+ * Body: { deviceName?: string, host?: string, port?: number }
+ */
+ipcMain.handle('printing:check', async (_event, opts = {}) => {
+  try {
+    const deviceName = String(opts.deviceName || opts.name || '').trim()
+    const hostIn = String(opts.host || opts.ip || '').trim()
+    const port = Number(opts.port) || 9100
+    if (!deviceName && !hostIn) {
+      return { ok: false, found: false, reachable: false, message: 'No printer name or IP' }
+    }
+
+    const list = await listSystemPrinters()
+    const key = normalizePrinterKey(deviceName)
+    const match = key
+      ? list.find((p) => {
+        const n = normalizePrinterKey(p.name || p.displayName || p.deviceName)
+        const d = normalizePrinterKey(p.deviceName)
+        return n === key || d === key
+      })
+      : null
+
+    const winInfo = deviceName ? await getWindowsPrinterInfo(deviceName) : null
+    const statusText = winInfo?.PrinterStatus || (match ? 'Installed' : '')
+    const classified = match || winInfo
+      ? classifyPrinterStatus(statusText, match?.status)
+      : { reachable: false, label: 'Not found on this PC' }
+
+    let host = looksLikeIpv4(hostIn) ? hostIn : ''
+    if (!host && deviceName) {
+      host = await resolvePrinterHost(deviceName, '')
+    }
+    if (!host && winInfo?.PortName) {
+      const m = String(winInfo.PortName).match(/(\d{1,3}(?:\.\d{1,3}){3})/)
+      if (m) host = m[1]
+    }
+
+    let tcpOk = null
+    let tcpError = ''
+    if (host) {
+      const probe = await probeTcpPort(host, port)
+      tcpOk = Boolean(probe.ok)
+      if (!probe.ok) tcpError = probe.error || 'tcp failed'
+    }
+
+    const found = Boolean(match || winInfo)
+    const reachable = found
+      ? (tcpOk === false ? false : classified.reachable)
+      : (tcpOk === true)
+
+    let message = ''
+    if (!deviceName && host) {
+      message = tcpOk ? `Network printer ${host} reachable` : `Network printer ${host} not reachable`
+    } else if (!found) {
+      message = tcpOk
+        ? `Name not in Windows printers, but ${host}:${port} responds`
+        : `Printer "${deviceName}" not found on this PC — paste the exact name from Devices and Printers`
+    } else if (tcpOk === false && host) {
+      message = `Installed (${classified.label}) but ${host}:${port} not reachable`
+    } else if (tcpOk === true) {
+      message = `Connected · ${classified.label} · ${host}:${port} OK`
+    } else {
+      message = classified.reachable
+        ? `Connected · ${classified.label}`
+        : `Found but ${classified.label}`
+    }
+
+    return {
+      ok: true,
+      found,
+      reachable: Boolean(reachable),
+      status: classified.label,
+      portName: winInfo?.PortName || '',
+      host: host || '',
+      tcpOk,
+      tcpError,
+      deviceName: match?.name || match?.deviceName || deviceName,
+      message,
+    }
+  } catch (e) {
+    return { ok: false, found: false, reachable: false, message: String(e && e.message || e) }
+  }
+})
+
+function resolveChromiumPrinterName(requested, list) {
+  const want = String(requested || '').trim()
+  if (!want) return ''
+  const rows = Array.isArray(list) ? list : []
+  const key = want.toLowerCase()
+  const exact = rows.find((p) => {
+    const n = String(p.name || '').trim()
+    const d = String(p.displayName || p.deviceName || '').trim()
+    return n === want || d === want
+  })
+  if (exact) return String(exact.name || exact.displayName || exact.deviceName || want).trim()
+  const ci = rows.find((p) => {
+    const n = String(p.name || '').trim().toLowerCase()
+    const d = String(p.displayName || p.deviceName || '').trim().toLowerCase()
+    return n === key || d === key
+  })
+  if (ci) return String(ci.name || ci.displayName || ci.deviceName || want).trim()
+  const partial = rows.find((p) => {
+    const n = String(p.name || '').trim().toLowerCase()
+    const d = String(p.displayName || p.deviceName || '').trim().toLowerCase()
+    return (n && (n.includes(key) || key.includes(n))) || (d && (d.includes(key) || key.includes(d)))
+  })
+  if (partial) return String(partial.name || partial.displayName || partial.deviceName || want).trim()
+  return want
+}
 
 // IPC: print HTML in a dedicated window (never mainWindow — window.print() on the
 // POS shell breaks Electron layout / 100dvh after the dialog closes).
@@ -563,10 +744,39 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
     skipTaskbar: true,
     webPreferences: { backgroundThrottling: false },
   })
+  let destroyDelayMs = 200
   try {
-    await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || '')))
-    // Brief settle for layout; thermal slips are text-only so keep this short
-    await new Promise((r) => setTimeout(r, 40))
+    const printers = await listSystemPrinters()
+    const resolvedName = resolveChromiumPrinterName(deviceName, printers)
+    if (deviceName && resolvedName !== String(deviceName).trim()) {
+      console.log('[print] resolved printer name:', deviceName, '→', resolvedName)
+    }
+    if (useSilent && deviceName) {
+      const known = printers.some((p) => {
+        const n = String(p.name || p.displayName || p.deviceName || '').trim().toLowerCase()
+        return n && (
+          n === String(deviceName).trim().toLowerCase()
+          || n === String(resolvedName).trim().toLowerCase()
+        )
+      })
+      if (!known) {
+        console.warn('[print] printer not in Chromium list:', deviceName, '| available:', printers.map(p => p.name || p.displayName).filter(Boolean))
+        return {
+          ok: false,
+          error: `Printer "${deviceName}" not found. Pick the exact name from the Printers page list.`,
+        }
+      }
+    }
+
+    await new Promise((resolve, reject) => {
+      const onFail = (e) => reject(e)
+      printWin.webContents.once('did-finish-load', () => resolve())
+      printWin.webContents.once('did-fail-load', (_e, code, desc) => onFail(new Error(desc || `load failed (${code})`)))
+      printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(html || ''))).catch(onFail)
+    })
+    // Let images / layout settle — 40ms was printing blank slips
+    await new Promise((r) => setTimeout(r, 250))
+
     if (!useSilent) {
       try {
         printWin.center()
@@ -574,6 +784,7 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
         printWin.focus()
       } catch {}
     }
+
     const result = await new Promise((resolve) => {
       try {
         printWin.webContents.print(
@@ -581,7 +792,7 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
             silent: useSilent,
             printBackground: true,
             margins: { marginType: 'none' },
-            deviceName: deviceName || undefined,
+            deviceName: resolvedName || undefined,
           },
           (success, failureReason) => resolve({ success: !!success, failureReason })
         )
@@ -590,22 +801,26 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
       }
     })
     if (!result.success) {
-      console.error('[print] print-html failed:', result.failureReason || 'unknown', '| device:', deviceName, '| silent:', useSilent)
+      console.error('[print] print-html failed:', result.failureReason || 'unknown', '| device:', resolvedName || deviceName, '| silent:', useSilent)
       return { ok: false, error: result.failureReason || 'print failed' }
     }
-    return { ok: true }
+    // Keep window alive briefly so the spooler receives the job
+    destroyDelayMs = useSilent ? 1200 : 400
+    return { ok: true, deviceName: resolvedName || deviceName || '' }
   } catch (e) {
     console.error('[print] print-html error:', e && e.message || e)
     return { ok: false, error: String(e && e.message || e) }
   } finally {
-    try { printWin.destroy() } catch {}
-    // Re-apply zoom on the POS window — print dialogs can leave Chromium zoom/layout odd
-    try {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        applySavedZoom(mainWindow)
-        try { mainWindow.focus() } catch {}
-      }
-    } catch {}
+    const win = printWin
+    setTimeout(() => {
+      try { if (win && !win.isDestroyed()) win.destroy() } catch {}
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          applySavedZoom(mainWindow)
+          try { mainWindow.focus() } catch {}
+        }
+      } catch {}
+    }, destroyDelayMs)
   }
 })
 

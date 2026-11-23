@@ -17,7 +17,6 @@ const SettingsSchema = new mongoose.Schema({
   logo: { type: String, default: '' }, // base64 data URL
   taxRate: { type: Number, default: 0 },
   // Sell page: show Personal (complimentary) payment option
-  showPersonalPayment: { type: Boolean, default: false },
   // Sell page bill fields — unchecked = hidden on Sell (all branches). Default all off.
   sellPageFields: {
     type: {
@@ -49,10 +48,12 @@ const SettingsSchema = new mongoose.Schema({
   // Auto-backup destination folder (Electron desktop only)
   backupFolderPath: { type: String, default: '' },
   // Printing preferences
-  // KOT and Void slips use the same printer
   kotPrinterName: { type: String, default: '' },
   // Optional LAN IP for millisecond ESC/POS KOT (TCP 9100). If empty, resolved from Windows printer port.
   kotPrinterIp: { type: String, default: '' },
+  // Void slip (falls back to KOT name/IP when empty)
+  voidPrinterName: { type: String, default: '' },
+  voidPrinterIp: { type: String, default: '' },
   // Bill slip and Customer Bill use the same printer
   billPrinterName: { type: String, default: '' },
   billPrinterIp: { type: String, default: '' },

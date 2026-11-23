@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../state/AuthContext.jsx'
-import { startSyncEngine, stopSyncEngine, getSyncStatus, syncOnce } from '../sync/SyncEngine.js'
+import {
+  startSyncEngine,
+  stopSyncEngine,
+  getSyncStatus,
+  syncOnce,
+  isCloudSyncEnabled,
+  getSavedCloudUrl,
+} from '../sync/SyncEngine.js'
 
 /**
- * Starts cloud↔local sync when localStorage.cloud_sync_url is set
- * and differs from the local API base.
+ * Starts cloud↔local sync when URL is saved and the sync toggle is on.
  */
 export default function SyncBootstrap() {
   const { token } = useAuth()
@@ -15,10 +21,18 @@ export default function SyncBootstrap() {
       stopSyncEngine()
       return
     }
-    startSyncEngine(() => token)
+    if (isCloudSyncEnabled() && getSavedCloudUrl()) {
+      startSyncEngine(() => token)
+    } else {
+      stopSyncEngine()
+    }
     const onSync = () => setSt(getSyncStatus())
     const onConfig = () => {
-      startSyncEngine(() => token)
+      if (isCloudSyncEnabled() && getSavedCloudUrl()) {
+        startSyncEngine(() => token)
+      } else {
+        stopSyncEngine()
+      }
       setSt(getSyncStatus())
     }
     window.addEventListener('epicspire:sync', onSync)
@@ -32,15 +46,15 @@ export default function SyncBootstrap() {
 
   useEffect(() => {
     const onOnline = () => {
-      if (!token) return
+      if (!token || !isCloudSyncEnabled()) return
       syncOnce(token).then(() => setSt(getSyncStatus())).catch(() => setSt(getSyncStatus()))
     }
     window.addEventListener('online', onOnline)
     return () => window.removeEventListener('online', onOnline)
   }, [token])
 
-  // Tiny status chip only when cloud sync is configured
-  if (!st.cloud) return null
+  // Status chip only when a cloud URL is saved and sync is enabled
+  if (!st.cloud || !st.enabled) return null
 
   const offline = !!st.offline
   const title = offline

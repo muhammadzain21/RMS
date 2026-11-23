@@ -44,6 +44,26 @@ export async function fetchSalesRange(API, token, from, to) {
   return rows.map(x => ({ ...x, id: x.id || x._id }))
 }
 
+/** Paginate /api/customers until all rows are loaded (API max page size is 100). */
+export async function fetchAllCustomers(API, token) {
+  const all = []
+  let page = 1
+  let pages = 1
+  while (page <= pages && page <= 200) {
+    const data = await fetchJson(API, `/api/customers?limit=100&page=${page}`, token)
+    if (Array.isArray(data)) {
+      all.push(...data)
+      break
+    }
+    const rows = Array.isArray(data?.rows) ? data.rows : []
+    all.push(...rows)
+    pages = Math.max(1, Number(data?.pages || 1))
+    if (!rows.length) break
+    page += 1
+  }
+  return all.map(x => ({ ...x, id: x.id || x._id }))
+}
+
 export function emptyResult(headers = []) {
   return { headers, rows: [], summary: [] }
 }

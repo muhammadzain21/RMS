@@ -85,7 +85,7 @@ export default function Layout() {
     : `${location.pathname}::${activeBranchId || 'none'}`
 
   return (
-    <div className="min-h-[100dvh] flex bg-transparent">
+    <div className="h-full min-h-0 flex bg-transparent">
       <Sidebar
         user={user}
         brand={brand}
@@ -99,7 +99,7 @@ export default function Layout() {
         hidden={sidebarHidden}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-[100dvh] h-[100dvh] overflow-y-auto bg-transparent">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-hidden bg-transparent">
         <Header
           brand={brand}
           onMenuClick={() => setMobileOpen(true)}
@@ -112,7 +112,7 @@ export default function Layout() {
           sidebarHidden={sidebarHidden}
           onToggleSidebarHidden={toggleSidebarHidden}
         />
-        <main className="px-4 py-4 sm:px-6 sm:py-6 overflow-x-auto flex-1 bg-transparent pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+        <main className="px-4 py-4 sm:px-6 sm:py-6 overflow-x-auto flex-1 min-h-0 bg-transparent pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
           <ErrorBoundary key={pageKey}>
             <Outlet key={pageKey} />
           </ErrorBoundary>

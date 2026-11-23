@@ -1,20 +1,32 @@
 import { getAPIBase } from './shared.js'
 
+function looksLikeIpv4(s) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(String(s || '').trim())
+}
+
+/**
+ * Network thermal print (TCP 9100). Only runs when an explicit LAN IP is set.
+ * Named Windows printers must use HTML silent print — RAW ESC/POS to a GDI driver
+ * produces a tiny blank slip in Electron.
+ */
 export async function tryEscPosPrint(text, { deviceName = '', host = '', type = 'kot' } = {}) {
   if (!text) return false
-  // Electron path only (do NOT also hit server — that doubled a 2.5s timeout when IP was wrong)
+  const ip = String(host || '').trim()
+  if (!looksLikeIpv4(ip)) return false
+
+  // Electron path only (do NOT also hit server — that doubled timeouts when IP was wrong)
   try {
     if (window?.printing?.printEscPos) {
-      const out = await window.printing.printEscPos(text, { deviceName, host, port: 9100 })
+      const out = await window.printing.printEscPos(text, { deviceName, host: ip, port: 9100 })
       if (out?.ok) return true
       if (out?.error) console.warn('[tryEscPosPrint] Electron:', out.error)
-      // Spooler RAW already attempted inside Electron when TCP fails — stop here
       return false
     }
   } catch (e) {
     console.warn('[tryEscPosPrint] Electron:', e)
   }
-  // Browser only: one server ESC/POS call (reads kotPrinterIp from settings if host empty)
+
+  // Browser only: server ESC/POS to the configured IP
   try {
     const api = getAPIBase()
     const token = (
@@ -27,7 +39,7 @@ export async function tryEscPosPrint(text, { deviceName = '', host = '', type = 
     const res = await fetch(`${api}/api/print/escpos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ text, type, host, printerName: deviceName, port: 9100 }),
+      body: JSON.stringify({ text, type, host: ip, printerName: deviceName, port: 9100 }),
       signal: controller?.signal,
     })
     if (timer) clearTimeout(timer)

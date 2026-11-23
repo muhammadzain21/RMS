@@ -5,7 +5,6 @@ const METHODS = [
   { key: 'cash', label: 'Cash', active: 'from-emerald-500 to-emerald-600', border: 'border-emerald-400', inactive: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300' },
   { key: 'bank', label: 'Bank', active: 'from-blue-500 to-blue-600', border: 'border-blue-400', inactive: 'border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300' },
   { key: 'card', label: 'Card', active: 'from-indigo-500 to-indigo-600', border: 'border-indigo-400', inactive: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300' },
-  { key: 'complimentary', label: 'Personal', active: 'from-rose-500 to-rose-600', border: 'border-rose-400', inactive: 'border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300' },
   { key: 'staff', label: 'Staff', active: 'from-violet-500 to-violet-600', border: 'border-violet-400', inactive: 'border-violet-200 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300' },
 ]
 
@@ -20,7 +19,6 @@ export default function PaymentMethodDialog({
   initialCashReceived = 0,
   initialStaffId = '',
   staff = [],
-  showPersonalPayment = false,
   onConfirm = () => {},
   onCancel = () => {},
 }) {
@@ -42,10 +40,7 @@ export default function PaymentMethodDialog({
     setErr('')
   }, [open, initialMethod, initialBankChannel, initialLast4, initialCashReceived, initialStaffId, totalAmount])
 
-  const methods = useMemo(
-    () => METHODS.filter(m => m.key !== 'complimentary' || showPersonalPayment),
-    [showPersonalPayment],
-  )
+  const methods = METHODS
 
   const activeStaff = useMemo(
     () => (staff || []).filter(s => s.status !== 'Inactive' && s.status !== 'inactive'),
@@ -212,12 +207,6 @@ export default function PaymentMethodDialog({
                   ))}
                 </select>
               </label>
-            </div>
-          )}
-
-          {method === 'complimentary' && (
-            <div className="text-sm text-rose-700 dark:text-rose-300 font-medium rounded-xl border-2 border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-4 py-3">
-              Personal / complimentary — no cash collected.
             </div>
           )}
 

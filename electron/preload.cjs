@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('printing', {
   listPrinters: async () => {
     try { return await ipcRenderer.invoke('printing:list') } catch { return [] }
   },
+  /** Check if a Windows printer name / LAN IP is installed or reachable. */
+  checkPrinter: async (opts = {}) => {
+    try { return await ipcRenderer.invoke('printing:check', opts) } catch (e) { return { ok: false, reachable: false, message: String(e && e.message || e) } }
+  },
   printRaw: async (text, deviceName) => {
     try { return await ipcRenderer.invoke('printing:raw', { text, deviceName }) } catch (e) { return { ok: false, error: String(e) } }
   },

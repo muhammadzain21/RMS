@@ -76,6 +76,29 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+  Browser / PWA default "60% zoom" without css zoom.
+  css zoom leaves a white void under 100dvh shells; transform+compensated size fills the window.
+*/
+html.browser-ui-scaled {
+  --browser-ui-scale: 0.6;
+  overflow: hidden;
+}
+html.browser-ui-scaled,
+html.browser-ui-scaled body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+html.browser-ui-scaled #root {
+  transform: scale(var(--browser-ui-scale));
+  transform-origin: 0 0;
+  width: calc(100% / var(--browser-ui-scale));
+  height: calc(100% / var(--browser-ui-scale));
+  overflow: hidden;
+}
+
 /* PWA / notch safe areas — keep header & sidebar buttons tappable */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);

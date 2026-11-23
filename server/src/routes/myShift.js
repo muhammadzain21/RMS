@@ -94,7 +94,8 @@ router.get('/', async (req, res, next) => {
       DayClose.find({ date, ...bf }).sort({ createdAt: 1 }).lean(),
       Sale.find({ date, ...bf, ...um }).sort({ createdAt: 1 }).lean(),
       PayInOut.find({ date, ...bf, ...um }).sort({ createdAt: 1 }).lean(),
-      Expense.find({ date, ...bf, ...um }).sort({ createdAt: 1 }).lean(),
+      // Branch-wide for the business date (same as openings) — not limited to current user
+      Expense.find({ date, ...bf }).sort({ createdAt: 1 }).lean(),
       CashCount.find({ date, ...bf, ...um }).sort({ createdAt: 1 }).lean(),
       Void.find({
         ...bf,
@@ -438,19 +439,37 @@ router.get('/', async (req, res, next) => {
         staffSales: staffSalesRows.map(mapSale),
         payIn: payInRows.map(mapPay),
         payOut: payOutRows.map(mapPay),
-        expenses: expenseModuleRows.map(e => ({
-          id: String(e._id || ''),
-          at: e.createdAt,
-          date: e.date || date,
-          amount: money(e.amount),
-          category: e.expenseHead || e.category || '',
-          expenseHead: e.expenseHead || e.category || '',
-          description: e.description || e.note || '',
-          accountHead: e.accountHead || 'cash',
-          status: e.status === 'approved' ? 'approved' : 'pending',
-          userName: e.userName || e.paidBy || '',
-          imageUrl: e.imageUrl || '',
-        })),
+        expenses: expenseModuleRows.map(e => {
+          const lines = Array.isArray(e.lines) ? e.lines : []
+          const headFromLines = [...new Set(lines.map(l => l.expenseHead).filter(Boolean))]
+          const descFromLines = lines.map(l => String(l.description || '').trim()).filter(Boolean)
+          const imageFromLines = lines.find(l => l?.imageUrl)?.imageUrl || ''
+          const expenseHead = headFromLines.length
+            ? (headFromLines.length === 1 ? headFromLines[0] : headFromLines.join(', '))
+            : (e.expenseHead || e.category || '')
+          const description = descFromLines.length
+            ? descFromLines.join(' · ')
+            : (e.description || e.note || '')
+          return {
+            id: String(e._id || ''),
+            at: e.createdAt,
+            date: e.date || date,
+            amount: money(e.amount),
+            category: expenseHead,
+            expenseHead,
+            description,
+            accountHead: e.accountHead || 'cash',
+            status: e.status === 'approved' ? 'approved' : 'pending',
+            userName: e.userName || e.paidBy || '',
+            imageUrl: e.imageUrl || imageFromLines || '',
+            lines: lines.map(l => ({
+              expenseHead: l.expenseHead || '',
+              description: l.description || '',
+              amount: money(l.amount),
+              imageUrl: l.imageUrl || '',
+            })),
+          }
+        }),
         payInOut: (payMoves || []).map(mapPay),
         supplierPayments: (warehousePayments || []).map(p => ({
           id: String(p._id || ''),

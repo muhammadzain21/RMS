@@ -51,8 +51,6 @@ export default function BillSummary({
   // Amount customer paid (cash) — excess becomes waiter tip / pay-out
   cashReceived = 0,
   onCashReceivedChange = ()=>{},
-  // Settings: show Personal (complimentary) payment option
-  showPersonalPayment = false,
   // Settings Restriction tab — which bill fields appear on Sell (default all hidden)
   sellPageFields = {},
 }) {
@@ -139,7 +137,6 @@ export default function BillSummary({
           {key:'cash',label:'Cash',active:'from-emerald-500 to-emerald-600',border:'border-emerald-400',inactive:'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900/30'},
           {key:'bank',label:'Bank',active:'from-blue-500 to-blue-600',border:'border-blue-400',inactive:'border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30'},
           {key:'card',label:'Card',active:'from-indigo-500 to-indigo-600',border:'border-indigo-400',inactive:'border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/30'},
-          ...(showPersonalPayment ? [{key:'complimentary',label:'Personal',active:'from-rose-500 to-rose-600',border:'border-rose-400',inactive:'border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/30'}] : []),
           {key:'staff',label:'Staff',active:'from-violet-500 to-violet-600',border:'border-violet-400',inactive:'border-violet-200 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-900/30'},
         ].map((pm)=> (
           <button
@@ -392,12 +389,6 @@ export default function BillSummary({
       <div className="border-t border-violet-200 dark:border-violet-800 pt-2 mt-2">
         <div className="text-xs sm:text-sm font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded px-2 py-1.5">
           Staff purchase — deducted from salary unless paid earlier
-        </div>
-      </div>
-      ) : paymentMethod === 'complimentary' ? (
-      <div className="border-t border-rose-200 dark:border-rose-800 pt-2 mt-2">
-        <div className="text-xs sm:text-sm font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-2 py-1.5">
-          Personal order — no payment collected
         </div>
       </div>
       ) : null}

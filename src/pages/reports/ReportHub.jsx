@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  ArrowLeft,
   Banknote,
   Boxes,
   CalendarRange,
@@ -87,16 +88,29 @@ export default function ReportHub({
     setResult({ headers: [], rows: [], summary: [] })
     setSearch('')
     setHasGenerated(false)
+    setExtra({})
   }, [reportType])
 
-  const filteredRows = useMemo(() => {
+  const filteredBundle = useMemo(() => {
     const rows = result.rows || []
+    const meta = Array.isArray(result.rowMeta) ? result.rowMeta : []
     const q = String(search || '').trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(row =>
-      (Array.isArray(row) ? row : []).some(cell => String(cell ?? '').toLowerCase().includes(q)),
-    )
-  }, [result.rows, search])
+    if (!q) return { rows, meta }
+    const nextRows = []
+    const nextMeta = []
+    rows.forEach((row, i) => {
+      const hit = (Array.isArray(row) ? row : []).some(cell =>
+        String(cell ?? '').toLowerCase().includes(q),
+      )
+      if (!hit) return
+      nextRows.push(row)
+      nextMeta.push(meta[i])
+    })
+    return { rows: nextRows, meta: nextMeta }
+  }, [result.rows, result.rowMeta, search])
+
+  const filteredRows = filteredBundle.rows
+  const filteredMeta = filteredBundle.meta
 
   const columnTotals = useMemo(
     () => computeColumnTotals(result.headers || [], filteredRows),
@@ -149,11 +163,11 @@ export default function ReportHub({
     return base
   }, [result.summary, result.headers, filteredRows.length, columnTotals])
 
-  const generate = async () => {
+  const generate = useCallback(async (overrides = {}) => {
     if (!reportType) return
     setLoading(true)
     try {
-      const out = await runReport({
+      const params = {
         type: reportType,
         from,
         to,
@@ -162,7 +176,9 @@ export default function ReportHub({
         state,
         branches,
         ...extra,
-      })
+        ...overrides,
+      }
+      const out = await runReport(params)
       setResult(out || { headers: [], rows: [], summary: [] })
       setHasGenerated(true)
     } catch (e) {
@@ -172,7 +188,58 @@ export default function ReportHub({
     } finally {
       setLoading(false)
     }
+  }, [reportType, from, to, API, token, state, branches, extra, runReport])
+
+  const openCustomerLedger = async (customerId) => {
+    const id = String(customerId || '').trim()
+    if (!id) return
+    setExtra(x => ({ ...x, customerId: id }))
+    setSearch('')
+    await generate({ customerId: id })
   }
+
+  const backToCustomerList = async () => {
+    setExtra(x => {
+      const next = { ...x }
+      delete next.customerId
+      return next
+    })
+    setSearch('')
+    await generate({ customerId: '' })
+  }
+
+  // Customer Ledger: load the full customer list as soon as the report type is selected
+  useEffect(() => {
+    if (reportType !== 'customer_ledger') return
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      try {
+        const out = await runReport({
+          type: 'customer_ledger',
+          from,
+          to,
+          API,
+          token,
+          state,
+          branches,
+        })
+        if (cancelled) return
+        setResult(out || { headers: [], rows: [], summary: [] })
+        setHasGenerated(true)
+      } catch (e) {
+        if (cancelled) return
+        toast.error(e?.message || 'Failed to load customers')
+        setResult({ headers: [], rows: [], summary: [] })
+        setHasGenerated(true)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+    // Only when switching into Customer Ledger — dates still use Generate
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType])
 
   const stamp = exportDateStamp(from, to, businessDate)
   const fileBase = `${String(typeLabel).replace(/\s+/g, '-')}-${stamp}`
@@ -308,7 +375,7 @@ export default function ReportHub({
           </div>
           <button
             type="button"
-            onClick={generate}
+            onClick={() => generate()}
             disabled={loading}
             className="ui-btn ui-btn-primary inline-flex min-h-[42px] items-center gap-2 px-5 disabled:opacity-60"
           >
@@ -353,10 +420,28 @@ export default function ReportHub({
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
           <div className="min-w-0">
-            <div className="truncate text-sm font-extrabold text-slate-900 dark:text-white">{typeLabel}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {result.interactive === 'customer_ledger' ? (
+                <button
+                  type="button"
+                  onClick={backToCustomerList}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  <ArrowLeft size={13} /> All customers
+                </button>
+              ) : null}
+              <div className="truncate text-sm font-extrabold text-slate-900 dark:text-white">
+                {result.interactive === 'customer_ledger' && result.selectedCustomerName
+                  ? `Ledger · ${result.selectedCustomerName}`
+                  : result.interactive === 'customer_pick'
+                    ? 'Select a customer'
+                    : typeLabel}
+              </div>
+            </div>
             <div className="text-xs text-slate-500">
               {rangeLabel}
               {hasGenerated ? ` · ${filteredRows.length.toLocaleString()} row${filteredRows.length === 1 ? '' : 's'}` : ''}
+              {result.interactive === 'customer_pick' ? ' · click a row to open ledger' : ''}
             </div>
           </div>
           {hasColumnTotals ? (
@@ -410,10 +495,17 @@ export default function ReportHub({
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row, i) => (
+                filteredRows.map((row, i) => {
+                  const clickable = result.interactive === 'customer_pick' && filteredMeta[i]?.customerId
+                  return (
                   <tr
                     key={i}
-                    className="border-t border-slate-100 odd:bg-white even:bg-slate-50/70 dark:border-slate-800 dark:odd:bg-slate-900 dark:even:bg-slate-950/40"
+                    onClick={clickable ? () => openCustomerLedger(filteredMeta[i].customerId) : undefined}
+                    className={`border-t border-slate-100 odd:bg-white even:bg-slate-50/70 dark:border-slate-800 dark:odd:bg-slate-900 dark:even:bg-slate-950/40 ${
+                      clickable
+                        ? 'cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/30'
+                        : ''
+                    }`}
                   >
                     <td className="w-12 px-3 py-2 text-center text-slate-400 tabular-nums">{i + 1}</td>
                     {(Array.isArray(row) ? row : []).map((cell, j) => {
@@ -430,7 +522,8 @@ export default function ReportHub({
                       )
                     })}
                   </tr>
-                ))
+                  )
+                })
               )}
             </tbody>
             {hasGenerated && hasColumnTotals && filteredRows.length > 0 ? (

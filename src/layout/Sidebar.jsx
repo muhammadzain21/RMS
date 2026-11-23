@@ -118,15 +118,17 @@ const NavItem = ({ item, onClick }) => {
  className={`
  no-print hidden md:flex flex-none flex-col
  ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-60 min-w-[15rem]'}
- sticky top-0 h-[100dvh] overflow-y-auto overflow-x-visible app-drawer-safe
+ sticky top-0 h-full max-h-full self-stretch overflow-y-auto overflow-x-visible app-drawer-safe
  ${SB_BG} border-r ${SB_BORDER}
  transition-[width] duration-200 z-[1000]
  `}
  >
  {/* Brand */}
- <div className={`flex items-center gap-3 px-4 py-4 border-b ${SB_BORDER} flex-shrink-0 ${collapsed ? 'justify-center' : ''}`}><div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/40"><span className="text-white text-sm font-bold leading-none">
- {(brand?.[0] || 'R').toUpperCase()}
- </span></div>
+ <div className={`flex items-center gap-3 px-4 py-4 border-b ${SB_BORDER} flex-shrink-0 ${collapsed ? 'justify-center' : ''}`}>
+ <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/40 overflow-hidden">
+ <img src="/icon.ico" alt="" className="w-8 h-8 object-cover" onError={(e)=>{ e.currentTarget.style.display='none'; e.currentTarget.nextSibling?.classList.remove('hidden') }} />
+ <span className="hidden text-white text-sm font-bold leading-none">{(brand?.[0] || 'R').toUpperCase()}</span>
+ </div>
  {!collapsed && (
  <div><div className="text-sm font-bold text-white leading-tight tracking-wide truncate max-w-[160px]">{brand}</div><div className="text-[11px] text-slate-400 dark:text-gray-400 font-medium tracking-wider uppercase">POS System</div></div>
  )}
@@ -177,7 +179,7 @@ const NavItem = ({ item, onClick }) => {
  {mobileOpen && (
  <><div className="fixed inset-0 z-[1100] bg-black/50 backdrop-blur-sm" onClick={() => setMobileOpen(false)} /><div className={`fixed inset-y-0 left-0 z-[1200] w-72 max-w-[82vw] ${SB_BG} border-r ${SB_BORDER} flex flex-col shadow-2xl app-drawer-safe`}>
  {/* Mobile header */}
- <div className={`flex items-center justify-between px-4 py-4 border-b ${SB_BORDER} app-sidebar-safe-top`}><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30 overflow-hidden"><img src="/icons/icon-48.png" alt="" className="w-8 h-8 object-cover" onError={(e)=>{ e.currentTarget.style.display='none'; e.currentTarget.nextSibling?.classList.remove('hidden') }} /><span className="hidden text-white text-sm font-bold">{(brand?.[0] || 'R').toUpperCase()}</span></div><div><div className="text-sm font-bold text-white leading-tight">{brand}</div><div className="text-[10px] text-slate-400 dark:text-gray-400 uppercase tracking-wider">EpicSpire RMS</div></div></div><button
+ <div className={`flex items-center justify-between px-4 py-4 border-b ${SB_BORDER} app-sidebar-safe-top`}><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/30 overflow-hidden"><img src="/icon.ico" alt="" className="w-8 h-8 object-cover" onError={(e)=>{ e.currentTarget.style.display='none'; e.currentTarget.nextSibling?.classList.remove('hidden') }} /><span className="hidden text-white text-sm font-bold">{(brand?.[0] || 'R').toUpperCase()}</span></div><div><div className="text-sm font-bold text-white leading-tight">{brand}</div><div className="text-[10px] text-slate-400 dark:text-gray-400 uppercase tracking-wider">EpicSpire RMS</div></div></div><button
  onClick={() => setMobileOpen(false)}
  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-800 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
  ><X size={18} /></button></div>

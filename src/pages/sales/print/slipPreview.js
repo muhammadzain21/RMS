@@ -1,6 +1,10 @@
 import { toast } from 'react-hot-toast'
-import { printThermalInPage, trySilentPrint } from './shared.js'
+import { printThermalInPage, trySilentPrint, tryElectronPrintDialog } from './shared.js'
 import { tryEscPosPrint } from './escposClient.js'
+
+function looksLikeIpv4(s) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(String(s || '').trim())
+}
 
 /**
  * Shared in-app slip preview — height fits content (no huge empty white area),
@@ -90,18 +94,48 @@ export function openSlipPreviewDialog({
     iframe.addEventListener('load', fitIframe)
   } catch {}
 
-  const doPrint = () => { printThermalInPage(html) }
+  const doPrint = async () => {
+    // Electron: prefer native print window (iframe.print is flaky in Electron)
+    if (window?.printing?.printHTML || window?.printing?.printHTMLDialog) {
+      if (await tryElectronPrintDialog(html, deviceName)) return true
+    }
+    printThermalInPage(html)
+    return false
+  }
+
+  const printKotFamily = async () => {
+    const name = String(deviceName || '').trim()
+    const ip = String(host || '').trim()
+    // 1) Network IP → ESC/POS TCP (fast). Never use RAW spooler for this.
+    if (looksLikeIpv4(ip) && escPosText) {
+      if (await tryEscPosPrint(escPosText, { deviceName: name, host: ip, type: printType })) return true
+    }
+    // 2) Windows printer name → Chromium silent HTML
+    if (name && await trySilentPrint(html, printType, name)) return true
+    // 3) Interactive dialog fallback
+    await doPrint()
+    return false
+  }
+
   btnPrint.onclick = () => {
     const isKotFamily = printType === 'kot' || printType === 'void'
-    // KOT/Void: close preview immediately and fire ESC/POS only (never wait on HTML/PDF)
-    if (isKotFamily && escPosText) {
+    if (isKotFamily) {
       cleanup()
-      tryEscPosPrint(escPosText, { deviceName, host, type: printType }).then((ok) => {
-        if (ok) return
-        const tip = host ? ` at ${host}` : ''
-        console.warn(`[print] KOT silent print failed${tip}. Check KOT Printer IP (e.g. 192.168.18.142:9100).`)
-        toast.error(`Printer unreachable${tip}. Fix KOT Printer IP in Settings (try 192.168.18.142).`)
-      }).catch(() => {})
+      printKotFamily()
+        .then(() => {})
+        .catch((e) => {
+          console.warn('[print] KOT/Void print failed:', e)
+          const name = String(deviceName || '').trim()
+          const ip = String(host || '').trim()
+          if (looksLikeIpv4(ip)) {
+            toast.error(`Printer unreachable at ${ip}. Check the network IP on the Printers page.`)
+          } else if (name) {
+            toast.error(`Could not print to "${name}". Use a name from the installed list on Printers.`)
+          } else {
+            toast.error('No printer configured. Set a printer name on the Printers page.')
+          }
+          doPrint().catch(() => {})
+        })
       return
     }
     btnPrint.disabled = true
@@ -109,7 +143,7 @@ export function openSlipPreviewDialog({
     const finish = () => cleanup()
     const run = async () => {
       if (deviceName && await trySilentPrint(html, printType, deviceName)) return true
-      doPrint()
+      await doPrint()
       return false
     }
     run().catch(() => doPrint()).finally(finish)

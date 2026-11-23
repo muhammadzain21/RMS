@@ -6,16 +6,73 @@
     <meta name="color-scheme" content="light dark" />
     <title>EpicSpire RMS</title>
     <link rel="icon" href="/icon.ico" sizes="any" />
-    <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
     <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="application-name" content="EpicSpire RMS" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="EpicSpire RMS" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="theme-color" content="#1d4ed8" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a" />
+    <meta name="theme-color" content="#0f2d5c" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f2d5c" />
+    <meta name="msapplication-TileColor" content="#0f2d5c" />
+    <meta name="msapplication-TileImage" content="/icons/icon-192.png" />
+    <style>
+      /* Boot splash — visible before JS/CSS chunks load (browser + PWA) */
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.25rem;
+        margin: 0;
+        background: #0f2d5c;
+        color: #fff;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        transition: opacity 0.35s ease, visibility 0.35s ease;
+      }
+      #app-splash.hide {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #app-splash .splash-logo {
+        width: 96px;
+        height: 96px;
+        object-fit: contain;
+        border-radius: 22px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+        background: rgba(255, 255, 255, 0.06);
+      }
+      #app-splash .splash-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      #app-splash .splash-sub {
+        font-size: 0.8rem;
+        opacity: 0.75;
+        margin-top: -0.6rem;
+      }
+      #app-splash .splash-spinner {
+        width: 28px;
+        height: 28px;
+        border: 3px solid rgba(255, 255, 255, 0.25);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: splash-spin 0.75s linear infinite;
+      }
+      @keyframes splash-spin {
+        to { transform: rotate(360deg); }
+      }
+      html.dark #app-splash { background: #0a1f3d; }
+    </style>
     <script>
       // Apply saved theme before paint to avoid light flash in dark mode
       try {
@@ -25,18 +82,54 @@
           document.documentElement.style.colorScheme = 'dark'
         }
       } catch (e) {}
+      // Browser UI scale 60% via transform (NOT css zoom — zoom breaks 100dvh layouts)
+      try {
+        if (!/Electron/i.test(navigator.userAgent || '')) {
+          // Clear broken css zoom from earlier builds
+          try { document.documentElement.style.zoom = '' } catch (e2) {}
+          try { localStorage.removeItem('browser_zoom_factor') } catch (e2) {}
+          var scale = '0.6'
+          try {
+            var saved = localStorage.getItem('browser_ui_scale')
+            if (saved && Number(saved) >= 0.5 && Number(saved) <= 1) scale = saved
+            else localStorage.setItem('browser_ui_scale', scale)
+          } catch (e2) {}
+          document.documentElement.style.setProperty('--browser-ui-scale', scale)
+          document.documentElement.classList.add('browser-ui-scaled')
+        }
+      } catch (e) {}
       // Network-only SW — required for Chrome "Install app" prompt. No caching.
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('/sw.js').catch(function () {})
         })
       }
+      window.__dismissAppSplash = function () {
+        try {
+          var el = document.getElementById('app-splash')
+          if (!el || el.classList.contains('hide')) return
+          el.classList.add('hide')
+          setTimeout(function () {
+            try { el.remove() } catch (e) {}
+          }, 400)
+        } catch (e) {}
+      }
+      // Failsafe: never leave splash forever if boot hangs
+      setTimeout(function () {
+        try { window.__dismissAppSplash && window.__dismissAppSplash() } catch (e) {}
+      }, 12000)
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   </head>
   <body class="text-slate-900 dark:text-slate-100 font-medium">
+    <div id="app-splash" aria-busy="true" aria-live="polite">
+      <img class="splash-logo" src="/icon.ico" alt="EpicSpire RMS" width="96" height="96" />
+      <div class="splash-title">EpicSpire RMS</div>
+      <div class="splash-sub">Loading…</div>
+      <div class="splash-spinner" role="status" aria-label="Loading"></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

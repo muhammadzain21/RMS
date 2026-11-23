@@ -236,7 +236,7 @@ export default function ReturnNew() {
  </label>
  <label className="block">
  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">Refund Method</span>
- <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="mt-1 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white focus:border-rose-400 outline-none"><option value="cash">Cash</option><option value="bank">Bank</option><option value="online">Online (old)</option><option value="complimentary">Personal</option></select>
+ <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="mt-1 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white focus:border-rose-400 outline-none"><option value="cash">Cash</option><option value="bank">Bank</option><option value="online">Online (old)</option></select>
  </label>
  </div>
 

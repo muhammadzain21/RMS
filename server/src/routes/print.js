@@ -51,13 +51,77 @@ async function resolveKotPrintTarget(req, { type, printerName, host } = {}) {
   })()
   const settings = await getSettingsLean(branchId).catch(() => null)
   const t = String(type || '').toLowerCase()
-  const isKot = t === 'kot' || t === 'void'
-  const name = String(printerName || '').trim()
-    || (isKot ? (settings?.kotPrinterName || '') : (settings?.billPrinterName || ''))
-  const ip = String(host || '').trim()
-    || (isKot ? (settings?.kotPrinterIp || '') : (settings?.billPrinterIp || ''))
-    || (looksLikeIpv4(name) ? name : '')
+  let name = String(printerName || '').trim()
+  let ip = String(host || '').trim()
+  if (!name || !ip) {
+    if (t === 'void') {
+      name = name || settings?.voidPrinterName || settings?.kotPrinterName || ''
+      ip = ip || settings?.voidPrinterIp || settings?.kotPrinterIp || ''
+    } else if (t === 'kot') {
+      name = name || settings?.kotPrinterName || ''
+      ip = ip || settings?.kotPrinterIp || ''
+    } else if (t === 'bill') {
+      name = name || settings?.billPrinterName || ''
+      ip = ip || settings?.billPrinterIp || ''
+    }
+  }
+  if (!ip && looksLikeIpv4(name)) ip = name
   return { settings, printerName: name, host: ip }
+}
+
+/** Keep one Chromium alive — launching per request is ~2s. */
+let printBrowser = null
+let printBrowserLaunch = null
+
+async function getPrintBrowser() {
+  if (printBrowser?.connected) return printBrowser
+  if (printBrowserLaunch) return printBrowserLaunch
+  printBrowserLaunch = puppeteer.launch({
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--font-render-hinting=none',
+    ],
+  }).then((browser) => {
+    printBrowser = browser
+    printBrowserLaunch = null
+    browser.on('disconnected', () => {
+      if (printBrowser === browser) printBrowser = null
+    })
+    return browser
+  }).catch((err) => {
+    printBrowserLaunch = null
+    throw err
+  })
+  return printBrowserLaunch
+}
+
+async function htmlToTempPdf(html) {
+  const tmpDir = os.tmpdir()
+  const fileBase = `print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const pdfPath = path.join(tmpDir, `${fileBase}.pdf`)
+  const browser = await getPrintBrowser()
+  const page = await browser.newPage()
+  try {
+    // networkidle0 is slow; slips are inline HTML — domcontentloaded is enough
+    await page.setContent(String(html || ''), { waitUntil: 'domcontentloaded', timeout: 8000 })
+    try { await page.emulateMediaType('print') } catch {}
+    await page.addStyleTag({
+      content: '@page { size: 80mm auto; margin: 0 } html, body { margin: 0; padding: 2mm 3mm; width: 72mm; height: auto; min-height: 0; overflow: visible }',
+    }).catch(() => {})
+    await page.pdf({
+      path: pdfPath,
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    })
+  } finally {
+    await page.close().catch(() => {})
+  }
+  return pdfPath
 }
 
 // POST /api/print/escpos — fast raw thermal print (browser + Electron fallback)
@@ -75,7 +139,7 @@ router.post('/escpos', async (req, res) => {
     if (!host) {
       return res.status(400).json({
         ok: false,
-        error: 'No printer IP configured. Set KOT Printer IP in Settings.',
+        error: 'No printer IP configured. Set KOT Printer IP on the Printers page.',
         printerName: printerName || '',
       })
     }
@@ -91,6 +155,7 @@ router.post('/escpos', async (req, res) => {
 // POST /api/print
 // Body: { html: string, type?: 'bill'|'kot'|'void'|'other', printerName?: string }
 router.post('/', async (req, res) => {
+  let pdfPath = ''
   try {
     const html = String(req.body?.html || '')
     const type = String(req.body?.type || '').toLowerCase()
@@ -102,39 +167,29 @@ router.post('/', async (req, res) => {
     })
     if (!printerName) return res.status(400).json({ ok: false, error: 'No printer configured' })
 
-    // Render HTML to a temporary PDF via puppeteer
-    const tmpDir = os.tmpdir()
-    const fileBase = `print-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
-    const pdfPath = path.join(tmpDir, `${fileBase}.pdf`)
-
-    const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox','--disable-setuid-sandbox'] })
-    try {
-      const page = await browser.newPage()
-      await page.setContent(html, { waitUntil: 'load' })
-      try { await page.emulateMediaType('print') } catch {}
-      await page.addStyleTag({ content: '@page { size: 80mm auto; margin: 0 } html, body { margin: 0; padding: 2mm 3mm; width: 72mm; height: auto; min-height: 0; overflow: visible }' }).catch(()=>{})
-      await page.pdf({ path: pdfPath, printBackground: true, preferCSSPageSize: true, margin: { top: '0', right: '0', bottom: '0', left: '0' } })
-    } finally {
-      await browser.close().catch(()=>{})
-    }
-
-    // Send PDF to printer (disable scaling so it doesn't add blank space)
+    pdfPath = await htmlToTempPdf(html)
     await printPdf(pdfPath, { printer: printerName, scale: 'noscale' })
-
-    // Best-effort cleanup
-    fs.unlink(pdfPath).catch(()=>{})
-
     res.json({ ok: true })
   } catch (e) {
     console.error('Server print failed:', e)
+    // Drop broken browser so the next request relaunches cleanly
+    try {
+      if (printBrowser) {
+        const b = printBrowser
+        printBrowser = null
+        await b.close().catch(() => {})
+      }
+    } catch {}
     res.status(500).json({ ok: false, error: 'Print failed' })
+  } finally {
+    if (pdfPath) fs.unlink(pdfPath).catch(() => {})
   }
 })
 
 // GET /api/print/printers -> list available printers on the server (for UI, optional)
 router.get('/printers', async (_req, res) => {
   try {
-    const list = await getPrinters().catch(()=>[])
+    const list = await getPrinters().catch(() => [])
     res.json(Array.isArray(list) ? list : [])
   } catch {
     res.json([])

@@ -318,13 +318,6 @@ export default function SalesNew() {
   const [payStaffId, setPayStaffId] = useState('')
   const [payStaffName, setPayStaffName] = useState('')
 
-  // Hide Personal payment if disabled in settings
-  useEffect(() => {
-    if (!state.settings?.showPersonalPayment && paymentMethod === 'complimentary') {
-      setPaymentMethod('cash')
-    }
-  }, [state.settings?.showPersonalPayment, paymentMethod])
-
   // Held / recall UI
   const [heldCount, setHeldCount] = useState(0)
   const [showHeld, setShowHeld] = useState(false)
@@ -1892,7 +1885,6 @@ export default function SalesNew() {
           totalPayment={totalPayment}
           cashReceived={cashReceived}
           onCashReceivedChange={setCashReceived}
-          showPersonalPayment={Boolean(state.settings?.showPersonalPayment)}
           sellPageFields={state.settings?.sellPageFields || {}}
         />
       </div>
@@ -1936,7 +1928,6 @@ export default function SalesNew() {
       initialCashReceived={cashReceived || Number(recallToPay?.totalAmount || 0)}
       initialStaffId={String(recallToPay?.staffId || payStaffId || '')}
       staff={staffForPurchase}
-      showPersonalPayment={Boolean(state.settings?.showPersonalPayment)}
       onCancel={()=>{ setShowPayMethod(false); setRecallToPay(null); setPendingPayOpts(null) }}
       onConfirm={(pay)=> { if (recallToPay) continueAfterPaymentMethod(recallToPay, pay) }}
     />

@@ -2,15 +2,17 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
 import {
-  Plus, RefreshCw, Wallet, Building2, Tags, Settings2, X, CheckCircle2,
+  Plus, RefreshCw, Wallet, Building2, Tags, Settings2, X, CheckCircle2, Printer,
 } from 'lucide-react'
 import { useData } from '../../state/DataContext.jsx'
 import { useAuth } from '../../state/AuthContext.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import Pagination from '../../components/Pagination.jsx'
 import PageHero from '../../components/ui/PageHero.jsx'
-import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '../../utils/reportDoc.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport, resolveAssetUrl } from '../../utils/reportDoc.js'
 import { btnPrint, btnPdf, btnCsv, exportDateStamp } from '../../utils/listReportExport.js'
+import { useConfirm } from '../../components/useConfirm.jsx'
+import { getExpenseVoucherMeta, printExpenseVoucher } from './expenseVoucherDoc.js'
 
 const ACCOUNT_OPTIONS = [
   { value: 'cash', label: 'Cash in Hand' },
@@ -201,6 +203,7 @@ function StatusBadge({ status }) {
 export default function ExpenseNew() {
   const { state, dispatch, businessDate } = useData()
   const { token, user } = useAuth()
+  const { confirm, ConfirmDialog } = useConfirm()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const defaultDate = businessDate || format(new Date(), 'yyyy-MM-dd')
   const canManage = ['Admin', 'Manager', 'SuperAdmin'].includes(user?.role)
@@ -214,8 +217,9 @@ export default function ExpenseNew() {
   const [form, setForm] = useState(() => emptyForm(defaultDate, []))
   const [editingId, setEditingId] = useState('')
 
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [startDate, setStartDate] = useState(defaultDate)
+  const [endDate, setEndDate] = useState(defaultDate)
+  const [dateTouched, setDateTouched] = useState(false)
   const [type, setType] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -233,8 +237,21 @@ export default function ExpenseNew() {
 
   const names = useMemo(() => headNames(heads), [heads])
   const totalPages = Math.ceil(total / limit) || 1
-  const closedDates = useMemo(() => new Set((state.dayCloses || []).map(d => d.date)), [state.dayCloses])
-  const isSelectedDateClosed = closedDates.has(form.date)
+  const closedDates = useMemo(
+    () => new Set((state.dayCloses || []).map(d => String(d?.date || '').slice(0, 10)).filter(Boolean)),
+    [state.dayCloses],
+  )
+  // New vouchers always post to the current business date; edits keep the voucher date.
+  const activeExpenseDate = String(
+    (editingId ? (form.date || defaultDate) : defaultDate) || '',
+  ).slice(0, 10)
+  const daybookOpenForActive = Boolean(
+    state?.daybook?.open && String(state?.daybook?.date || '').slice(0, 10) === activeExpenseDate,
+  )
+  // If the daybook is open for this business date, allow expenses even if client close list is stale.
+  const isSelectedDateClosed = Boolean(activeExpenseDate)
+    && closedDates.has(activeExpenseDate)
+    && !daybookOpenForActive
   const formTotal = useMemo(() => lineTotal(form.lines), [form.lines])
 
   const authHeaders = useMemo(() => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }), [token])
@@ -281,13 +298,33 @@ export default function ExpenseNew() {
     setLoading(false)
   }, [API, authHeaders, dispatch, page, queryParams])
 
-  useEffect(() => { loadHeads(); reloadExpenses(1) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHeads() }, [loadHeads])
+
+  // Keep From/To on the current business date until the user changes them.
+  useEffect(() => {
+    if (dateTouched || !businessDate) return
+    setStartDate(businessDate)
+    setEndDate(businessDate)
+    setPage(1)
+  }, [businessDate, dateTouched])
+
+  // Load table whenever the date range (or other filters) settle.
+  useEffect(() => {
+    if (!startDate || !endDate) return
+    reloadExpenses(1)
+  }, [startDate, endDate, type, accountFilter, statusFilter, minAmt, q, limit]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (names.length && !showForm) {
-      setForm(f => (f.lines?.[0]?.expenseHead && names.includes(f.lines[0].expenseHead) ? f : emptyForm(f.date || defaultDate, names)))
+      setForm(f => emptyForm(defaultDate, names))
     }
   }, [names, defaultDate, showForm])
+
+  // While Add dialog is open, keep the locked date synced to business date.
+  useEffect(() => {
+    if (!showForm || editingId || !defaultDate) return
+    setForm(f => (f.date === defaultDate ? f : { ...f, date: defaultDate }))
+  }, [showForm, editingId, defaultDate])
 
   const openDialog = () => {
     // New expenses always use the current business date (not editable)
@@ -335,7 +372,8 @@ export default function ExpenseNew() {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (isSelectedDateClosed) { toast.error('This date is closed.'); return }
+    if (!activeExpenseDate) { toast.error('Business date is not ready yet.'); return }
+    if (isSelectedDateClosed) { toast.error(`Date ${activeExpenseDate} is closed.`); return }
     const lines = form.lines
       .map(l => ({
         expenseHead: l.expenseHead,
@@ -348,7 +386,7 @@ export default function ExpenseNew() {
     const imageUrl = lines.find(l => l.imageUrl)?.imageUrl || ''
     try {
       const body = JSON.stringify({
-        date: editingId ? (form.date || defaultDate) : defaultDate,
+        date: activeExpenseDate,
         accountHead: form.accountHead,
         lines,
         imageUrl,
@@ -369,7 +407,14 @@ export default function ExpenseNew() {
   }
 
   const remove = async (id) => {
-    if (!window.confirm('Delete this expense voucher?')) return
+    const ok = await confirm({
+      title: 'Delete expense',
+      message: 'Delete this expense voucher? This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      confirmStyle: 'danger',
+    })
+    if (!ok) return
     try {
       const res = await fetch(`${API}/api/expenses/${id}`, { method: 'DELETE', headers: authHeaders })
       if (!res.ok) throw new Error('Failed')
@@ -554,8 +599,8 @@ export default function ExpenseNew() {
           <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
           <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
           <button type="button" onClick={exportCsv} className={btnCsv}>CSV</button>
-          <DatePicker label="From" value={startDate} onChange={setStartDate} />
-          <DatePicker label="To" value={endDate} onChange={setEndDate} />
+          <DatePicker label="From" value={startDate} onChange={v => { setDateTouched(true); setStartDate(v) }} />
+          <DatePicker label="To" value={endDate} onChange={v => { setDateTouched(true); setEndDate(v) }} />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">Expense Head</label>
             <select value={type} onChange={e => setType(e.target.value)} className="input">
@@ -697,7 +742,9 @@ export default function ExpenseNew() {
               <button type="button" onClick={closeDialog} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
             </div>
             {isSelectedDateClosed && (
-              <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 text-sm font-medium px-3 py-2">Selected date is closed.</div>
+              <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 text-sm font-medium px-3 py-2">
+                Date {activeExpenseDate} is closed.
+              </div>
             )}
             <form onSubmit={submit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -707,7 +754,7 @@ export default function ExpenseNew() {
                     <input
                       type="text"
                       readOnly
-                      value={editingId ? (form.date || defaultDate) : defaultDate}
+                      value={activeExpenseDate}
                       className="input w-full bg-slate-50 dark:bg-slate-800/60 cursor-not-allowed"
                       title="Expenses use the current business date"
                     />
@@ -788,54 +835,122 @@ export default function ExpenseNew() {
         </div>
       )}
 
-      {showView && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={ev => { if (ev.target === ev.currentTarget) setShowView(null) }}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-extrabold">Expense voucher</h3>
-              <button type="button" onClick={() => setShowView(null)} className="p-1.5 rounded-lg hover:bg-slate-100"><X size={18} /></button>
-            </div>
-            <div className="space-y-2 text-sm mb-4">
-              <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Date / Time</span><span className="font-bold">{fmtDateTime(showView)}</span></div>
-              <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Account</span><span className="font-bold">{showView.accountHead === 'bank' ? 'Bank' : 'Cash in Hand'}</span></div>
-              <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Added by</span><span className="font-bold">{showView.userName || '-'}</span></div>
-              <div className="flex justify-between gap-2 items-center"><span className="text-[var(--color-text-muted)] font-semibold">Status</span><StatusBadge status={showView.status} /></div>
-              {showView.status === 'approved' && (
-                <div className="flex justify-between gap-2"><span className="text-[var(--color-text-muted)] font-semibold">Approved by</span><span className="font-bold">{showView.approvedBy || '-'}{showView.approvedAt ? ` · ${format(new Date(showView.approvedAt), 'yyyy-MM-dd h:mm a')}` : ''}</span></div>
-              )}
-            </div>
-            <table className="tbl text-sm mb-3">
-              <thead><tr><th>Head</th><th className="text-right">Amount</th><th>Description</th><th>Image</th></tr></thead>
-              <tbody>
-                {(Array.isArray(showView.lines) && showView.lines.length
-                  ? showView.lines
-                  : [{ expenseHead: displayHeads(showView), description: showView.description, amount: showView.amount, imageUrl: showView.imageUrl }]
-                ).map((l, i) => (
-                  <tr key={i}>
-                    <td className="font-semibold">{l.expenseHead || '—'}</td>
-                    <td className="text-right font-bold whitespace-nowrap tabular-nums">PKR {Number(l.amount || 0).toLocaleString()}</td>
-                    <td>{l.description || '—'}</td>
-                    <td>
-                      {l.imageUrl ? (
-                        <a href={l.imageUrl} target="_blank" rel="noreferrer">
-                          <img src={l.imageUrl} alt="Receipt" className="h-12 w-12 rounded-lg object-cover border border-[var(--color-border)]" />
-                        </a>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="text-right font-extrabold text-base">Total: PKR {Number(showView.amount || 0).toLocaleString()}</div>
-            <div className="mt-4 flex justify-end gap-2">
-              {canManage && (
-                <button type="button" onClick={() => { setShowView(null); startEdit(showView) }} className="ui-btn ui-btn-secondary">Edit</button>
-              )}
-              <button type="button" onClick={() => setShowView(null)} className="ui-btn ui-btn-primary">Close</button>
+      {showView && (() => {
+        const settings = state?.settings || {}
+        const company = settings.companyName || settings.name || 'Restaurant POS'
+        const logo = resolveAssetUrl(settings.receiptLogo || settings.logo || settings.logoUrl || '')
+        const address = String(settings.address || '').trim()
+        const phone = String(settings.phone || '').trim()
+        const meta = getExpenseVoucherMeta(showView)
+        const managerLine = [
+          meta.approvedDate ? `Manager ${meta.approvedDate}` : 'Manager',
+          meta.approvedBy ? `Approved By: ${meta.approvedBy}` : 'Approved By:',
+        ].join(' / ')
+        const printOne = async () => {
+          try {
+            await printExpenseVoucher(showView, settings)
+            toast.success('A4 print preview opened')
+          } catch (err) {
+            console.error(err)
+            toast.error('A4 print failed')
+          }
+        }
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-3" onClick={ev => { if (ev.target === ev.currentTarget) setShowView(null) }}>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-6xl h-[96vh] max-h-[96vh] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[var(--color-border)] shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-lg font-extrabold truncate">View Expense</h3>
+                  <StatusBadge status={showView.status} />
+                </div>
+                <button type="button" onClick={() => setShowView(null)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-4 sm:p-8 bg-slate-100 dark:bg-slate-950">
+                <div className="mx-auto w-full max-w-[230mm] min-h-full bg-white text-slate-900 shadow-md border border-slate-200 px-6 py-6 sm:px-10 sm:py-9">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start mb-4">
+                    <div className="flex gap-3 items-start">
+                      {logo ? <img src={logo} alt="" className="h-14 w-14 object-contain shrink-0" onError={e => { e.currentTarget.style.display = 'none' }} /> : null}
+                      <div>
+                        <div className="text-lg font-extrabold leading-tight">{company}</div>
+                        {address ? <div className="text-[11px] text-slate-600 mt-1 max-w-[220px] leading-snug">{address}</div> : null}
+                      </div>
+                    </div>
+                    <div className="text-center text-2xl font-bold pt-1">Expense</div>
+                    <div className="text-right text-sm pt-2">{phone ? `Contact # ${phone}` : ''}</div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm mb-4">
+                    <div><span className="font-bold">Description:</span> {meta.titleDesc}</div>
+                    <div><span className="font-bold">Entity (Contact):</span> {meta.entity || '—'}</div>
+                    <div className="sm:text-right"><span className="font-bold">Expense date:</span> {meta.expenseDate}</div>
+                  </div>
+
+                  <table className="w-full border-collapse text-sm mb-3">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="border border-slate-800 px-2 py-1.5 text-center w-14">Sr #</th>
+                        <th className="border border-slate-800 px-2 py-1.5 text-left">Description</th>
+                        <th className="border border-slate-800 px-2 py-1.5 text-left">Account</th>
+                        <th className="border border-slate-800 px-2 py-1.5 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {meta.lines.map((l, i) => (
+                        <tr key={i}>
+                          <td className="border border-slate-800 px-2 py-1.5 text-center">{i + 1}</td>
+                          <td className="border border-slate-800 px-2 py-1.5">{l.description || '—'}</td>
+                          <td className="border border-slate-800 px-2 py-1.5">{l.expenseHead || showView.expenseHead || showView.category || '—'}</td>
+                          <td className="border border-slate-800 px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{Number(l.amount || 0).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div className="ml-auto w-56 space-y-1 text-sm mb-8">
+                    <div className="flex justify-between gap-4 font-extrabold border-t border-slate-800 pt-2">
+                      <span>Total:</span><span className="tabular-nums">{meta.total.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span>{meta.paymentLabel}:</span><span className="tabular-nums">{meta.paid.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span>Balance:</span><span className="tabular-nums">{meta.balance.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs pt-4">
+                    <div>
+                      <div className="border-t border-slate-800 pt-1 min-h-[1.25rem]" />
+                      <div>{managerLine}</div>
+                    </div>
+                    <div>
+                      <div className="border-t border-slate-800 pt-1 min-h-[1.25rem]" />
+                      <div>Admin Signature</div>
+                    </div>
+                    <div>
+                      <div className="border-t border-slate-800 pt-1 min-h-[1.25rem]" />
+                      <div>Receiver Signature</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
+                <button type="button" onClick={() => setShowView(null)} className="ui-btn ui-btn-secondary">Close</button>
+                {canManage && (
+                  <button type="button" onClick={() => { setShowView(null); startEdit(showView) }} className="ui-btn ui-btn-secondary">Edit</button>
+                )}
+                <button type="button" onClick={printOne} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-slate-800">
+                  <Printer className="h-3.5 w-3.5" /> Print A4
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
+
+      {ConfirmDialog}
 
       {showHeads && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={ev => { if (ev.target === ev.currentTarget) setShowHeads(false) }}>

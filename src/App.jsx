@@ -41,6 +41,8 @@ import RiderDaily from './pages/riders/RiderDaily.jsx'
 import RiderLiveMap from './pages/riders/RiderLiveMap.jsx'
 import ProfitLoss from './pages/ProfitLoss.jsx'
 import Settings from './pages/settings/Settings.jsx'
+import PrinterSettings from './pages/settings/PrinterSettings.jsx'
+import CloudSyncSettings from './pages/settings/CloudSyncSettings.jsx'
 import BackupSecurity from './pages/settings/BackupSecurity.jsx'
 import BiometricSettings from './pages/settings/BiometricSettings.jsx'
 import AuditLog from './pages/AuditLog.jsx'
@@ -212,6 +214,8 @@ function App() {
         <Route path="users" element={<ProtectedRoute roles={["Admin","Manager","Staff"]}><UserList /></ProtectedRoute>} />
         <Route path="sidebar-permissions" element={<ProtectedRoute roles={["Admin","Manager"]}><SidebarPermissions /></ProtectedRoute>} />
         <Route path="settings" element={<ProtectedRoute roles={["Admin","Manager"]}><Settings /></ProtectedRoute>} />
+        <Route path="printers" element={<ProtectedRoute roles={["Admin","Manager"]}><PrinterSettings /></ProtectedRoute>} />
+        <Route path="cloud-sync" element={<ProtectedRoute roles={["Admin","Manager"]}><CloudSyncSettings /></ProtectedRoute>} />
         <Route path="backup-security" element={<ProtectedRoute roles={["Admin","Manager"]}><BackupSecurity /></ProtectedRoute>} />
         <Route path="biometric-settings" element={<ProtectedRoute roles={["Admin"]}><BiometricSettings /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -193,6 +193,8 @@ export default function Dashboard() {
   const [pieIndex, setPieIndex] = useState(0)
   // Sales fetched for the selected date (source of truth for dashboard filter)
   const [daySalesOverride, setDaySalesOverride] = useState(null)
+  // Expenses for selected business date (approved + pending)
+  const [dayExpenses, setDayExpenses] = useState(null)
 
   useEffect(() => {
     if (!dateTouched && businessDate) setSelectedDate(businessDate)
@@ -310,12 +312,13 @@ export default function Dashboard() {
       total += num(s.total)
       if (isPaidMethod(s.paymentMethod)) paid += num(s.total)
     })
-    const expense = (state.expenses || [])
-      .filter(e => e.date === selectedDate)
-      .reduce((a, e) => a + num(e.amount), 0)
+    const dayExp = Array.isArray(dayExpenses)
+      ? dayExpenses
+      : (state.expenses || []).filter(e => String(e.date) === String(selectedDate))
+    const expense = dayExp.reduce((a, e) => a + num(e.amount), 0)
     const billSize = transactions ? total / transactions : 0
     return { transactions, sale, discount, charges, taxIn, taxEx, total, paid, billSize, expense }
-  }, [daySales, state.expenses, selectedDate])
+  }, [daySales, state.expenses, dayExpenses, selectedDate])
 
   const recallStartByToken = useMemo(() => {
     const map = new Map()
@@ -400,14 +403,27 @@ export default function Dashboard() {
   }, [state.advanceBookings, pendingHelds, selectedDate, lineTotal])
 
   const expenseAnalysis = useMemo(() => {
-    const booked = (state.expenses || [])
-      .filter(e => e.date === selectedDate)
-      .reduce((a, e) => a + num(e.amount), 0)
+    const dayExp = Array.isArray(dayExpenses)
+      ? dayExpenses
+      : (state.expenses || []).filter(e => String(e.date) === String(selectedDate))
+    const isApproved = (e) => String(e?.status || '').toLowerCase() === 'approved'
+    const approvedRows = dayExp.filter(isApproved)
+    const pendingRows = dayExp.filter(e => !isApproved(e))
+    const approved = approvedRows.reduce((a, e) => a + num(e.amount), 0)
+    const pending = pendingRows.reduce((a, e) => a + num(e.amount), 0)
+    const booked = approved + pending
     const paid = (state.payInOuts || [])
-      .filter(p => p.date === selectedDate && p.type === 'OUT')
+      .filter(p => String(p.date) === String(selectedDate) && p.type === 'OUT')
       .reduce((a, p) => a + num(p.amount), 0)
-    return { booked, paid }
-  }, [state.expenses, state.payInOuts, selectedDate])
+    return {
+      booked,
+      paid,
+      approved,
+      pending,
+      approvedCount: approvedRows.length,
+      pendingCount: pendingRows.length,
+    }
+  }, [dayExpenses, state.expenses, state.payInOuts, selectedDate])
 
   const hrRows = useMemo(() => {
     const staffById = Object.fromEntries((state.staff || []).map(s => [String(s.id), s]))
@@ -439,13 +455,20 @@ export default function Dashboard() {
     setRefreshing(true)
     try {
       const month = selectedDate.slice(0, 7)
-      const [salesRes, recallsRes, heldsRes, voidsRes, attRes, bookingsRes] = await Promise.all([
+      const expenseParams = new URLSearchParams({
+        from: selectedDate,
+        to: selectedDate,
+        page: '1',
+        limit: '200',
+      })
+      const [salesRes, recallsRes, heldsRes, voidsRes, attRes, bookingsRes, expensesRes] = await Promise.all([
         fetch(`${API}/api/sales?from=${selectedDate}&to=${selectedDate}`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/recalls`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/helds`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/voids?from=${selectedDate}&to=${selectedDate}&limit=500`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/attendance?date=${encodeURIComponent(selectedDate)}`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/advance-bookings`, { headers: authHeaders, cache: 'no-store' }),
+        fetch(`${API}/api/expenses?${expenseParams}`, { headers: authHeaders, cache: 'no-store' }),
       ])
 
       const patch = {}
@@ -492,6 +515,14 @@ export default function Dashboard() {
         })
       }
 
+      if (expensesRes.ok) {
+        const data = await expensesRes.json()
+        const rows = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : []
+        setDayExpenses(rows.map(x => ({ ...x, id: x.id || x._id })))
+      } else {
+        setDayExpenses([])
+      }
+
       if (!quiet) toast.success('Dashboard refreshed')
     } catch {
       toast.error('Refresh failed')
@@ -502,6 +533,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setDaySalesOverride(null)
+    setDayExpenses(null)
     refreshData({ quiet: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate])
@@ -590,8 +622,10 @@ export default function Dashboard() {
           { label: 'Bill booked', amount: fmt(p.billAnalysis.billBooked) },
           { label: 'Bill paid', amount: fmt(p.billAnalysis.billPaid) },
           { label: 'Total payable', amount: fmt(p.billAnalysis.totalPayable) },
-          { label: 'Expense booked', amount: fmt(p.expenseAnalysis.booked) },
-          { label: 'Expense paid', amount: fmt(p.expenseAnalysis.paid) },
+          { label: 'Expense total', amount: fmt(p.expenseAnalysis.booked) },
+          { label: `Approved (${p.expenseAnalysis.approvedCount || 0})`, amount: fmt(p.expenseAnalysis.approved) },
+          { label: `Unapproved (${p.expenseAnalysis.pendingCount || 0})`, amount: fmt(p.expenseAnalysis.pending) },
+          { label: 'Expense paid (pay-out)', amount: fmt(p.expenseAnalysis.paid) },
         ]) +
         reportSec('HR information') +
         reportTable({
@@ -904,10 +938,22 @@ export default function Dashboard() {
           </div>
         </Panel>
 
-        <Panel title="Expense Analysis" icon={Tag}>
+        <Panel title={`Expense Analysis · ${selectedDate}`} icon={Tag}>
           <div className="flex flex-wrap gap-3">
-            <MiniStat icon={Banknote} title="Expense Booked" value={expenseAnalysis.booked} iconColor="bg-rose-500" />
-            <MiniStat icon={Wallet} title="Expense Paid" value={expenseAnalysis.paid} iconColor="bg-amber-500" />
+            <MiniStat icon={Banknote} title="Total Expenses" value={expenseAnalysis.booked} iconColor="bg-rose-500" />
+            <MiniStat
+              icon={CheckCircle2}
+              title={`Approved (${expenseAnalysis.approvedCount})`}
+              value={expenseAnalysis.approved}
+              iconColor="bg-emerald-500"
+            />
+            <MiniStat
+              icon={Clock}
+              title={`Unapproved (${expenseAnalysis.pendingCount})`}
+              value={expenseAnalysis.pending}
+              iconColor="bg-amber-500"
+            />
+            <MiniStat icon={Wallet} title="Pay-Out" value={expenseAnalysis.paid} iconColor="bg-indigo-500" />
           </div>
         </Panel>
       </div>

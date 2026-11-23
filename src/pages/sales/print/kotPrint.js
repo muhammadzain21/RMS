@@ -2,7 +2,7 @@ import { groupItemsByCategory } from '../utils.js'
 import { THERMAL_SLIP_CSS, PROFESSIONAL_SLIP_CSS } from './thermalCss.js'
 import { openSlipPreviewDialog } from './slipPreview.js'
 import { tryEscPosPrint } from './escposClient.js'
-import { printThermalInPage, trySilentPrint, escapeHtml } from './shared.js'
+import { printThermalInPage, trySilentPrint, tryElectronPrintDialog, escapeHtml } from './shared.js'
 
 /** Build plain ESC/POS bytes for 80mm kitchen tickets (no HTML). */
 export function buildKOTEscPos(opts = {}) {
@@ -201,13 +201,16 @@ export function buildKOTHtml(opts = {}) {
   }
 }
 
-/** KOT + Void share kotPrinterName / kotPrinterIp. Always open in-app preview; Print = silent. */
+/** KOT / Void: uses kot* or void* printer settings (void falls back to kot). Always open in-app preview; Print = silent. */
 export async function openKotPrintUtil(opts = {}) {
   try {
     const state = opts.state || {}
-    const deviceName = opts.deviceName || state?.settings?.kotPrinterName || ''
-    const host = opts.host || opts.printerIp || state?.settings?.kotPrinterIp || ''
     const printType = String(opts.title || '').toLowerCase().includes('void') ? 'void' : 'kot'
+    const s = state?.settings || {}
+    const deviceName = opts.deviceName
+      || (printType === 'void' ? (s.voidPrinterName || s.kotPrinterName || '') : (s.kotPrinterName || ''))
+    const host = opts.host || opts.printerIp
+      || (printType === 'void' ? (s.voidPrinterIp || s.kotPrinterIp || '') : (s.kotPrinterIp || ''))
     const html = buildKOTHtml({ ...opts, state })
     const escPosText = buildKOTEscPos({ ...opts, state })
     const title = opts.title?.includes('Void') ? 'Void preview' : 'KOT preview'
@@ -228,9 +231,14 @@ export async function openKotPrintUtil(opts = {}) {
       return
     }
 
-    // Explicit no-preview callers only
-    if (await tryEscPosPrint(escPosText, { deviceName, host, type: printType })) return
+    // Explicit no-preview callers only:
+    // IP → ESC/POS TCP; otherwise Windows printer name → silent HTML (avoid RAW blank slips)
+    const ip = String(host || '').trim()
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) {
+      if (await tryEscPosPrint(escPosText, { deviceName, host: ip, type: printType })) return
+    }
     if (deviceName && await trySilentPrint(html, printType, deviceName)) return
+    if (await tryElectronPrintDialog(html, deviceName)) return
     printThermalInPage(html)
   } catch {}
 }

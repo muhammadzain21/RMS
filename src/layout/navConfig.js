@@ -12,7 +12,7 @@ import {
   Receipt, TrendingUp, ShieldCheck, Lock, ScrollText,
   Fingerprint, ChefHat, Database, UserCheck, Home, ShoppingBag,
   Headphones, Inbox, Building2, PackagePlus, Package, HardDrive, Landmark,
-  MapPinned,
+  MapPinned, Printer, Cloud,
 } from 'lucide-react'
 
 export const dashboardItem = { path: '/', label: 'Dashboard', icon: LayoutDashboard, order: 1 }
@@ -128,6 +128,8 @@ const adminSection = {
  { path: '/sidebar-permissions', label: 'Permissions', icon: Lock, order: 35 },
  { path: '/audit', label: 'Audit', icon: ScrollText, order: 36 },
  { path: '/settings', label: 'Settings', icon: Settings, order: 37 },
+ { path: '/printers', label: 'Printers', icon: Printer, order: 37.25 },
+ { path: '/cloud-sync', label: 'Cloud Sync', icon: Cloud, order: 37.35 },
  { path: '/backup-security', label: 'Backup & Security', icon: HardDrive, order: 37.5 },
  { path: '/biometric-settings', label: 'Biometric', icon: Fingerprint, order: 38 },
  { path: '/data-manager', label: 'Data Manager', icon: Database, order: 39 },
@@ -209,6 +211,8 @@ const UPGRADE_ENABLED_PATHS = [
   '/reports/inventory',
   '/reports/consumption',
   '/backup-security',
+  '/printers',
+  '/cloud-sync',
 ]
 
 /**

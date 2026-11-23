@@ -1,7 +1,7 @@
 import { groupItemsByCategory, getCategoryPackagePrice } from '../utils.js'
 import { THERMAL_SLIP_CSS, PROFESSIONAL_SLIP_CSS } from './thermalCss.js'
 import { openSlipPreviewDialog } from './slipPreview.js'
-import { printThermalInPage, trySilentPrint, fmt, escapeHtml } from './shared.js'
+import { printThermalInPage, trySilentPrint, tryElectronPrintDialog, fmt, escapeHtml } from './shared.js'
 
 /** Only the official bank/Raast QR image works with payment apps — plain IBAN QR is invalid. */
 function resolveBankQrDataUrl(settings = {}) {
@@ -283,6 +283,7 @@ export async function printSaleReceiptUtil(opts = {}) {
       return
     }
 
+    if (await tryElectronPrintDialog(html, deviceName)) return
     printThermalInPage(html)
   } catch {}
 }
