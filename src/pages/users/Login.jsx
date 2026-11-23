@@ -93,6 +93,17 @@ export default function Login() {
     setInstallHelp('')
   }, [])
 
+  // Disable dense browser-ui scale on this route so mobile/PWA layout stays responsive
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.add('login-route')
+    try { window.__applyBrowserUiScale?.() } catch {}
+    return () => {
+      root.classList.remove('login-route')
+      try { window.__applyBrowserUiScale?.() } catch {}
+    }
+  }, [])
+
   useEffect(() => {
     const id = 'login-fonts'
     if (document.getElementById(id)) return
@@ -300,11 +311,13 @@ export default function Login() {
 
   return (
     <div
-      className="relative min-h-[100dvh] overflow-y-auto text-slate-900"
+      className="relative min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden overflow-y-auto text-slate-900"
       style={{
         fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingTop: 'max(env(safe-area-inset-top, 0px), var(--safe-top-min, 0px))',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
         background: 'linear-gradient(180deg, #f4f8ff 0%, #eef4ff 40%, #ffffff 100%)',
       }}
     >
@@ -323,10 +336,10 @@ export default function Login() {
         />
       </div>
 
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl items-center p-4 sm:p-6 lg:p-8">
-        <div className="grid w-full overflow-hidden rounded-[2rem] border border-blue-100 bg-white shadow-[0_30px_80px_-40px_rgba(37,99,235,0.35)] lg:grid-cols-2">
-          {/* Brand half */}
-          <section className="relative flex min-h-[220px] flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#0ea5e9] px-6 py-7 text-white sm:min-h-[280px] sm:px-10 sm:py-10 lg:min-h-[640px]">
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl items-stretch justify-center p-3 sm:p-6 lg:items-center lg:p-8">
+        <div className="grid w-full max-w-full grid-cols-1 overflow-hidden rounded-[1.5rem] border border-blue-100 bg-white shadow-[0_30px_80px_-40px_rgba(37,99,235,0.35)] sm:rounded-[2rem] lg:grid-cols-2">
+          {/* Brand half — compact on phones, full panel on desktop */}
+          <section className="relative flex flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#0ea5e9] px-5 py-5 text-white sm:px-8 sm:py-8 lg:min-h-[min(640px,80dvh)] lg:px-10 lg:py-10">
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
               <div className="absolute -bottom-20 -left-10 h-64 w-64 rounded-full bg-sky-300/20 blur-2xl" />
@@ -345,20 +358,20 @@ export default function Login() {
                 <Sparkles size={12} /> EpicSpire RMS
               </div>
 
-              <div className="mt-6 flex items-center gap-4 lg:mt-12 lg:flex-col lg:items-start lg:gap-7">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-white shadow-xl shadow-blue-950/20 ring-4 ring-white/25 sm:h-20 sm:w-20 lg:h-28 lg:w-28 lg:rounded-[1.75rem]">
+              <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-4 lg:mt-12 lg:flex-col lg:items-start lg:gap-7">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[1.1rem] bg-white shadow-xl shadow-blue-950/20 ring-4 ring-white/25 sm:h-20 sm:w-20 sm:rounded-[1.25rem] lg:h-28 lg:w-28 lg:rounded-[1.75rem]">
                   {logo
                     ? <img src={logo} alt={brand} className="h-full w-full object-cover" />
                     : <img src="/icon.ico" alt={brand} className="h-full w-full object-cover" />}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h1
-                    className="text-2xl font-bold leading-[1.1] tracking-tight text-white sm:text-3xl lg:text-[2.75rem]"
+                    className="truncate text-xl font-bold leading-[1.1] tracking-tight text-white sm:text-3xl lg:whitespace-normal lg:text-[2.75rem]"
                     style={{ fontFamily: '"Fraunces", "Plus Jakarta Sans", serif' }}
                   >
                     {brand}
                   </h1>
-                  <p className="mt-2 max-w-sm text-sm leading-relaxed text-blue-50/90 sm:text-base lg:mt-3">
+                  <p className="mt-1.5 line-clamp-2 max-w-sm text-xs leading-relaxed text-blue-50/90 sm:mt-2 sm:line-clamp-none sm:text-base lg:mt-3">
                     Sell faster. Run the kitchen. Manage every branch — from one calm workspace.
                   </p>
                 </div>
@@ -380,7 +393,7 @@ export default function Login() {
               </ul>
             </div>
 
-            <div className="relative mt-6 space-y-2 border-t border-white/20 pt-5 text-sm text-blue-50">
+            <div className="relative mt-4 hidden space-y-2 border-t border-white/20 pt-4 text-sm text-blue-50 sm:mt-6 sm:block sm:pt-5 lg:block">
               {phone ? (
                 <div className="flex items-center gap-2">
                   <Phone size={15} className="shrink-0 text-white" />
@@ -403,12 +416,12 @@ export default function Login() {
           </section>
 
           {/* Form half */}
-          <section className="flex items-center bg-white px-5 py-7 sm:px-10 sm:py-10">
-            <div className="mx-auto w-full max-w-md">
-              <div className="mb-6 flex items-start justify-between gap-3">
-                <div>
+          <section className="flex items-center bg-white px-4 py-6 sm:px-8 sm:py-9 lg:px-10 lg:py-10">
+            <div className="mx-auto w-full max-w-md min-w-0">
+              <div className="mb-5 flex items-start justify-between gap-3 sm:mb-6">
+                <div className="min-w-0">
                   <h2
-                    className="text-2xl font-bold tracking-tight text-slate-900"
+                    className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl"
                     style={{ fontFamily: '"Fraunces", serif' }}
                   >
                     Welcome back
@@ -429,7 +442,7 @@ export default function Login() {
                 </div>
               </div>
 
-              <form onSubmit={submit} className="space-y-4">
+              <form onSubmit={submit} className="space-y-3.5 sm:space-y-4">
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Username</label>
                   <input
@@ -437,8 +450,9 @@ export default function Login() {
                     value={form.username}
                     onChange={e => setForm({ ...form, username: e.target.value })}
                     autoComplete="username"
+                    enterKeyHint="next"
                     placeholder="Enter username"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-[15px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-[16px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:text-[15px]"
                   />
                 </div>
                 <div>
@@ -449,8 +463,9 @@ export default function Login() {
                       value={form.password}
                       onChange={e => setForm({ ...form, password: e.target.value })}
                       autoComplete="current-password"
+                      enterKeyHint="go"
                       placeholder="Enter password"
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-[15px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-[16px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:text-[15px]"
                     />
                     <button
                       type="button"
@@ -467,7 +482,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-sky-500 px-4 py-3.5 text-sm font-bold text-white shadow-[0_14px_30px_-12px_rgba(37,99,235,0.7)] transition hover:brightness-105 disabled:opacity-60"
+                  className="mt-1 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-sky-500 px-4 py-3.5 text-sm font-bold text-white shadow-[0_14px_30px_-12px_rgba(37,99,235,0.7)] transition hover:brightness-105 disabled:opacity-60 touch-manipulation"
                 >
                   {loading ? (
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -477,11 +492,11 @@ export default function Login() {
                 </button>
               </form>
 
-              <div className="mt-5 flex items-center justify-between gap-3">
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => setConnOpen(v => !v)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                  className={`inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition touch-manipulation ${
                     connOpen
                       ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
                       : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
