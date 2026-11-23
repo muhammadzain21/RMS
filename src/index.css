@@ -96,35 +96,7 @@ html.browser-ui-scaled #root {
   transform-origin: 0 0;
   width: calc(100% / var(--browser-ui-scale));
   height: calc(100% / var(--browser-ui-scale));
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-}
-/* Login must never inherit the dense desktop scale — keep native responsive layout */
-html.login-route.browser-ui-scaled {
-  overflow: auto;
-}
-html.login-route.browser-ui-scaled,
-html.login-route.browser-ui-scaled body {
-  overflow: auto;
-  height: auto;
-  min-height: 100%;
-}
-html.login-route.browser-ui-scaled #root {
-  transform: none;
-  width: 100%;
-  height: auto;
-  min-height: 100%;
-  overflow: visible;
-}
-html.login-route {
-  overflow: auto;
-}
-html.login-route,
-html.login-route body,
-html.login-route #root {
-  height: auto;
-  min-height: 100%;
-  overflow: auto;
+  overflow: hidden;
 }
 
 /* PWA / notch safe areas — keep header & sidebar buttons tappable */

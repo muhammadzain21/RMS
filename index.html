@@ -82,51 +82,20 @@
           document.documentElement.style.colorScheme = 'dark'
         }
       } catch (e) {}
-      // Browser UI scale 60% via transform (NOT css zoom — zoom breaks 100dvh layouts).
-      // Skip on phones / narrow viewports / mobile PWA so login & forms stay responsive.
+      // Browser UI scale 60% via transform (NOT css zoom — zoom breaks 100dvh layouts)
       try {
         if (!/Electron/i.test(navigator.userAgent || '')) {
+          // Clear broken css zoom from earlier builds
           try { document.documentElement.style.zoom = '' } catch (e2) {}
           try { localStorage.removeItem('browser_zoom_factor') } catch (e2) {}
-          window.__applyBrowserUiScale = function () {
-            try {
-              var w = window.innerWidth || 0
-              var coarse = false
-              try { coarse = window.matchMedia('(pointer: coarse)').matches } catch (e3) {}
-              var standalone = false
-              try {
-                standalone = window.matchMedia('(display-mode: standalone)').matches
-                  || window.navigator.standalone === true
-              } catch (e3) {}
-              var mobileUa = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
-              // Natural 100% scale on mobile / PWA / narrow windows
-              if (w > 0 && (w < 900 || (coarse && w < 1100) || (standalone && (coarse || mobileUa)))) {
-                document.documentElement.classList.remove('browser-ui-scaled')
-                document.documentElement.style.removeProperty('--browser-ui-scale')
-                return
-              }
-              var scale = '0.6'
-              try {
-                var saved = localStorage.getItem('browser_ui_scale')
-                if (saved && Number(saved) >= 0.5 && Number(saved) <= 1) scale = saved
-                else localStorage.setItem('browser_ui_scale', scale)
-              } catch (e3) {}
-              document.documentElement.style.setProperty('--browser-ui-scale', scale)
-              document.documentElement.classList.add('browser-ui-scaled')
-            } catch (e3) {}
-          }
-          window.__applyBrowserUiScale()
-          window.addEventListener('resize', function () {
-            clearTimeout(window.__browserUiScaleTimer)
-            window.__browserUiScaleTimer = setTimeout(function () {
-              try { window.__applyBrowserUiScale() } catch (e3) {}
-            }, 120)
-          })
-          window.addEventListener('orientationchange', function () {
-            setTimeout(function () {
-              try { window.__applyBrowserUiScale() } catch (e3) {}
-            }, 200)
-          })
+          var scale = '0.6'
+          try {
+            var saved = localStorage.getItem('browser_ui_scale')
+            if (saved && Number(saved) >= 0.5 && Number(saved) <= 1) scale = saved
+            else localStorage.setItem('browser_ui_scale', scale)
+          } catch (e2) {}
+          document.documentElement.style.setProperty('--browser-ui-scale', scale)
+          document.documentElement.classList.add('browser-ui-scaled')
         }
       } catch (e) {}
       // Network-only SW — required for Chrome "Install app" prompt. No caching.
