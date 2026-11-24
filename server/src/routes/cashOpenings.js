@@ -44,20 +44,21 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const openingCash = Number(body.openingCash || 0)
     const { resolveBranchId } = await import('../utils/branchScope.js')
     const branchId = String(resolveBranchId(req) || '')
-    const rec = await CashOpening.findOneAndUpdate(
-      { date, branchId },
-      {
-        $set: {
-          date,
-          branchId,
-          openingCash,
-          note: body.note || '',
-          userId: req.user?.id || '',
-          userName: req.user?.username || '',
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    )
+    const existing = await CashOpening.findOne({ date, branchId }).lean()
+    if (existing) {
+      return res.status(409).json({
+        error: `Day ${date} is already open. Delete the existing opening first if you need to change it.`,
+        code: 'ALREADY_OPEN',
+      })
+    }
+    const rec = await CashOpening.create({
+      date,
+      branchId,
+      openingCash,
+      note: body.note || '',
+      userId: req.user?.id || '',
+      userName: req.user?.username || '',
+    })
     await logAudit(req, 'day', `Day opened ${rec.date} with ${rec.openingCash}`, { id: rec._id })
     res.status(201).json(rec)
   } catch (e) { next(e) }

@@ -74,7 +74,7 @@ router.get('/inbox', authRequired, async (req, res, next) => {
     const list = await CallCenterOrder.find({
       ...scope,
       ...statusFilter,
-    }).sort({ createdAt: tab === 'complete' ? -1 : 1 }).limit(500).lean()
+    }).sort({ createdAt: -1 }).limit(1000).lean()
     res.json(list)
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message })
@@ -189,11 +189,14 @@ router.post('/:id/accept', authRequired, async (req, res, next) => {
     try {
       assertBranchAccess(req, doc.branchId)
     } catch (e) {
-      if (!(isHqUser(req.user) || ['Manager', 'Staff', 'CallCenter'].includes(String(req.user?.role || '')))) throw e
+      // HQ / call-center roles may accept into a target branch via X-Branch-Id
+      if (!(isHqUser(req.user) || ['Manager', 'Staff', 'CallCenter', 'Cashier'].includes(String(req.user?.role || '')))) throw e
     }
 
     if (doc.status === 'cancelled') return res.status(400).json({ error: 'Order cancelled' })
-    if (doc.status === 'kot_created') {
+    if (doc.status === 'completed') return res.status(400).json({ error: 'Order already completed' })
+    // Already in kitchen / accepted — still return cart so cashier can re-load Sell
+    if (['kot_created', 'preparing', 'ready', 'accepted'].includes(String(doc.status || ''))) {
       return res.json({ order: doc, cart: buildCart(doc), already: true })
     }
 

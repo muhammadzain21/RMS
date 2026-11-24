@@ -5,6 +5,7 @@ export const PAYROLL_STATUSES = ['draft', 'approved', 'paid', 'cancelled']
 const PayrollRunSchema = new mongoose.Schema({
   staffId: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff', required: true, index: true },
   staffName: { type: String, required: true },
+  branchId: { type: String, default: '', index: true },
   position: { type: String, default: '' },
   period: { type: String, required: true, index: true }, // YYYY-MM
   status: { type: String, enum: PAYROLL_STATUSES, default: 'draft', index: true },

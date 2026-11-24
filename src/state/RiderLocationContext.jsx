@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { useAuth } from './AuthContext.jsx'
-import { getFixOnce, GEO_OPTS_BG, requestLocationAccess, watchLocation } from '../utils/riderGeo.js'
+import { useAuth } from '@/state/AuthContext.jsx'
+import { getFixOnce, GEO_OPTS_BG, requestLocationAccess, watchLocation } from '@features/riders/utils/riderGeo.js'
 
 const API = () => (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 const STORE_KEY = 'rms_rider_share_v1'

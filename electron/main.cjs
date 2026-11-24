@@ -538,13 +538,13 @@ async function listSystemPrinters() {
     const win = BrowserWindow.getFocusedWindow() || mainWindow
     let list = []
     if (win) {
-      try {
-        if (typeof win.webContents.getPrintersAsync === 'function') {
-          list = await win.webContents.getPrintersAsync()
-        } else if (typeof win.webContents.getPrinters === 'function') {
-          list = win.webContents.getPrinters()
-        }
-      } catch {}
+    try {
+      if (typeof win.webContents.getPrintersAsync === 'function') {
+        list = await win.webContents.getPrintersAsync()
+      } else if (typeof win.webContents.getPrinters === 'function') {
+        list = win.webContents.getPrinters()
+      }
+    } catch {}
     }
     if (!Array.isArray(list) || list.length === 0) {
       try {
@@ -883,13 +883,13 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
     }
 
     printWin = new BrowserWindow({
-      show: false,
-      width: 420,
-      height: 640,
-      autoHideMenuBar: true,
-      skipTaskbar: true,
-      webPreferences: { backgroundThrottling: false },
-    })
+    show: false,
+    width: 420,
+    height: 640,
+    autoHideMenuBar: true,
+    skipTaskbar: true,
+    webPreferences: { backgroundThrottling: false },
+  })
 
     await new Promise((resolve, reject) => {
       const onFail = (e) => reject(e)
@@ -943,12 +943,12 @@ ipcMain.handle('printing:print-html', async (_event, { html, deviceName, silent 
     const win = printWin
     setTimeout(() => {
       try { if (win && !win.isDestroyed()) win.destroy() } catch {}
-      try {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          applySavedZoom(mainWindow)
-          try { mainWindow.focus() } catch {}
-        }
-      } catch {}
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        applySavedZoom(mainWindow)
+        try { mainWindow.focus() } catch {}
+      }
+    } catch {}
     }, destroyDelayMs)
   }
 })

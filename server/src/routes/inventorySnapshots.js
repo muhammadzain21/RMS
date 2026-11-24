@@ -36,29 +36,47 @@ router.get('/opening', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+function plainCounts(raw) {
+  if (!raw) return {}
+  if (raw instanceof Map) return Object.fromEntries(raw.entries())
+  if (typeof raw === 'object') return { ...raw }
+  return {}
+}
+
+function normalizeCounts(raw) {
+  const out = {}
+  for (const [k, v] of Object.entries(plainCounts(raw))) {
+    if (v === '' || v == null) continue
+    const n = Number(v)
+    if (!Number.isFinite(n)) continue
+    out[String(k)] = n
+  }
+  return out
+}
+
 // GET /api/inventory-snapshots/physical?date=YYYY-MM-DD — saved physical counts
 router.get('/physical', async (req, res, next) => {
   try {
     const { date } = req.query
     if (!date) return res.status(400).json({ error: 'date is required' })
     const doc = await PhysicalCount.findOne({ date: String(date) }).lean()
-    res.json({ date: String(date), counts: doc?.counts || {} })
+    res.json({ date: String(date), counts: plainCounts(doc?.counts) })
   } catch (e) { next(e) }
 })
 
 // PUT /api/inventory-snapshots/physical — upsert physical counts for a date
 // Body: { date: 'YYYY-MM-DD', counts: { [ingredientName]: qty } }
-router.put('/physical', async (req, res, next) => {
+router.put('/physical', requireRole('Admin', 'Manager', 'Staff'), async (req, res, next) => {
   try {
     const date = String(req.body?.date || '')
     if (!date) return res.status(400).json({ error: 'date is required' })
-    const counts = req.body?.counts && typeof req.body.counts === 'object' ? req.body.counts : {}
+    const counts = normalizeCounts(req.body?.counts)
     const doc = await PhysicalCount.findOneAndUpdate(
       { date },
       { $set: { counts } },
       { upsert: true, new: true }
     )
-    res.json({ date, counts: doc?.counts || {} })
+    res.json({ date, counts: plainCounts(doc?.counts) })
   } catch (e) { next(e) }
 })
 

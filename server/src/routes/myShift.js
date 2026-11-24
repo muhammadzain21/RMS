@@ -295,20 +295,32 @@ router.get('/', async (req, res, next) => {
       return t === 'foodpanda' || t === 'food panda' || t === 'drive-thru' || t === 'drivethru'
     }
     const pm = (x) => String(x.paymentMethod || 'cash').toLowerCase()
+    const tenderAmt = (sale, methods) => {
+      const want = new Set((Array.isArray(methods) ? methods : [methods]).map(m => String(m).toLowerCase()))
+      const pays = Array.isArray(sale?.payments) ? sale.payments : null
+      if (pays?.length) {
+        return pays
+          .filter(p => want.has(String(p.method || '').toLowerCase()))
+          .reduce((a, p) => a + Number(p.amount || 0), 0)
+      }
+      return want.has(pm(sale)) ? saleAmt(sale) : 0
+    }
+    const hasTender = (sale, methods) => tenderAmt(sale, methods) > 0
 
-    const cashSalesRows = (sales || []).filter(x => pm(x) === 'cash' && !isFoodpanda(x))
-    const cardSalesRows = (sales || []).filter(x => pm(x) === 'card')
-    const bankSalesRows = (sales || []).filter(x => pm(x) === 'bank' || pm(x) === 'online')
+    const cashSalesRows = (sales || []).filter(x => hasTender(x, 'cash') && !isFoodpanda(x))
+    const cardSalesRows = (sales || []).filter(x => hasTender(x, 'card'))
+    const bankSalesRows = (sales || []).filter(x => hasTender(x, ['bank', 'online']))
     const foodpandaSalesRows = (sales || []).filter(isFoodpanda)
-    const staffSalesRows = (sales || []).filter(x => pm(x) === 'staff' || pm(x) === 'complimentary' || pm(x) === 'personal')
+    const staffSalesRows = (sales || []).filter(x => hasTender(x, ['staff', 'complimentary', 'personal']))
 
     const sumRows = (rows) => rows.reduce((s, x) => s + saleAmt(x), 0)
     const salesTotal = (sales || []).reduce((s, x) => s + saleAmt(x), 0)
-    const salesCash = sumRows(cashSalesRows)
-    const salesCard = sumRows(cardSalesRows)
-    const salesBank = sumRows(bankSalesRows)
+    // For split bills, sum only the matching tender amount (not full sale total)
+    const salesCash = (sales || []).filter(x => !isFoodpanda(x)).reduce((s, x) => s + tenderAmt(x, 'cash'), 0)
+    const salesCard = (sales || []).reduce((s, x) => s + tenderAmt(x, 'card'), 0)
+    const salesBank = (sales || []).reduce((s, x) => s + tenderAmt(x, ['bank', 'online']), 0)
     const salesFoodpanda = sumRows(foodpandaSalesRows)
-    const salesStaff = sumRows(staffSalesRows)
+    const salesStaff = (sales || []).reduce((s, x) => s + tenderAmt(x, ['staff', 'complimentary', 'personal']), 0)
 
     const payInRows = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'IN')
     const payOutRows = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'OUT')
@@ -332,6 +344,18 @@ router.get('/', async (req, res, next) => {
       return c.name || c.phone || ''
     }
     const paymentLabel = (s) => {
+      const pays = Array.isArray(s.payments) ? s.payments.filter(p => Number(p?.amount || 0) > 0) : []
+      if (pays.length > 1) {
+        return pays.map(p => {
+          const m = String(p.method || '').toUpperCase()
+          const amt = Number(p.amount || 0)
+          if (m === 'BANK') return `BANK ${amt}`
+          if (m === 'CARD') return `CARD ${amt}`
+          if (m === 'STAFF') return `STAFF ${amt}`
+          if (m === 'FOODPANDA') return `FOODPANDA ${amt}`
+          return `${m || 'PAY'} ${amt}`
+        }).join(' + ')
+      }
       const method = String(s.paymentMethod || 'cash').toUpperCase()
       if (method === 'BANK') {
         const ch = {
@@ -343,6 +367,7 @@ router.get('/', async (req, res, next) => {
       if (method === 'CARD') return `CARD${s.bankLast4 ? ` ····${s.bankLast4}` : ''}`
       if (method === 'STAFF') return `STAFF (${s.staffName || 'Member'})`
       if (method === 'COMPLIMENTARY' || method === 'PERSONAL') return 'PERSONAL'
+      if (method === 'SPLIT') return 'SPLIT'
       return method
     }
     const mapSale = (s) => {
@@ -371,6 +396,7 @@ router.get('/', async (req, res, next) => {
         total: net,
         paymentMethod: paymentLabel(s),
         paymentMethodRaw: s.paymentMethod || 'cash',
+        payments: Array.isArray(s.payments) ? s.payments : [],
         status: 'Paid',
         deliveryDate: s.deliveryDate || s.date || date,
         items: Array.isArray(s.items) ? s.items.length : 0,

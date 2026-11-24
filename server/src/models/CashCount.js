@@ -8,6 +8,7 @@ const CashCountSchema = new mongoose.Schema({
   note: { type: String, default: '' },
   userId: { type: String, default: '' },
   userName: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('CashCount', CashCountSchema)

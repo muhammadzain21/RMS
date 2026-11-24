@@ -1,8 +1,10 @@
 import { Router } from 'express'
 import Expense from '../models/Expense.js'
 import ExpenseHead from '../models/ExpenseHead.js'
+import CashOpening from '../models/CashOpening.js'
+import DayClose from '../models/DayClose.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
-import { blockIfClosedFromBody, blockIfClosedFromModel } from '../middleware/dayClosed.js'
+import { blockIfClosedFromModel, isDateClosed } from '../middleware/dayClosed.js'
 import { logAudit } from '../middleware/auditLog.js'
 import { mergeBranchFilter, resolveBranchId, stampBranchId, assertDocumentBranch } from '../utils/branchScope.js'
 import { getSettingsLean } from '../utils/settingsScope.js'
@@ -171,6 +173,22 @@ function normalizeBody(body, req, { isCreate = false } = {}) {
   }
   if (body.branchId) out.branchId = String(body.branchId)
   return out
+}
+
+/** Latest cash-opening date that has not been day-closed for this branch. */
+async function resolveOpenBusinessDate(req) {
+  const branchId = String(resolveBranchId(req) || '').trim()
+  const bf = branchId ? { branchId } : {}
+  const [openings, closes] = await Promise.all([
+    CashOpening.find(bf).select('date').sort({ date: -1 }).limit(60).lean(),
+    DayClose.find(bf).select('date').lean(),
+  ])
+  const closed = new Set((closes || []).map(c => String(c?.date || '').slice(0, 10)).filter(Boolean))
+  for (const o of openings || []) {
+    const d = String(o?.date || '').slice(0, 10)
+    if (d && !closed.has(d)) return d
+  }
+  return ''
 }
 
 function headsLabel(exp) {
@@ -348,11 +366,28 @@ router.get('/export', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
-router.post('/', requireRole('Admin', 'Manager'), blockIfClosedFromBody('date'), async (req, res, next) => {
+router.post('/', requireRole('Admin', 'Manager'), async (req, res, next) => {
   try {
-    const payload = stampBranchId(req, normalizeBody(req.body || {}, req, { isCreate: true }))
+    // New expenses always post to the currently open business day — not calendar today.
+    const openDate = await resolveOpenBusinessDate(req)
+    const body = { ...(req.body || {}) }
+    if (openDate) {
+      body.date = openDate
+    } else {
+      const requested = String(body.date || '').slice(0, 10)
+      if (!requested) {
+        return res.status(400).json({ error: 'No open business day. Open the day first, then add expenses.' })
+      }
+      body.date = requested
+    }
+    const branchId = String(resolveBranchId(req) || '')
+    if (await isDateClosed(body.date, branchId)) {
+      return res.status(409).json({ error: `Date ${String(body.date).slice(0, 10)} is closed` })
+    }
+    const payload = stampBranchId(req, normalizeBody(body, req, { isCreate: true }))
+    payload.date = String(body.date).slice(0, 10)
     const exp = await Expense.create(payload)
-    await logAudit(req, 'expense', `Added expense ${headsLabel(exp)}: ${exp.amount} via ${exp.accountHead}`, { id: exp._id })
+    await logAudit(req, 'expense', `Added expense ${headsLabel(exp)}: ${exp.amount} via ${exp.accountHead}`, { id: exp._id, date: exp.date })
     res.status(201).json(exp)
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message })

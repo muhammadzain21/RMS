@@ -1,0 +1,254 @@
+import { useMemo, useState } from 'react'
+import { useBusinessDateValue } from '@/hooks/useBusinessDateFilter.js'
+import { useData } from '@/state/DataContext.jsx'
+import { useAuth } from '@/state/AuthContext.jsx'
+import { format } from 'date-fns'
+import { toast } from 'react-hot-toast'
+import { useConfirm } from '@shared/components/useConfirm.jsx'
+import DatePicker from '@shared/components/DatePicker.jsx'
+
+export default function ReturnNew() {
+ const { state, dispatch, businessDate } = useData()
+ const { token } = useAuth()
+ const { confirm, ConfirmDialog } = useConfirm()
+ const [date, setDate] = useBusinessDateValue()
+ const [saleId, setSaleId] = useState('')
+ const [reason, setReason] = useState('')
+ const [paymentMethod, setPaymentMethod] = useState('cash')
+ const [saleSearch, setSaleSearch] = useState('')
+ const [showReturnDialog, setShowReturnDialog] = useState(false)
+
+ const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
+ const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+
+ const closedDates = useMemo(() => new Set((state.dayCloses||[]).map(d => d.date)), [state.dayCloses])
+ const isSelectedDateClosed = closedDates.has(date)
+
+ const sale = useMemo(() => (saleId ? state.sales.find(s => s.id === saleId) : null), [saleId, state.sales])
+
+ // Build item info from sale
+ const saleItems = useMemo(() => {
+ if (!sale || !Array.isArray(sale.items)) return []
+ return sale.items.map(si => {
+ let unitPrice = Number(si.price ?? si.custom?.price ?? 0)
+ if (!unitPrice) {
+ const lineTotal = Number(si.total ?? si.lineTotal ?? 0)
+ const q = Number(si.qty || 0)
+ if (lineTotal > 0 && q > 0) unitPrice = lineTotal / q
+ }
+ const m = state.menu.find(mm => mm.id === si.itemId)
+ return {
+ itemId: si.itemId,
+ name: si.name || si.custom?.name || m?.name || si.itemId,
+ originalQty: Number(si.qty || 0),
+ unitPrice: unitPrice || m?.price || 0,
+ }
+ })
+ }, [sale, state.menu])
+
+ // Track already returned qty per item
+ const priorReturnsMap = useMemo(() => {
+ if (!sale) return {}
+ const map = {}
+ ;(state.returns || []).filter(r => r.saleId === sale.id).forEach(r => {
+ r.items.forEach(it => { map[it.itemId] = (map[it.itemId] || 0) + Number(it.qty || 0) })
+ })
+ return map
+ }, [sale, state.returns])
+
+ // Return qty inputs keyed by itemId
+ const [returnQtys, setReturnQtys] = useState({})
+
+ const maxReturnQty = (itemId, originalQty) => {
+ const returned = priorReturnsMap[itemId] || 0
+ return Math.max(0, originalQty - returned)
+ }
+
+ const updateReturnQty = (itemId, val, originalQty) => {
+ const max = maxReturnQty(itemId, originalQty)
+ const qty = Math.max(0, Math.min(Number(val) || 0, max))
+ setReturnQtys(prev => ({ ...prev, [itemId]: qty }))
+ }
+
+ const selectedItems = useMemo(() => {
+ return saleItems
+ .filter(si => (returnQtys[si.itemId] || 0) > 0)
+ .map(si => ({ itemId: si.itemId, qty: returnQtys[si.itemId] }))
+ }, [saleItems, returnQtys])
+
+ const refund = useMemo(() => selectedItems.reduce((sum, it) => {
+ const si = saleItems.find(s => s.itemId === it.itemId)
+ return sum + (si?.unitPrice || 0) * it.qty
+ }, 0), [selectedItems, saleItems])
+
+ const customerText = (c) => {
+ if (!c) return '-'
+ if (typeof c === 'string') return c
+ return c.name || c.phone || '-'
+ }
+
+ const formatCurrency = (amount) => `PKR ${Number(amount || 0).toLocaleString()}`
+
+ // Check if a sale has been fully returned (all items returned)
+ const isFullyReturned = (saleId, sale) => {
+ if (!sale || !Array.isArray(sale.items)) return false
+ const priorReturns = (state.returns || []).filter(r => r.saleId === saleId)
+ const returnedMap = {}
+ priorReturns.forEach(r => {
+ r.items.forEach(it => { returnedMap[it.itemId] = (returnedMap[it.itemId] || 0) + Number(it.qty || 0) })
+ })
+ return sale.items.every(si => (returnedMap[si.itemId] || 0) >= Number(si.qty || 0))
+ }
+
+ const allSales = useMemo(() => {
+ const list = [...(state.sales || [])]
+ // Exclude fully returned sales
+ .filter(s => !isFullyReturned(s.id, s))
+ list.sort((a,b) => (b.date||'').localeCompare(a.date||'') || String(b.billNo||'').localeCompare(String(a.billNo||'')))
+ if (!saleSearch) return list
+ const t = saleSearch.toLowerCase()
+ return list.filter(s => {
+ const bill = s.billNo ? `BILL-${s.billNo}` : s.id
+ const cust = customerText(s.customer)
+ return (
+ String(s.date||'').toLowerCase().includes(t) ||
+ String(bill||'').toLowerCase().includes(t) ||
+ String(cust||'').toLowerCase().includes(t)
+ )
+ })
+ }, [state.sales, state.returns, saleSearch])
+
+ const closeReturnDialog = () => {
+ setShowReturnDialog(false)
+ setSaleId('')
+ setReturnQtys({})
+ }
+
+ const submit = async () => {
+ if (isSelectedDateClosed) { toast.error('This date is closed. Recording returns is disabled.'); return }
+ if (!saleId) { toast.error('Please select an original sale.'); return }
+ if (selectedItems.length === 0) { toast.error('Please enter return quantity for at least one item.'); return }
+ for (const it of selectedItems) {
+ const si = saleItems.find(s => s.itemId === it.itemId)
+ const max = maxReturnQty(it.itemId, si?.originalQty || 0)
+ if (it.qty > max) { toast.error('Qty exceeds allowed for one or more items.'); return }
+ }
+ try {
+ const customer = sale?.customer ? customerText(sale.customer) : undefined
+ const body = { date, saleId, customer, items: selectedItems, refund: Number(refund.toFixed(2)), reason, paymentMethod }
+ const res = await fetch(`${API}/api/returns`, { method: 'POST', headers, body: JSON.stringify(body) })
+ if (!res.ok) { toast.error('Failed to record return'); return }
+ const q = new URLSearchParams()
+ q.set('date', date)
+ const rs = await fetch(`${API}/api/returns?${q.toString()}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+ if (rs.ok) {
+ const list = await rs.json()
+ const mapId = (x) => ({ ...x, id: x.id || x._id })
+ dispatch({ type: 'HYDRATE', payload: { returns: (list || []).map(mapId) } })
+ }
+ setSaleId('')
+ setReturnQtys({})
+ setReason('')
+ setPaymentMethod('cash')
+ setSaleSearch('')
+ setShowReturnDialog(false)
+ toast.success('Return recorded successfully')
+ } catch {
+ toast.error('Error recording return')
+ }
+ }
+
+ return (
+ <div className="space-y-4"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><span className="text-3xl"></span> New Return
+ </h1></div>
+
+ {isSelectedDateClosed && (
+ <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800"><div className="flex items-center gap-2 text-amber-800 dark:text-amber-200"><span className="text-xl"></span><span className="font-semibold">Selected date is closed. You cannot record returns for this date.</span></div></div>
+ )}
+
+ <form onSubmit={e=>e.preventDefault()} className="space-y-4">
+ {/* Sale Selection */}
+ <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div className="block"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</span><div className="mt-1"><DatePicker value={date} onChange={v => { if (v) setDate(v) }} allowClear={false} /></div></div><label className="block md:col-span-2"><span className="text-sm font-medium text-gray-700 dark:text-gray-300">Select Order / Sale</span><input value={saleSearch} onChange={e=>setSaleSearch(e.target.value)} placeholder="Search by date, bill, customer..." className="mt-1 px-3 py-2 border rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white dark:border-gray-600 focus:ring-2 focus:ring-blue-500" /></label></div>
+
+ {/* Sales Table */}
+ <div className="mt-4 overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg"><table className="min-w-full text-sm"><thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10"><tr><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Bill No</th><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Total</th><th className="px-3 py-2 text-center font-semibold text-gray-700 dark:text-gray-300">Action</th></tr></thead><tbody>
+ {allSales.map(s => {
+ const bill = s.billNo ? `BILL-${s.billNo}` : s.id.slice(0,6)
+ const isSelected = saleId === s.id
+ return (
+ <tr key={s.id} className={`border-t cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`} onClick={() => { setSaleId(s.id); setReturnQtys({}); setShowReturnDialog(true) }}><td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td><td className="px-3 py-2 text-gray-600 dark:text-gray-400">{bill}</td><td className="px-3 py-2 text-gray-600 dark:text-gray-400">{customerText(s.customer)}</td><td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{formatCurrency(s.total)}</td><td className="px-3 py-2 text-center"><button type="button" className={`px-3 py-1 rounded-lg text-xs font-medium ${isSelected ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+ {isSelected ? 'Selected' : 'Select'}
+ </button></td></tr>
+ )
+ })}
+ {allSales.length === 0 && (
+ <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500 dark:text-gray-400">
+ No orders available for return (all orders may have been fully returned)
+ </td></tr>
+ )}
+ </tbody></table></div>
+
+ </div>
+
+ </form>
+
+ {/* Return dialog — opens on order select; contains items + reason + method + save */}
+ {showReturnDialog && sale && (
+ <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={closeReturnDialog}>
+ <div className="w-full max-w-3xl rounded-2xl bg-white dark:bg-gray-900 border-2 border-rose-200 dark:border-rose-800 shadow-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+ <div className="flex items-start justify-between gap-3">
+ <div>
+ <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Return Items</h3>
+ <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+ <span className="font-medium text-gray-700 dark:text-gray-300">{sale.billNo ? `BILL-${sale.billNo}` : sale.id?.slice(0,6)}</span>
+ {' • '}Sale Total: {formatCurrency(sale.total)}
+ {' • '}Payment: {sale.paymentMethod || 'cash'}
+ {' • '}Customer: {customerText(sale.customer)}
+ </p>
+ </div>
+ <button type="button" onClick={closeReturnDialog} className="px-3 py-1.5 rounded-lg bg-slate-500 text-white text-xs font-medium hover:bg-slate-600">Close</button>
+ </div>
+
+ <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg"><table className="min-w-full text-sm"><thead className="bg-gray-50 dark:bg-gray-800"><tr><th className="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-300">Item</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Unit Price</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Sold Qty</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Already Returned</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Can Return</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Return Qty</th><th className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">Refund</th></tr></thead><tbody>
+ {saleItems.map(si => {
+ const returned = priorReturnsMap[si.itemId] || 0
+ const canReturn = Math.max(0, si.originalQty - returned)
+ const returnQty = returnQtys[si.itemId] || 0
+ const lineRefund = returnQty * si.unitPrice
+ return (
+ <tr key={si.itemId} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-3 py-2 text-gray-800 dark:text-gray-200 font-medium">{si.name}</td><td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{formatCurrency(si.unitPrice)}</td><td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{si.originalQty}</td><td className="px-3 py-2 text-right text-orange-600 dark:text-orange-400">{returned}</td><td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400 font-medium">{canReturn}</td><td className="px-3 py-2 text-right"><input
+ type="number"
+ min={0}
+ max={canReturn}
+ value={returnQty}
+ onChange={e => updateReturnQty(si.itemId, e.target.value, si.originalQty)}
+ className="w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600 text-right focus:ring-2 focus:ring-blue-500"
+ /></td><td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+ {lineRefund > 0 ? formatCurrency(lineRefund) : '-'}
+ </td></tr>
+ )
+ })}
+ </tbody><tfoot className="bg-gray-50 dark:bg-gray-800 font-semibold border-t"><tr><td className="px-3 py-2 text-gray-700 dark:text-gray-300" colSpan={6}>Total Refund</td><td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(refund)}</td></tr></tfoot></table></div>
+
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+ <label className="block">
+ <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">Reason</span>
+ <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Damaged, wrong item, customer changed mind, etc." className="mt-1 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white focus:border-rose-400 outline-none" />
+ </label>
+ <label className="block">
+ <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">Refund Method</span>
+ <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="mt-1 px-3 py-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg w-full bg-white dark:bg-gray-800 dark:text-white focus:border-rose-400 outline-none"><option value="cash">Cash</option><option value="bank">Bank</option><option value="online">Online (old)</option></select>
+ </label>
+ </div>
+
+ <div className="flex gap-2 pt-1">
+ <button type="button" onClick={closeReturnDialog} className="flex-1 px-3 py-2.5 rounded-lg border-2 border-gray-200 dark:border-gray-600 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button>
+ <button type="button" onClick={submit} disabled={isSelectedDateClosed || selectedItems.length === 0} className="flex-1 px-3 py-2.5 rounded-lg bg-gradient-to-r from-rose-500 to-rose-600 text-white text-sm font-semibold hover:from-rose-600 hover:to-rose-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">Save — {formatCurrency(refund)}</button>
+ </div>
+ </div>
+ </div>
+ )}
+ {ConfirmDialog}
+ </div>
+ )
+}

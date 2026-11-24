@@ -116,20 +116,38 @@ router.post('/', async (req, res) => {
               )
         )
     const billNo = payload.billNo || `${dateStr}_${tokenNo}`
-    const paymentMethod = String(payload.paymentMethod || 'cash').toLowerCase()
+    const payments = Array.isArray(payload.payments)
+      ? payload.payments
+          .map(p => ({
+            method: String(p?.method || '').toLowerCase(),
+            amount: Math.max(0, Number(p?.amount || 0)),
+            bankChannel: p?.bankChannel || '',
+            bankLast4: p?.bankLast4 || '',
+            staffId: p?.staffId || '',
+            staffName: p?.staffName || '',
+          }))
+          .filter(p => p.method && p.amount > 0)
+      : []
+    const paymentMethod = payments.length === 1
+      ? payments[0].method
+      : String(payload.paymentMethod || (payments.length > 1 ? 'split' : 'cash')).toLowerCase()
+    const staffLeg = payments.find(p => p.method === 'staff')
+      || (paymentMethod === 'staff' ? { staffId: payload.staffId, staffName: payload.staffName, amount: totalComputed } : null)
 
     // Staff purchase: validate the staff member BEFORE saving so a blocked
     // purchase never leaves a half-recorded sale. The amount is always
     // tracked as a pending StaffPurchase — deducted by payroll unless the
     // staff pays it off first via /api/staff-purchases/:id/settle.
     let staffDoc = null
-    if (paymentMethod === 'staff') {
-      if (!payload.staffId) return res.status(400).json({ error: 'Select the staff member' })
-      staffDoc = await Staff.findById(payload.staffId).lean()
+    if (staffLeg) {
+      const sid = staffLeg.staffId || payload.staffId
+      if (!sid) return res.status(400).json({ error: 'Select the staff member' })
+      staffDoc = await Staff.findById(sid).lean()
       if (!staffDoc) return res.status(404).json({ error: 'Staff not found' })
     }
 
-    const tipAmount = paymentMethod === 'cash'
+    const hasCash = payments.some(p => p.method === 'cash') || paymentMethod === 'cash'
+    const tipAmount = hasCash
       ? Math.max(0, Number(payload.tipAmount || 0) || Math.max(0, Number(payload.cashReceived || 0) - Number(totalComputed || 0)))
       : 0
     const { stampBranchId } = await import('../utils/branchScope.js')
@@ -140,8 +158,10 @@ router.post('/', async (req, res) => {
       billNo,
       total: totalComputed,
       paymentMethod,
+      payments: payments.length ? payments : undefined,
       tipAmount,
       bankRef: paymentMethod === 'bank' ? '' : (payload.bankRef || ''),
+      staffChargeAmount: staffLeg ? Number(staffLeg.amount || payload.staffChargeAmount || totalComputed || 0) : 0,
       idempotencyKey: key || null,
       // Stamp cashier for My Shift activity
       userId: payload.userId || req.user?.id || '',
@@ -180,18 +200,18 @@ router.post('/', async (req, res) => {
 
     // Record the staff purchase as pending — payroll deducts it unless the
     // staff settles it in cash first (or it's converted early via /deduct).
-    if (paymentMethod === 'staff' && staffDoc) {
+    if (staffDoc) {
       try {
         await StaffPurchase.create({
           staffId: staffDoc._id,
-          staffName: staffDoc.name || payload.staffName || '',
+          staffName: staffDoc.name || staffLeg?.staffName || payload.staffName || '',
           // Finance stays on the selling branch even if staff belongs to another branch
           branchId: String(saved.branchId || doc.branchId || ''),
           saleId: String(saved._id),
           billNo,
           date: dateStr,
           month: dateStr.slice(0, 7),
-          amount: Number(totalComputed || 0),
+          amount: Number(staffLeg?.amount || payload.staffChargeAmount || totalComputed || 0),
           status: 'pending',
           userId: req.user?.id || '',
           userName: req.user?.username || 'system',
@@ -369,7 +389,8 @@ router.post('/', async (req, res) => {
     }
     res.status(201).json(out)
   } catch (e) {
-    res.status(400).json({ error: 'Failed to create sale' })
+    console.error('[sales] create failed:', e?.message || e, e?.stack)
+    res.status(400).json({ error: 'Failed to create sale', detail: e?.message || String(e) })
   }
 })
 

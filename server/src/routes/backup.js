@@ -282,7 +282,7 @@ router.post('/import-branch', authRequired, requireRole('Admin', 'admin'), async
       totalInserted,
     })
     res.json({ ok: true, scope: 'branch', branchId, totalInserted, results })
-  } catch (e) {
+        } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message })
     next(e)
   }

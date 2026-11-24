@@ -5,25 +5,26 @@
  * VPS / HQ: leave cloud_sync_url empty
  * Toggle: localStorage.cloud_sync_enabled = '1' | '0' (URL can stay saved when off)
  *
- * Runs while the app is in use. Writes should call requestSync() so
- * call-center status and inventory land without waiting for the timer.
+ * Branch data is the source of truth: every branch collection is pushed up.
+ * Cloud → branch is only call-center orders, warehouse issues, and demand status.
  * Coming back online triggers an immediate catch-up sync.
  */
 
 const INTERVAL_MS = 5000
 const MAX_DRAIN_PAGES = 12
 
-/** Branch-scoped collections pushed local → cloud and applied cloud → local */
-const BRANCH_COLLECTIONS = [
-  'sales', 'kots', 'recalls', 'expenses', 'staff', 'attendance',
-  'callCenterOrders', 'warehouseTransfers', 'ingredients', 'demands',
-  'tables', 'suppliers', 'menuOverrides', 'categoryOverrides',
+/** Uploaded local → cloud. Same _id updates the cloud row; it does not insert another. */
+const PUSH_COLLECTIONS = [
+  'sales', 'deletedSales', 'returns', 'kots', 'recalls', 'voids', 'helds',
+  'expenses', 'expenseHeads', 'staff', 'attendance', 'staffAdvances', 'staffEarnings',
+  'staffPurchases', 'payrollRuns', 'ingredients', 'supplies', 'demands', 'tables',
+  'suppliers', 'riders', 'riderCash', 'cashOpenings', 'payInOuts', 'cashCounts',
+  'dayCloses', 'advanceBookings', 'physicalCounts', 'menuOverrides', 'categoryOverrides',
+  'callCenterOrders', 'warehouseTransfers', 'customers', 'users',
 ]
 
-/** Shared catalogs applied cloud → local (and optionally pushed) */
-const SHARED_COLLECTIONS = ['customers', 'categories', 'menu']
-
-const ALL_APPLY_COLLECTIONS = [...BRANCH_COLLECTIONS, ...SHARED_COLLECTIONS]
+/** Downloaded cloud → branch. Head office creates these; the branch does not. */
+const PULL_COLLECTIONS = ['callCenterOrders', 'warehouseTransfers', 'demands']
 
 const CC_STATUS_RANK = {
   pending: 1,
@@ -235,11 +236,11 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
   while (pages < MAX_DRAIN_PAGES) {
     pages += 1
     const localPull = await fetchJson(
-      `${local}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500`,
+      `${local}/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500&scope=outbound&collections=${encodeURIComponent(PUSH_COLLECTIONS.join(','))}`,
       { headers: authHeaders(token) }
     )
 
-    const docs = pickDocs(localPull.data, BRANCH_COLLECTIONS)
+    const docs = pickDocs(localPull.data, PUSH_COLLECTIONS)
     lastServerTime = localPull.serverTime || lastServerTime
 
     if (!batchHasRows(docs)) {
@@ -287,12 +288,12 @@ async function pullThenApply({ cloud, local, token, cloudToken, branchId }) {
     pages += 1
     const pulled = await cloudFetchJson(
       cloud,
-      `/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500`,
+      `/api/sync/pull?branchId=${encodeURIComponent(branchId)}&since=${encodeURIComponent(since)}&deviceId=${encodeURIComponent(deviceId())}&limit=500&collections=${encodeURIComponent(PULL_COLLECTIONS.join(','))}`,
       { method: 'GET', token, cloudToken, branchId }
     )
 
     const data = pulled.data || {}
-    const docs = pickDocs(data, ALL_APPLY_COLLECTIONS)
+    const docs = pickDocs(data, PULL_COLLECTIONS)
     lastServerTime = pulled.serverTime || lastServerTime
 
     if (batchHasRows(docs)) {
@@ -473,4 +474,4 @@ export function stopSyncEngine() {
   onlineListener = null
 }
 
-export { CC_STATUS_RANK, BRANCH_COLLECTIONS, SHARED_COLLECTIONS }
+export { CC_STATUS_RANK, PUSH_COLLECTIONS, PULL_COLLECTIONS }

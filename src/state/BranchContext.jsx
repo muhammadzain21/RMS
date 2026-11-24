@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
-import { useAuth } from './AuthContext.jsx'
-import { isAllBranches } from '../utils/branchWorkspace.js'
+import { useAuth } from '@/state/AuthContext.jsx'
+import { isAllBranches } from '@shared/utils/branchWorkspace.js'
 
 const BranchContext = createContext(null)
 
@@ -28,14 +28,24 @@ function pickDefaultBranchId(branches, user) {
   return sorted[0]?._id ? String(sorted[0]._id) : ''
 }
 
+function readStoredBranchId() {
+  try { return String(localStorage.getItem('active_branch_id') || '') } catch { return '' }
+}
+
 export function BranchProvider({ children }) {
   const { user, token } = useAuth()
   const [branches, setBranches] = useState([])
   const [activeBranchId, setActiveBranchIdState] = useState(() => {
-    try { return localStorage.getItem('active_branch_id') || '' } catch { return '' }
+    const v = readStoredBranchId()
+    // Sync immediately so the first API calls after reload attach the right X-Branch-Id
+    try { if (typeof window !== 'undefined') window.ACTIVE_BRANCH_ID = v } catch {}
+    return v
   })
   const [loading, setLoading] = useState(false)
+  /** True after first branches fetch settles (or no token). Gate DataContext hydrate on this. */
+  const [branchReady, setBranchReady] = useState(() => !token)
   const prevUserKey = useRef('')
+  const bootstrappedUser = useRef('')
 
   const setActiveBranchId = (id) => {
     const v = String(id || '')
@@ -65,9 +75,11 @@ export function BranchProvider({ children }) {
   useEffect(() => {
     if (!token || !user) {
       setBranches([])
+      setBranchReady(true)
       return
     }
     let cancelled = false
+    setBranchReady(false)
     ;(async () => {
       setLoading(true)
       try {
@@ -82,35 +94,57 @@ export function BranchProvider({ children }) {
         const uk = userKey(user)
         const userChanged = prevUserKey.current && prevUserKey.current !== uk
         prevUserKey.current = uk
+        const firstBootForUser = bootstrappedUser.current !== uk
+        bootstrappedUser.current = uk
 
         const preferred = pickDefaultBranchId(next, user)
         const hq = isHq(user)
+        const current = String(activeBranchId || '')
 
         if (!hq) {
           // Staff/Manager: always locked to home / first allowed
-          if (preferred && String(activeBranchId) !== preferred) setActiveBranchId(preferred)
+          if (preferred && current !== preferred) setActiveBranchId(preferred)
+          else {
+            // Ensure window + storage match even when React state already had the right id
+            try {
+              if (preferred) {
+                localStorage.setItem('active_branch_id', preferred)
+                window.ACTIVE_BRANCH_ID = preferred
+              }
+            } catch {}
+          }
           return
         }
 
-        // Admin / SuperAdmin: default workspace = All branches (empty).
-        // On user switch → reset to All. Keep All or a still-valid selection otherwise.
+        // Admin / SuperAdmin: keep All or a still-valid selection; prefer per-user storage on boot
         let storedForUser = ''
         try { storedForUser = localStorage.getItem(`active_branch_id_u_${uk}`) || '' } catch {}
-        const stillValid = !activeBranchId || next.some(b => String(b._id) === String(activeBranchId))
+        const stillValid = !current || next.some(b => String(b._id) === current)
         const storedValid = storedForUser && next.some(b => String(b._id) === String(storedForUser))
 
         if (userChanged) {
           setActiveBranchId('')
           return
         }
-        if (activeBranchId && !stillValid) {
-          setActiveBranchId(storedValid ? storedForUser : '')
+        if (firstBootForUser && storedValid && current !== storedForUser) {
+          // Reload / first paint: restore this admin's last working branch
+          setActiveBranchId(storedForUser)
+          return
         }
+        if (current && !stillValid) {
+          setActiveBranchId(storedValid ? storedForUser : '')
+          return
+        }
+        // Keep window in sync for the already-selected branch (no React state change → no remount)
+        try { window.ACTIVE_BRANCH_ID = current } catch {}
         // Empty All is intentional for Admin — do not auto-pick a branch.
       } catch {
         if (!cancelled) setBranches([])
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          setBranchReady(true)
+        }
       }
     })()
     return () => { cancelled = true }
@@ -132,6 +166,7 @@ export function BranchProvider({ children }) {
     activeBranch,
     setActiveBranchId,
     loading,
+    branchReady,
     isHq: isHq(user),
     isAllBranches: isAllBranches(activeBranchId),
     requireBranch: (message) => {

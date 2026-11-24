@@ -12,6 +12,7 @@ const StaffAdvanceSchema = new mongoose.Schema({
   saleId: { type: String, default: '' }, // set when the advance is a staff purchase
   userId: { type: String, default: '' },
   userName: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
   createdAt: { type: Date, default: Date.now },
 }, { timestamps: true })
 

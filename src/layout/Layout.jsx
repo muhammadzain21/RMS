@@ -1,23 +1,26 @@
-import { Outlet, useLocation, NavLink } from 'react-router-dom'
+import { Outlet, useLocation, NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
 import { MapPin } from 'lucide-react'
-import { useAuth } from '../state/AuthContext.jsx'
-import { useData } from '../state/DataContext.jsx'
-import { useBranch } from '../state/BranchContext.jsx'
-import { useRiderLocation } from '../state/RiderLocationContext.jsx'
-import ErrorBoundary from '../components/ErrorBoundary.jsx'
-import Header from './Header.jsx'
-import Sidebar from './Sidebar.jsx'
+import { useAuth } from '@/state/AuthContext.jsx'
+import { useData } from '@/state/DataContext.jsx'
+import { useBranch } from '@/state/BranchContext.jsx'
+import { useRiderLocation } from '@/state/RiderLocationContext.jsx'
+import ErrorBoundary from '@shared/components/ErrorBoundary.jsx'
+import Header from '@/layout/Header.jsx'
+import Sidebar from '@/layout/Sidebar.jsx'
+import { useCcInboxAlert } from '@/hooks/useCcInboxAlert.jsx'
 
 export default function Layout() {
   const { user, logout } = useAuth()
   const { state, rehydrate } = useData()
   const { activeBranchId } = useBranch()
   const location = useLocation()
+  const navigate = useNavigate()
   const brand = state?.settings?.companyName || 'Restaurant POS'
   const riderShare = useRiderLocation()
   const sharingLive = Boolean(riderShare?.sharing || riderShare?.reconnecting)
+  const { pendingCount: ccInboxCount } = useCcInboxAlert({ enabled: !!user })
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -62,6 +65,12 @@ export default function Layout() {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on route change; branch handled by DataContext + Outlet key
   }, [user, location.pathname])
+
+  useEffect(() => {
+    const goInbox = () => navigate('/sales/cc-inbox')
+    window.addEventListener('navigate_cc_inbox', goInbox)
+    return () => window.removeEventListener('navigate_cc_inbox', goInbox)
+  }, [navigate])
 
   const toaster = (
     <Toaster
@@ -113,6 +122,7 @@ export default function Layout() {
         onBlockedSellClick={onBlockedSellClick}
         logout={logout}
         hidden={sidebarHidden}
+        ccInboxCount={ccInboxCount}
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-hidden bg-transparent">
@@ -127,6 +137,7 @@ export default function Layout() {
           logout={logout}
           sidebarHidden={sidebarHidden}
           onToggleSidebarHidden={toggleSidebarHidden}
+          ccInboxCount={ccInboxCount}
         />
         <main className="px-2 py-2 sm:px-3 sm:py-3 lg:px-4 lg:py-4 overflow-x-hidden flex-1 min-h-0 bg-transparent pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
           <ErrorBoundary key={pageKey}>

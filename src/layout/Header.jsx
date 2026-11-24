@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { useData } from '../state/DataContext.jsx'
-import { useBranch } from '../state/BranchContext.jsx'
-import ThemeToggle from '../components/ThemeToggle.jsx'
-import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelLeftDashed, ChevronDown, LogOut, KeyRound, RefreshCw } from 'lucide-react'
-import { dashboardItem } from './navConfig.js'
-import { isDashboardVisible, getVisibleSections } from './Sidebar.jsx'
+import { useData } from '@/state/DataContext.jsx'
+import { useBranch } from '@/state/BranchContext.jsx'
+import ThemeToggle from '@shared/components/ThemeToggle.jsx'
+import { PanelLeft, PanelLeftClose, PanelLeftOpen, PanelLeftDashed, ChevronDown, LogOut, KeyRound, RefreshCw, Inbox } from 'lucide-react'
+import { dashboardItem } from '@/layout/navConfig.js'
+import { isDashboardVisible, getVisibleSections } from '@/layout/Sidebar.jsx'
 
-export default function Header({ brand, onMenuClick, onCollapseClick, collapsed, user, canSell, onBlockedSellClick, logout, sidebarHidden, onToggleSidebarHidden }) {
+export default function Header({ brand, onMenuClick, onCollapseClick, collapsed, user, canSell, onBlockedSellClick, logout, sidebarHidden, onToggleSidebarHidden, ccInboxCount = 0 }) {
   const { state, businessDate, rehydrate } = useData()
   const { branches, activeBranchId, activeBranch, setActiveBranchId } = useBranch()
   const [refreshing, setRefreshing] = useState(false)
@@ -48,6 +48,7 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
   const enabledPaths = state?.settings?.enabledPaths
   const visibleSections = getVisibleSections(user, enabledPaths)
   const dashboardVisible = isDashboardVisible(user, enabledPaths)
+  const inboxBadge = Number(ccInboxCount) > 0 ? (Number(ccInboxCount) > 99 ? '99+' : String(ccInboxCount)) : ''
 
   const DD_ITEM = 'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full text-left'
   const DD_INACTIVE = 'text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-700'
@@ -62,10 +63,17 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
         </button>
       )
     }
+    const showBadge = item.to === '/sales/cc-inbox' && inboxBadge
     return (
       <NavLink to={item.to} end={item.end} onClick={() => setOpenMenu(null)}
         className={({ isActive }) => `${DD_ITEM} ${isActive ? DD_ACTIVE : DD_INACTIVE}`}>
-        {item.icon ? <item.icon size={15} className="flex-shrink-0" /> : null}<span>{item.label}</span>
+        {item.icon ? <item.icon size={15} className="flex-shrink-0" /> : null}
+        <span className="flex-1 flex items-center justify-between gap-2 min-w-0">
+          <span className="truncate">{item.label}</span>
+          {showBadge ? (
+            <span className="shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-400 text-[10px] font-extrabold text-slate-900 flex items-center justify-center tabular-nums">{inboxBadge}</span>
+          ) : null}
+        </span>
       </NavLink>
     )
   }
@@ -141,6 +149,24 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
             className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-60 touch-manipulation shrink-0"
           >
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/sales/cc-inbox')}
+            title={inboxBadge ? `${inboxBadge} remaining call-center order(s)` : 'CC Inbox'}
+            className={`relative inline-flex items-center justify-center gap-1.5 min-h-8 px-2 sm:px-2.5 rounded-lg text-white transition-colors touch-manipulation shrink-0 ${
+              inboxBadge
+                ? 'bg-amber-400 text-slate-900 hover:bg-amber-300 font-bold animate-pulse'
+                : 'bg-white/20 hover:bg-white/30'
+            }`}
+          >
+            <Inbox size={15} />
+            <span className="hidden sm:inline text-xs font-semibold">CC Inbox</span>
+            {inboxBadge ? (
+              <span className={`text-[10px] font-extrabold tabular-nums ${inboxBadge ? 'text-slate-900' : ''}`}>
+                {inboxBadge}
+              </span>
+            ) : null}
           </button>
         </div>
 

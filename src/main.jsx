@@ -3,13 +3,13 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter, HashRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
-import { UIProvider } from './state/UIContext.jsx'
-import { AuthProvider } from './state/AuthContext.jsx'
-import { DataProvider } from './state/DataContext.jsx'
-import { BranchProvider } from './state/BranchContext.jsx'
-import { RiderLocationProvider } from './state/RiderLocationContext.jsx'
-import ErrorBoundary from './components/ErrorBoundary.jsx'
-import { setupNativeChrome } from './native/statusBar.js'
+import { UIProvider } from '@/state/UIContext.jsx'
+import { AuthProvider } from '@/state/AuthContext.jsx'
+import { DataProvider } from '@/state/DataContext.jsx'
+import { BranchProvider } from '@/state/BranchContext.jsx'
+import { RiderLocationProvider } from '@/state/RiderLocationContext.jsx'
+import ErrorBoundary from '@shared/components/ErrorBoundary.jsx'
+import { setupNativeChrome } from '@/native/statusBar.js'
 
 const isElectron = /Electron/i.test(navigator.userAgent)
 const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor || /Capacitor/i.test(navigator.userAgent))
@@ -125,7 +125,7 @@ setupNativeChrome()
             if (!/\/api\//i.test(String(finalUrl || url || ''))) return
             // Skip sync endpoints themselves and auth
             if (/\/api\/(sync|auth|health|client-config)(\/|$|\?)/i.test(String(finalUrl || url || ''))) return
-            import('./sync/SyncEngine.js').then(m => m.requestSync?.(method)).catch(() => {})
+            import('@/sync/SyncEngine.js').then(m => m.requestSync?.(method)).catch(() => {})
           } catch {}
         }
 

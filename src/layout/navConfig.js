@@ -12,7 +12,7 @@ import {
   Receipt, TrendingUp, ShieldCheck, Lock, ScrollText,
   Fingerprint, ChefHat, Database, UserCheck, Home, ShoppingBag,
   Headphones, Inbox, Building2, PackagePlus, Package, HardDrive, Landmark,
-  MapPinned, Printer, Cloud,
+  MapPinned, Printer, Cloud, ClipboardCheck,
 } from 'lucide-react'
 
 export const dashboardItem = { path: '/', label: 'Dashboard', icon: LayoutDashboard, order: 1 }
@@ -35,7 +35,6 @@ const salesSection = {
  items: [
  { path: '/sales/new', label: 'Sell', icon: ShoppingCart, order: 2, gated: true },
  { path: '/sales/cc-inbox', label: 'CC Inbox', icon: Inbox, order: 2.2 },
- { path: '/call-center', label: 'Call Center', icon: Headphones, order: 2.3 },
  { path: '/sales/return', label: 'Return', icon: Undo2, order: 3, end: true },
  { path: '/sales/history', label: 'Sale history', icon: History, order: 4 },
  { path: '/sales/deleted', label: 'Deleted Sales', icon: Trash2, order: 5 },
@@ -45,6 +44,14 @@ const salesSection = {
  { path: '/sales/void-history', label: 'Void History', icon: XCircle, order: 8 },
   { path: '/customers', label: 'Customers', icon: Users, order: 19 },
  { path: '/sales/advance-booking', label: 'Advance Booking', icon: CalendarCheck, order: 12 },
+ ]
+}
+
+/** Standalone call-center entry page (order intake). CC Inbox stays under Sales. */
+const callCenterSection = {
+ label: 'Call Center',
+ items: [
+  { path: '/call-center', label: 'Call Center', icon: Headphones, order: 2.3 },
  ]
 }
 
@@ -63,6 +70,7 @@ const operationsSection = {
  label: 'Operations',
  items: [
  { path: '/inventory', label: 'Branch Inventory', icon: PackageOpen, order: 15, end: true },
+ { path: '/inventory/physical-stock', label: 'Physical Stock', icon: ClipboardCheck, order: 15.3 },
  { path: '/inventory/transfers-in', label: 'Branch Transfers', icon: PackagePlus, order: 15.5 },
  { path: '/supply/history', label: 'Branch Purchases', icon: Truck, order: 16 },
  { path: '/demands', label: 'Demands', icon: ClipboardList, order: 17 },
@@ -140,6 +148,7 @@ const adminSection = {
 // Comment out any section to hide it from sidebar + permissions
 export const allSections = [
  salesSection,
+ callCenterSection,
  daySection,
  operationsSection,
  warehouseSection,
@@ -207,9 +216,12 @@ const UPGRADE_ENABLED_PATHS = [
   '/sales/my-shift',
   '/sales/cash-count',
   '/sales/kds',
+  '/sales/cc-inbox',
+  '/call-center',
   '/reports/sales',
   '/reports/inventory',
   '/reports/consumption',
+  '/inventory/physical-stock',
   '/backup-security',
   '/printers',
   '/cloud-sync',

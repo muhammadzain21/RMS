@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useCallback } from 'react'
-import { useAuth } from './AuthContext.jsx'
-import { useBranch } from './BranchContext.jsx'
-import { isUserBusy } from '../utils/userBusy.js'
+import { useAuth } from '@/state/AuthContext.jsx'
+import { useBranch } from '@/state/BranchContext.jsx'
+import { isUserBusy } from '@shared/utils/userBusy.js'
 import { addDays, format } from 'date-fns'
 
 const DataContext = createContext(null)
@@ -510,7 +510,7 @@ export function DataProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
   const auth = useAuth()
   const token = auth?.token || ''
-  const { activeBranchId } = useBranch()
+  const { activeBranchId, branchReady } = useBranch()
   const getAPI = () => ((typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000')
   const stateRef = useRef(state)
   stateRef.current = state
@@ -518,7 +518,16 @@ export function DataProvider({ children }) {
   const rehydrate = useCallback(async () => {
     try {
       const API = getAPI()
-      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      // Prefer React branch state (set on reload before effects); keep window/localStorage in sync
+      const branchId = String(activeBranchId || (typeof window !== 'undefined' ? window.ACTIVE_BRANCH_ID : '') || '')
+      try {
+        if (typeof window !== 'undefined') window.ACTIVE_BRANCH_ID = branchId
+        if (branchId) localStorage.setItem('active_branch_id', branchId)
+      } catch {}
+      const headers = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(branchId ? { 'X-Branch-Id': branchId } : {}),
+      }
       const getJson = async (path, _defVal, allowUnauthRetry = false) => {
         try {
           let res = await fetch(`${API}${path}`, { headers, cache: 'no-store' })
@@ -638,13 +647,14 @@ export function DataProvider({ children }) {
     }
   }, [token, activeBranchId])
 
-  // Hydrate on login and whenever the header branch changes
+  // Hydrate after branch context is ready, and whenever the header branch changes
   useEffect(() => {
+    if (token && branchReady === false) return
     try {
       const p = rehydrate()
       if (p != null && typeof p.then === 'function') p.catch(() => {})
     } catch {}
-  }, [rehydrate])
+  }, [rehydrate, branchReady, token])
 
   // Event-driven shared refresh only (no quiet polling).
   // Full HYDRATE on a timer interrupts editors; branch/sync/visibility is enough.

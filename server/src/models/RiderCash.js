@@ -13,6 +13,7 @@ const RiderCashSchema = new mongoose.Schema({
   settled: { type: Boolean, default: false },
   userId: { type: String, default: '' },
   userName: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
 }, { timestamps: true })
 
 export default mongoose.model('RiderCash', RiderCashSchema)

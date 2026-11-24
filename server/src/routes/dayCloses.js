@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import DayClose from '../models/DayClose.js'
-import CashOpening from '../models/CashOpening.js'
 import Recall from '../models/Recall.js'
 import { authRequired, requireRole } from '../middleware/auth.js'
 import { logAudit } from '../middleware/auditLog.js'
@@ -176,33 +175,11 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       userId: req.user?.id || '',
       userName: req.user?.username || '',
     }))
-    const branchId = resolveBranchId(req) || ''
-
-    // Cash left at counter → next business day's opening (create or overwrite auto entry)
+    // Left-at-counter is stored on the day close only.
+    // Next day opening is filled on Day Opening page — do NOT auto-create a cash opening
+    // (that would mark the next day as open before staff clicks Record Opening).
     const left = Math.max(0, Number(body.leftAtCounter || 0))
-    let nextOpening = null
-    try {
-      const nextDate = addOneDayYmd(date)
-      if (nextDate) {
-        nextOpening = await CashOpening.findOneAndUpdate(
-          { date: nextDate, branchId: String(branchId || '') },
-          {
-            $set: {
-              date: nextDate,
-              branchId: String(branchId || ''),
-              openingCash: left,
-              note: `Auto from day close ${date}`,
-              userId: req.user?.id || '',
-              userName: req.user?.username || 'system',
-            },
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        )
-        console.log(`[dayCloses] next-day opening ${nextDate} = ${left}`)
-      }
-    } catch (e) {
-      console.warn('[dayCloses] auto opening cash failed:', e?.message)
-    }
+    const nextDate = addOneDayYmd(date)
 
     await logAudit(req, 'day', `Day closed ${rec.date} variance ${rec.variance}`, { id: rec._id })
 
@@ -211,14 +188,9 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
 
     res.status(201).json({
       ...rec.toObject?.() ? rec.toObject() : (rec.toJSON?.() ? rec.toJSON() : rec),
-      nextOpening: nextOpening
-        ? {
-            id: nextOpening._id || nextOpening.id,
-            date: nextOpening.date,
-            openingCash: nextOpening.openingCash,
-            note: nextOpening.note,
-            userName: nextOpening.userName,
-          }
+      // Hint for UI only — not a recorded opening
+      nextOpeningHint: nextDate
+        ? { date: nextDate, openingCash: left }
         : null,
     })
   } catch (e) { next(e) }

@@ -19,30 +19,75 @@ import MenuItem from '../models/MenuItem.js'
 import Category from '../models/Category.js'
 import BranchMenuOverride from '../models/BranchMenuOverride.js'
 import BranchCategoryOverride from '../models/BranchCategoryOverride.js'
-import { mergeCallCenterOrder } from '../utils/syncMerge.js'
+import { mergeCallCenterOrder, mergeDemand, mergeWarehouseTransfer } from '../utils/syncMerge.js'
+import DeletedSale from '../models/DeletedSale.js'
+import Return from '../models/Return.js'
+import Void from '../models/Void.js'
+import Held from '../models/Held.js'
+import CashOpening from '../models/CashOpening.js'
+import PayInOut from '../models/PayInOut.js'
+import DayClose from '../models/DayClose.js'
+import CashCount from '../models/CashCount.js'
+import AdvanceBooking from '../models/AdvanceBooking.js'
+import Supply from '../models/Supply.js'
+import Rider from '../models/Rider.js'
+import RiderCash from '../models/RiderCash.js'
+import StaffAdvance from '../models/StaffAdvance.js'
+import StaffEarning from '../models/StaffEarning.js'
+import StaffPurchase from '../models/StaffPurchase.js'
+import PayrollRun from '../models/PayrollRun.js'
+import ExpenseHead from '../models/ExpenseHead.js'
+import PhysicalCount from '../models/PhysicalCount.js'
+import User from '../models/User.js'
 
 const router = Router()
 router.use(authRequired)
 
 /**
- * Collections that sync with branch scope.
- * Shared: customers, menu, categories (pull-only to branch; HQ writes on cloud).
+ * Branch PC is the source of truth. These collections are pushed local → cloud
+ * and upserted by _id (no second copy). Warehouse HQ catalogs are not in this list.
+ * Cloud → branch is limited to call-center orders, warehouse issues, and demand status.
  */
 const BRANCH_MODELS = {
   sales: Sale,
+  deletedSales: DeletedSale,
+  returns: Return,
   kots: Kot,
   recalls: Recall,
+  voids: Void,
+  helds: Held,
   expenses: Expense,
+  expenseHeads: ExpenseHead,
   staff: Staff,
   attendance: Attendance,
+  staffAdvances: StaffAdvance,
+  staffEarnings: StaffEarning,
+  staffPurchases: StaffPurchase,
+  payrollRuns: PayrollRun,
   callCenterOrders: CallCenterOrder,
   warehouseTransfers: WarehouseTransfer,
   ingredients: Ingredient,
+  supplies: Supply,
   demands: Demand,
   tables: Table,
   suppliers: Supplier,
+  riders: Rider,
+  riderCash: RiderCash,
+  cashOpenings: CashOpening,
+  payInOuts: PayInOut,
+  cashCounts: CashCount,
+  dayCloses: DayClose,
+  advanceBookings: AdvanceBooking,
+  physicalCounts: PhysicalCount,
   menuOverrides: BranchMenuOverride,
   categoryOverrides: BranchCategoryOverride,
+}
+
+/** HQ creates these; status only moves forward, same _id. */
+const MERGE_FNS = {
+  callCenterOrders: mergeCallCenterOrder,
+  demands: mergeDemand,
+  warehouseTransfers: mergeWarehouseTransfer,
 }
 
 const SHARED_MODELS = {
@@ -91,6 +136,77 @@ async function upsertById(Model, id, clean, { mergeFn } = {}) {
   )
 }
 
+function isHqAccount(user) {
+  if (!user) return false
+  if (user.isHq) return true
+  const role = String(user.role || '')
+  return role === 'Admin' || role === 'SuperAdmin'
+}
+
+/** Branch users upsert by _id, else username. Head-office accounts are never overwritten. */
+async function upsertBranchUser(row, branchId) {
+  const id = row._id || row.id
+  const username = String(row.username || '').trim()
+  if (!username) return
+  const clean = stripImmutable(row)
+  delete clean.password
+  clean.homeBranchId = clean.homeBranchId || branchId
+  const idOk = id && /^[a-fA-F0-9]{24}$/.test(String(id))
+  let existing = idOk ? await User.findById(id).lean() : null
+  if (!existing) existing = await User.findOne({ username }).lean()
+  if (isHqAccount(existing) || isHqAccount(clean)) return
+  if (existing) {
+    await User.findByIdAndUpdate(existing._id, { $set: clean }, { timestamps: false })
+    return
+  }
+  const doc = { ...clean, username }
+  if (idOk) doc._id = id
+  await User.create(doc)
+}
+
+function pullQuery(name, branchId, since, outbound) {
+  const updatedAt = { $gt: since }
+  if (name === 'warehouseTransfers') {
+    return {
+      updatedAt,
+      $or: [{ toBranchId: String(branchId) }, { branchId: String(branchId) }],
+    }
+  }
+  if (name === 'users') {
+    const q = {
+      updatedAt,
+      isHq: { $ne: true },
+      role: { $nin: ['Admin', 'SuperAdmin'] },
+    }
+    if (outbound) {
+      q.$or = [
+        { homeBranchId: String(branchId) },
+        { branchIds: String(branchId) },
+        { homeBranchId: '' },
+        { homeBranchId: { $exists: false } },
+      ]
+    } else {
+      q.homeBranchId = String(branchId)
+    }
+    return q
+  }
+  if (name === 'customers') {
+    return outbound ? { updatedAt } : { _id: null }
+  }
+  if (outbound) {
+    return {
+      updatedAt,
+      $or: [
+        { branchId: String(branchId) },
+        { branchId: '' },
+        { branchId: null },
+        { branchId: { $exists: false } },
+      ],
+    }
+  }
+  return { branchId: String(branchId), updatedAt }
+}
+
 async function upsertShared(Model, row) {
   const id = row._id || row.id
   const clean = stripImmutable(row)
@@ -101,7 +217,12 @@ async function upsertShared(Model, row) {
   await Model.create(clean)
 }
 
-/** Pull changes for a branch (+ shared catalogs) since timestamp */
+/**
+ * Pull changes since timestamp.
+ * scope=outbound (branch PC gathering its own rows to upload): every branch collection.
+ * collections=a,b (cloud → branch): only those names, strictly scoped. Default cloud set is
+ * call-center orders, warehouse issues, and demands.
+ */
 router.get('/pull', async (req, res, next) => {
   try {
     const branchId = resolveBranchId(req, { required: true })
@@ -109,42 +230,31 @@ router.get('/pull', async (req, res, next) => {
     const since = sinceDate(req.query.since)
     const deviceId = String(req.query.deviceId || 'default')
     const limit = Math.min(Math.max(Number(req.query.limit) || 500, 50), 2000)
+    const outbound = String(req.query.scope || '') === 'outbound'
+    const requested = String(req.query.collections || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+    const names = requested.length
+      ? Object.keys(BRANCH_MODELS).filter(n => requested.includes(n))
+      : Object.keys(BRANCH_MODELS)
 
     const data = {}
-    for (const [name, Model] of Object.entries(BRANCH_MODELS)) {
-      const q = {
-        branchId: String(branchId),
-        updatedAt: { $gt: since },
-      }
-      if (name === 'warehouseTransfers') {
-        q.$or = [
-          { toBranchId: String(branchId) },
-          { branchId: String(branchId) },
-        ]
-        delete q.branchId
-        q.updatedAt = { $gt: since }
-      }
-      if (name === 'suppliers') {
-        q.scope = { $ne: 'warehouse' }
-      }
+    for (const name of names) {
+      const Model = BRANCH_MODELS[name]
+      const q = pullQuery(name, branchId, since, outbound)
+      if (name === 'suppliers') q.scope = { $ne: 'warehouse' }
       data[name] = await Model.find(q).sort({ updatedAt: 1 }).limit(limit).lean()
     }
-    for (const [name, Model] of Object.entries(SHARED_MODELS)) {
-      data[name] = await Model.find({ updatedAt: { $gt: since } }).sort({ updatedAt: 1 }).limit(Math.min(limit * 2, 5000)).lean()
+    if (outbound && requested.includes('customers')) {
+      data.customers = await Customer.find({ updatedAt: { $gt: since } }).sort({ updatedAt: 1 }).limit(limit).lean()
+    }
+    if (outbound && requested.includes('users')) {
+      data.users = await User.find(pullQuery('users', branchId, since, true)).sort({ updatedAt: 1 }).limit(limit).lean()
     }
 
-    data.menu = await MenuItem.find({
-      updatedAt: { $gt: since },
-      $or: [
-        { branchId: '' },
-        { branchId: null },
-        { branchId: { $exists: false } },
-        { branchId: String(branchId) },
-      ],
-    }).sort({ updatedAt: 1 }).limit(Math.min(limit * 2, 5000)).lean()
-
     const now = new Date()
-    for (const name of [...Object.keys(BRANCH_MODELS), ...Object.keys(SHARED_MODELS), 'menu']) {
+    for (const name of Object.keys(data)) {
       await SyncCursor.findOneAndUpdate(
         { branchId: String(branchId), collectionName: name, deviceId },
         { $set: { lastPulledAt: now } },
@@ -205,14 +315,20 @@ router.post('/push', async (req, res, next) => {
             clean.scope = 'branch'
           }
 
-          if (id && name === 'callCenterOrders') {
-            await upsertById(Model, id, clean, { mergeFn: mergeCallCenterOrder })
+          const mergeFn = MERGE_FNS[name]
+          if (id && mergeFn) {
+            await upsertById(Model, id, clean, { mergeFn })
           } else if (id) {
-            await upsertById(Model, id, clean)
-          } else if (clean.idempotencyKey && (name === 'sales' || name === 'kots')) {
+            // Branch row replaces the cloud row. Same _id, no duplicate.
+            await Model.findByIdAndUpdate(
+              id,
+              { $set: clean },
+              { upsert: true, setDefaultsOnInsert: true, timestamps: false }
+            )
+          } else if (clean.idempotencyKey) {
             const existing = await Model.findOne({ idempotencyKey: clean.idempotencyKey }).lean()
             if (existing?._id) {
-              await upsertById(Model, existing._id, clean)
+              await Model.findByIdAndUpdate(existing._id, { $set: clean }, { timestamps: false })
             } else {
               await Model.create(clean)
             }
@@ -234,7 +350,20 @@ router.post('/push', async (req, res, next) => {
       }
     }
 
-    // Shared catalogs + menu (cloud → branch apply, or HQ push)
+    if (Array.isArray(docs.users)) {
+      let upserted = 0
+      for (const row of docs.users) {
+        try {
+          await upsertBranchUser(row, branchId)
+          upserted += 1
+        } catch (rowErr) {
+          errors.push({ collection: 'users', id: String(row?._id || row?.id || row?.username || ''), error: String(rowErr?.message || rowErr) })
+        }
+      }
+      results.users = upserted
+    }
+
+    // Customers created at the branch. Upsert by _id so a repeat sync does not duplicate.
     for (const [name, Model] of Object.entries(SHARED_MODELS)) {
       const rows = Array.isArray(docs[name]) ? docs[name] : []
       let upserted = 0

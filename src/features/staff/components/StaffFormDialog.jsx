@@ -1,0 +1,256 @@
+import React from 'react';
+import { formatTime12 } from '@shared/utils/dateUtils.js';
+import DatePicker from '@shared/components/DatePicker.jsx';
+import { MY_WORK_PAGE_OPTIONS } from '@features/my-work/utils/myWorkPages.js';
+
+function PageToggle({ on, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${on ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+      aria-pressed={on}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${on ? 'translate-x-5' : ''}`} />
+    </button>
+  );
+}
+
+export default function StaffFormDialog({
+  isOpen,
+  onClose,
+  onSave,
+  formData,
+  setFormData,
+  customPos,
+  setCustomPos,
+  isEditing,
+  shifts = [],
+  roles = []
+}) {
+  if (!isOpen) return null;
+
+  const pages = Array.isArray(formData.myWorkPages) ? formData.myWorkPages : [];
+  const togglePage = (path) => {
+    const next = pages.includes(path)
+      ? pages.filter(p => p !== path)
+      : [...pages, path];
+    setFormData({
+      ...formData,
+      myWorkPages: next,
+      myWorkAccess: next.length > 0,
+    });
+  };
+  const allOn = MY_WORK_PAGE_OPTIONS.every(p => pages.includes(p.path));
+  const toggleAll = () => {
+    const next = allOn ? [] : MY_WORK_PAGE_OPTIONS.map(p => p.path);
+    setFormData({ ...formData, myWorkPages: next, myWorkAccess: next.length > 0 });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:px-4 sm:py-6">
+      <div className="w-full max-w-2xl max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5 pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="flex items-center justify-between px-5 py-3 text-white" style={{ background: 'linear-gradient(90deg, #0284c7, #2563eb)' }}>
+          <h3 className="text-base font-semibold">{isEditing ? 'Edit Staff' : 'Add Staff'}</h3>
+          <button className="rounded-md bg-white/15 px-2 py-1 text-sm hover:bg-white/25" onClick={onClose}>Close</button>
+        </div>
+        <div className="p-5 max-h-[78vh] overflow-y-auto">
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm mb-1">Name</label>
+            <input
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Phone</label>
+            <input
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.phone || ''}
+              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">CNIC</label>
+            <input
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.cnic || ''}
+              onChange={e => setFormData({ ...formData, cnic: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Address</label>
+            <input
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.address || ''}
+              onChange={e => setFormData({ ...formData, address: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Position</label>
+            <select
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.position}
+              onChange={e => {
+                const position = e.target.value
+                let nextPages = Array.isArray(formData.myWorkPages) ? [...formData.myWorkPages] : []
+                if (position === 'Rider' && !nextPages.includes('/rider')) nextPages = [...nextPages, '/rider']
+                if (position !== 'Rider' && position !== 'Other') nextPages = nextPages.filter(p => p !== '/rider')
+                setFormData({
+                  ...formData,
+                  position,
+                  myWorkPages: nextPages,
+                  myWorkAccess: nextPages.length > 0,
+                })
+              }}
+            >
+              <option>Waiter</option>
+              <option>Chef</option>
+              <option>Cashier</option>
+              <option>Manager</option>
+              <option>Rider</option>
+              <option>Other</option>
+            </select>
+            {formData.position === 'Other' && (
+              <input
+                placeholder="Custom position"
+                className="mt-2 w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+                value={customPos}
+                onChange={e => setCustomPos(e.target.value)}
+              />
+            )}
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Shift</label>
+            <select
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.shiftId || ''}
+              onChange={e => setFormData({ ...formData, shiftId: e.target.value })}
+            >
+              <option value="">No Shift Assigned</option>
+              {shifts.map(shift => (
+                <option key={shift.id} value={shift.id}>
+                  {shift.name} ({formatTime12(shift.checkIn)} - {formatTime12(shift.checkOut)})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Salary (PKR)</label>
+            <input
+              type="number"
+              min={0}
+              step={500}
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.salary ?? ''}
+              onChange={e => setFormData({ ...formData, salary: e.target.value ? Number(e.target.value) : undefined })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Advance Limit (PKR)</label>
+            <input
+              type="number"
+              min={0}
+              step={500}
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.advanceLimit ?? ''}
+              placeholder="Defaults to salary"
+              onChange={e => setFormData({ ...formData, advanceLimit: e.target.value ? Number(e.target.value) : 0 })}
+            />
+          </div>
+          <div>
+            <DatePicker
+              label="Join Date"
+              value={formData.joinDate || ''}
+              onChange={v => setFormData({ ...formData, joinDate: v })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Login Username (optional)</label>
+            <input
+              autoComplete="off"
+              placeholder="e.g. ahmed.waiter — for staff app login"
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.username || ''}
+              onChange={e => setFormData({ ...formData, username: e.target.value.trim() })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Login Password (optional)</label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              placeholder={isEditing ? 'Leave blank to keep current' : 'Required if username is set'}
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.password || ''}
+              onChange={e => setFormData({ ...formData, password: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Login Role</label>
+            <select
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.role || 'Staff'}
+              onChange={e => setFormData({ ...formData, role: e.target.value })}
+            >
+              {[...new Set(['Staff', ...roles.map(r => r.name)])].map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="md:col-span-2 rounded border bg-gray-50 dark:bg-gray-800/50 px-3 py-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">My Work pages</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Turn on only the pages this staff login should see (e.g. waiters without Rider)
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] font-semibold text-gray-500">{allOn ? 'All on' : 'All off'}</span>
+                <PageToggle on={allOn} onClick={toggleAll} />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {MY_WORK_PAGE_OPTIONS.map(opt => {
+                const on = pages.includes(opt.path);
+                return (
+                  <div
+                    key={opt.path}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-[var(--color-text-primary)]">{opt.label}</div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{opt.desc}</div>
+                    </div>
+                    <PageToggle on={on} onClick={() => togglePage(opt.path)} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm mb-1">Status</label>
+            <select
+              className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+              value={formData.status}
+              onChange={e => setFormData({ ...formData, status: e.target.value })}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end mt-4 gap-2">
+          <button className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm font-semibold" onClick={onClose}>Cancel</button>
+          <button className="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700" onClick={onSave}>
+            {isEditing ? 'Update' : 'Save'}
+          </button>
+        </div>
+        </div>
+      </div>
+    </div>
+  );
+}

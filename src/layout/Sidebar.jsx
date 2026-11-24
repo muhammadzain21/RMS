@@ -1,16 +1,16 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { dashboardItem, navSections, myWorkNavItems, expandEnabledPaths } from './navConfig.js'
+import { dashboardItem, navSections, myWorkNavItems, expandEnabledPaths } from '@/layout/navConfig.js'
 import { LogOut, X, Menu as MenuIcon, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useData } from '../state/DataContext.jsx'
+import { useData } from '@/state/DataContext.jsx'
 
 // ─── Tailwind token strings ─────────────────────────────────────────────────
 const SB_BG = 'bg-gradient-to-b from-[#0f2d5c] via-[#0c2449] to-[#0a1e3c]'
 const SB_BORDER = 'border-white/10'
-const SB_ITEM_BASE = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.9375rem] font-medium transition-all duration-150 cursor-pointer w-full'
+const SB_ITEM_BASE = 'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[1rem] font-semibold transition-all duration-150 cursor-pointer w-full'
 const SB_ITEM_INACTIVE = 'text-slate-300 hover:bg-white/10 hover:text-white'
 const SB_ITEM_ACTIVE = 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
-const SB_SECTION_LABEL = 'px-3 pt-3 pb-1 text-[11px] font-semibold tracking-widest uppercase text-sky-200/50 select-none'
-const SB_SECTION_WAREHOUSE = 'px-3 pt-3 pb-1 text-[11px] font-bold tracking-widest uppercase text-cyan-300/80 select-none'
+const SB_SECTION_LABEL = 'px-3 pt-3.5 pb-1.5 text-[13px] font-bold tracking-wider uppercase text-sky-200/70 select-none'
+const SB_SECTION_WAREHOUSE = 'px-3 pt-3.5 pb-1.5 text-[13px] font-bold tracking-wider uppercase text-cyan-300/90 select-none'
 
 // ─── Permission helpers ───────────────────────────────────────────────────
 // enabledPaths = superadmin-managed feature access (null/empty array = all enabled)
@@ -75,17 +75,19 @@ export function getVisibleSections(user, enabledPaths) {
 }
 
 // ─── Sidebar component ────────────────────────────────────────────────────
-export default function Sidebar({ user, brand, collapsed, setCollapsed, mobileOpen, setMobileOpen, canSell, onBlockedSellClick, logout, hidden }) {
+export default function Sidebar({ user, brand, collapsed, setCollapsed, mobileOpen, setMobileOpen, canSell, onBlockedSellClick, logout, hidden, ccInboxCount = 0 }) {
  const navigate = useNavigate()
  const { state } = useData()
  const enabledPaths = state?.settings?.enabledPaths
 
  const dashboardVisible = isDashboardVisible(user, enabledPaths)
  const visibleSections = getVisibleSections(user, enabledPaths)
+ const inboxBadge = Number(ccInboxCount) > 0 ? (Number(ccInboxCount) > 99 ? '99+' : String(ccInboxCount)) : ''
 
  const Icon = ({ icon: Ic, size = 18 }) => Ic ? <Ic size={size} className="flex-shrink-0" /> : null
 
 const NavItem = ({ item, onClick }) => {
+ const showBadge = item.to === '/sales/cc-inbox' && inboxBadge
  if (item.gated && !canSell) {
  return (
  <button
@@ -102,12 +104,24 @@ const NavItem = ({ item, onClick }) => {
  to={item.to}
  onClick={onClick}
  end={item.end}
- title={collapsed ? item.label : undefined}
+ title={collapsed ? (showBadge ? `${item.label} (${inboxBadge})` : item.label) : undefined}
  className={({ isActive }) =>
- `${SB_ITEM_BASE} ${collapsed ? 'justify-center px-0' : ''} ${isActive ? SB_ITEM_ACTIVE : SB_ITEM_INACTIVE}`
+ `${SB_ITEM_BASE} ${collapsed ? 'justify-center px-0 relative' : ''} ${isActive ? SB_ITEM_ACTIVE : SB_ITEM_INACTIVE}`
  }
- ><Icon icon={item.icon} />
- {!collapsed && <span>{item.label}</span>}
+ ><span className={`relative inline-flex ${collapsed ? '' : ''}`}>
+ <Icon icon={item.icon} />
+ {showBadge && collapsed ? (
+  <span className="absolute -top-1.5 -right-2 min-w-[1rem] h-4 px-0.5 rounded-full bg-amber-400 text-[9px] font-extrabold text-slate-900 flex items-center justify-center leading-none">{inboxBadge}</span>
+ ) : null}
+ </span>
+ {!collapsed && (
+  <span className="flex-1 flex items-center justify-between gap-2 min-w-0">
+   <span className="truncate">{item.label}</span>
+   {showBadge ? (
+    <span className="shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-400 text-[10px] font-extrabold text-slate-900 flex items-center justify-center tabular-nums animate-pulse">{inboxBadge}</span>
+   ) : null}
+  </span>
+ )}
  </NavLink>
  )
  }
@@ -119,7 +133,7 @@ const NavItem = ({ item, onClick }) => {
  <aside
  className={`
  no-print hidden md:flex flex-none flex-col
- ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-52 xl:w-56 min-w-0'}
+ ${collapsed ? 'md:w-[4.5rem] min-w-[4.5rem]' : 'md:w-60 xl:w-64 min-w-0'}
  sticky top-0 h-full max-h-full self-stretch overflow-hidden app-drawer-safe
  ${SB_BG} border-r ${SB_BORDER}
  transition-[width] duration-200 z-[1000]
@@ -132,7 +146,7 @@ const NavItem = ({ item, onClick }) => {
  <span className="hidden text-white text-sm font-bold leading-none">{(brand?.[0] || 'R').toUpperCase()}</span>
  </div>
  {!collapsed && (
- <div><div className="text-sm font-bold text-white leading-tight tracking-wide truncate max-w-[160px]">{brand}</div><div className="text-[11px] text-slate-400 dark:text-gray-400 font-medium tracking-wider uppercase">POS System</div></div>
+ <div><div className="text-base font-bold text-white leading-tight tracking-wide truncate max-w-[180px]">{brand}</div><div className="text-xs text-slate-400 dark:text-gray-400 font-medium tracking-wider uppercase">POS System</div></div>
  )}
  </div>
 
@@ -147,7 +161,11 @@ const NavItem = ({ item, onClick }) => {
  {visibleSections.map(section => (
  <div key={section.label} className="pt-1">
  {!collapsed && (
- <div className={section.label === 'Warehouse' ? SB_SECTION_WAREHOUSE : SB_SECTION_LABEL}>{section.label}</div>
+ <div className={
+  section.label === 'Warehouse' ? SB_SECTION_WAREHOUSE
+  : section.label === 'Call Center' ? 'px-3 pt-3.5 pb-1.5 text-[13px] font-bold tracking-wider uppercase text-amber-300/90 select-none'
+  : SB_SECTION_LABEL
+ }>{section.label}</div>
  )}
  {section.items.map(item => (
  <NavItem key={item.to} item={item} />
@@ -201,8 +219,13 @@ const NavItem = ({ item, onClick }) => {
 
  {/* Mobile grouped sections */}
  {visibleSections.map(section => (
- <div key={section.label} className="pt-1"><div className={section.label === 'Warehouse' ? SB_SECTION_WAREHOUSE : SB_SECTION_LABEL}>{section.label}</div>
+ <div key={section.label} className="pt-1"><div className={
+  section.label === 'Warehouse' ? SB_SECTION_WAREHOUSE
+  : section.label === 'Call Center' ? 'px-3 pt-3.5 pb-1.5 text-[13px] font-bold tracking-wider uppercase text-amber-300/90 select-none'
+  : SB_SECTION_LABEL
+ }>{section.label}</div>
  {section.items.map(item => {
+ const showBadge = item.to === '/sales/cc-inbox' && inboxBadge
  if (item.gated && !canSell) {
  return (
  <button
@@ -221,7 +244,14 @@ const NavItem = ({ item, onClick }) => {
  className={({ isActive }) =>
  `${SB_ITEM_BASE} ${isActive ? SB_ITEM_ACTIVE : SB_ITEM_INACTIVE}`
  }
- ><Icon icon={item.icon} /><span>{item.label}</span></NavLink>
+ ><Icon icon={item.icon} />
+ <span className="flex-1 flex items-center justify-between gap-2 min-w-0">
+  <span className="truncate">{item.label}</span>
+  {showBadge ? (
+   <span className="shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-400 text-[10px] font-extrabold text-slate-900 flex items-center justify-center tabular-nums animate-pulse">{inboxBadge}</span>
+  ) : null}
+ </span>
+ </NavLink>
  )
  })}
  </div>

@@ -628,6 +628,19 @@ router.post('/transfers/:id/receive', authRequired, async (req, res, next) => {
     transfer.appliedToInventory = true
     await transfer.save()
 
+    if (transfer.demandId) {
+      try {
+        const demand = await Demand.findById(transfer.demandId)
+        if (demand && demand.status !== 'rejected') {
+          demand.status = 'completed'
+          demand.transferId = String(transfer._id)
+          await demand.save()
+        }
+      } catch (linkErr) {
+        console.warn('[warehouse] mark demand completed failed', linkErr?.message)
+      }
+    }
+
     await logAudit(req, 'warehouse', 'Transfer received into branch inventory', {
       transferId: transfer._id?.toString?.(),
       branchId: transfer.toBranchId,

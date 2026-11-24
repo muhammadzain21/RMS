@@ -14,6 +14,7 @@ export const STAFF_EARNING_CATEGORIES = [
 const StaffEarningSchema = new mongoose.Schema({
   staffId: { type: String, required: true, index: true },
   staffName: { type: String, default: '' },
+  branchId: { type: String, default: '', index: true },
   date: { type: String, required: true, index: true }, // YYYY-MM-DD
   category: { type: String, enum: STAFF_EARNING_CATEGORIES, required: true, index: true },
   amount: { type: Number, required: true },

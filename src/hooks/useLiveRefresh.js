@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useBranch } from '../state/BranchContext.jsx'
-import { isUserBusy } from '../utils/userBusy.js'
+import { useBranch } from '@/state/BranchContext.jsx'
+import { isUserBusy } from '@shared/utils/userBusy.js'
 
 function safeRun(fn, arg) {
   try {
