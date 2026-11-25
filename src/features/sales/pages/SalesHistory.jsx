@@ -11,6 +11,7 @@ import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport
 import DatePicker from '@shared/components/DatePicker.jsx'
 import Pagination from '@shared/components/Pagination.jsx'
 import OrderViewDialog from '@features/sales/components/OrderViewDialog.jsx'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 export default function SalesHistory() {
  const { state, dispatch, businessDate } = useData()
@@ -173,7 +174,8 @@ export default function SalesHistory() {
  const hasReturn = (state.returns || []).some(r => r.saleId === s.id)
  return ({
  id: s.id,
- date: s.date, // no time captured; keep date for now
+ date: s.date, // business date (filters / day-close checks)
+ dateTime: recordDateTime(s),
  // Show token in the Bill Number column as: <businessDate>_<tokenNo>
  billNo: (s?.tokenNo || s?.detail?.tokenNo)
  ? `${s.date || businessDate}_${s.tokenNo || s?.detail?.tokenNo}`
@@ -332,7 +334,7 @@ export default function SalesHistory() {
  }
 
  const cols = [
- { label: 'Date', key: 'date' },
+ { label: 'Date', key: 'dateTime', render: r => <span className="whitespace-nowrap font-medium">{r.dateTime || r.date}</span> },
  { label: 'Bill Number', key: 'billNo' },
  { label: 'Customer', key: 'customer', hideBelow: 'md' },
  { label: 'Order Type', key: 'orderType', hideBelow: 'lg' },
@@ -399,7 +401,7 @@ export default function SalesHistory() {
  headers: ['Date', 'Bill#', 'Customer', 'Order Type', 'Table', 'Waiter', 'Rider', { t: 'Sale Total', align: 'r' }, { t: 'Net Amount', align: 'r' }, 'Payment', 'Status'],
  numbered: true,
  rows: rows.map(r => [
- r.date,
+ r.dateTime || r.date,
  r.billNo,
  r.customer,
  r.orderType,
@@ -445,7 +447,7 @@ export default function SalesHistory() {
 
  const exportCSV = () => {
  const headers = ['Date','Bill Number','Customer','Order Type','Table','Waiter','Rider','Sale Total (PKR)','Net Amount (PKR)','Payment Mode','Status','Delivery Date']
- const lines = rows.map(r => [r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.netAmount,r.paymentMethod,r.status,r.deliveryDate]
+ const lines = rows.map(r => [r.dateTime || r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.netAmount,r.paymentMethod,r.status,r.deliveryDate]
  .map(v => '"' + String(v ?? '').replaceAll('"','""') + '"').join(',')).join('\n')
  const csv = headers.join(',') + '\n' + lines
  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -522,7 +524,7 @@ export default function SalesHistory() {
   </div>
  </div><div className="border-2 border-indigo-300 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Rider</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedRows.map(r => (
- <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300">{r.date}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.billNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.customer}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.orderType}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.tableNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.waiterName}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.riderName}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span></td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deliveryDate}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => setViewSale(r)} className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600" title="View Order Details">View</button><button onClick={() => reprintSale(r)} className="px-2 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600" title="Reprint Receipt">Print</button><button onClick={() => {
+ <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{r.dateTime || r.date}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.billNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.customer}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.orderType}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.tableNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.waiterName}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.riderName}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span></td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deliveryDate}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => setViewSale(r)} className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600" title="View Order Details">View</button><button onClick={() => reprintSale(r)} className="px-2 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600" title="Reprint Receipt">Print</button><button onClick={() => {
  if (closedDates.has(r.date)) return
  setDeleteTarget({ id: r.id, date: r.date, billNo: r.billNo })
  setDeleteKey('')
@@ -540,7 +542,7 @@ export default function SalesHistory() {
 
  {drawerOpen && selected && (
  <><div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={() => setDrawerOpen(false)} /><div className="fixed right-0 top-0 h-full w-full max-w-md z-50 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-950 shadow-2xl flex flex-col border-l-4 border-indigo-500"><div className="p-4 border-b border-indigo-200 dark:border-indigo-800 flex items-center justify-between bg-gradient-to-r from-indigo-100 to-indigo-50 dark:from-indigo-950/30 dark:to-gray-900"><div className="font-bold text-lg text-indigo-900 dark:text-indigo-100 flex items-center gap-2"><span></span> Bill {selected.billNo ? `BILL-${selected.billNo}` : ''}
- </div><button onClick={() => setDrawerOpen(false)} className="px-3 py-1.5 text-sm rounded-lg border-2 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all">Close</button></div><div className="p-4 space-y-4 overflow-auto"><div className="p-3 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Date</div><div className="font-semibold text-gray-900 dark:text-gray-100">{selected.date}</div></div><div className="grid grid-cols-2 gap-3"><div className="p-3 rounded-xl bg-gradient-to-r from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Sold By</div><div className="font-semibold text-gray-900 dark:text-gray-100">{selected.soldBy || '-'}</div></div><div className="p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-emerald-100/50 dark:from-emerald-950/30 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Customer</div><div className="font-semibold text-gray-900 dark:text-gray-100">{selected.customer || '-'}</div></div></div><div className="p-3 rounded-xl bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 border border-amber-200 dark:border-amber-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Order Type</div><div className="grid grid-cols-2 gap-2 text-sm"><div>Date & Time : {format(new Date(), 'd-M-yyyy h:mm a')}</div></div></div>
+ </div><button onClick={() => setDrawerOpen(false)} className="px-3 py-1.5 text-sm rounded-lg border-2 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all">Close</button></div><div className="p-4 space-y-4 overflow-auto"><div className="p-3 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Date</div><div className="font-semibold text-gray-900 dark:text-gray-100">{selected.dateTime || selected.date}</div></div><div className="grid grid-cols-2 gap-3"><div className="p-3 rounded-xl bg-gradient-to-r from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200 dark:border-purple-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Sold By</div><div className="font-semibold text-gray-900 dark:text-gray-100">{selected.soldBy || '-'}</div></div><div className="p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-emerald-100/50 dark:from-emerald-950/30 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Customer</div><div className="font-semibold text-gray-900 dark:text-gray-100">{selected.customer || '-'}</div></div></div><div className="p-3 rounded-xl bg-gradient-to-r from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 border border-amber-200 dark:border-amber-800"><div className="text-sm text-gray-600 dark:text-gray-400 mb-1"> Order Type</div><div className="grid grid-cols-2 gap-2 text-sm"><div>Date & Time : {format(new Date(), 'd-M-yyyy h:mm a')}</div></div></div>
  {selected.orderType === 'Dine-in' && (
  <div className="text-sm text-gray-600">Table / Waiter: <span className="text-gray-900 dark:text-gray-100 font-medium">{`${selected.tableNo || '-'} • ${selected.waiter || '-'}`}</span></div>
  )}

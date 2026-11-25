@@ -24,6 +24,7 @@ import { useBusinessDateValue } from '@/hooks/useBusinessDateFilter.js'
 import DatePicker from '@shared/components/DatePicker.jsx'
 import PageHero from '@shared/components/UiPageHero.jsx'
 import { createLineTotal } from '@features/sales/utils/cartUtils.js'
+import { formatTime12 } from '@shared/utils/dateUtils.js'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 
 const PIE_COLORS = ['#3b82f6', '#6366f1', '#0ea5e9', '#10b981', '#f59e0b']
@@ -139,6 +140,7 @@ function paymentBucket(s) {
   const pm = String(s.paymentMethod || 'cash').toLowerCase()
   const ch = String(s.bankChannel || '').toLowerCase()
   if (pm === 'split' || (Array.isArray(s.payments) && s.payments.length > 1)) return 'split'
+  if (pm === 'foodpanda' || pm === 'food_panda' || pm === 'food panda') return 'foodpanda'
   if (pm === 'cash') return 'cash'
   if (pm === 'card') return 'card'
   if (pm === 'bank') {
@@ -390,6 +392,7 @@ export default function Dashboard() {
         buckets.cash += saleTenderAmt(s, 'cash')
         buckets.card += saleTenderAmt(s, 'card')
         buckets.bank += saleTenderAmt(s, ['bank', 'online'])
+        buckets.foodpanda += saleTenderAmt(s, ['foodpanda', 'food_panda', 'food panda'])
         return
       }
       const b = paymentBucket(s)
@@ -459,6 +462,39 @@ export default function Dashboard() {
       .map(([designation, present]) => ({ designation, present }))
       .sort((a, b) => a.designation.localeCompare(b.designation))
   }, [attendanceRows, state.staff])
+
+  const hrAttendanceTable = useMemo(() => {
+    const staffList = state.staff || []
+    const rows = (attendanceRows || []).map(r => {
+      const st = staffList.find(s => String(s.id) === String(r.staffId))
+      return {
+        id: r.id || r._id || `${r.staffId}-${r.date}`,
+        staffName: r.staffName || st?.name || '—',
+        biometricId: st?.biometricId || '',
+        position: st?.position || '—',
+        status: r.status || '—',
+        checkIn: r.checkIn || '',
+        checkOut: r.checkOut || '',
+      }
+    }).sort((a, b) => String(a.staffName).localeCompare(String(b.staffName)))
+    const stats = {
+      present: rows.filter(r => r.status === 'Present' || r.status === 'Late').length,
+      late: rows.filter(r => r.status === 'Late').length,
+      leave: rows.filter(r => r.status === 'Leave').length,
+      absent: rows.filter(r => r.status === 'Absent').length,
+    }
+    return { rows, stats }
+  }, [attendanceRows, state.staff])
+
+  const hrStatusClass = (status) => {
+    switch (String(status || '')) {
+      case 'Present': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+      case 'Late': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+      case 'Absent': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+      case 'Leave': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+      default: return 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-400'
+    }
+  }
 
   const authHeaders = useMemo(
     () => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }),
@@ -569,6 +605,8 @@ export default function Dashboard() {
       billAnalysis,
       expenseAnalysis,
       hrRows,
+      hrAttendanceRows: hrAttendanceTable.rows,
+      hrStats: hrAttendanceTable.stats,
     }),
     [
       selectedDate,
@@ -584,6 +622,7 @@ export default function Dashboard() {
       billAnalysis,
       expenseAnalysis,
       hrRows,
+      hrAttendanceTable,
     ]
   )
 
@@ -643,11 +682,25 @@ export default function Dashboard() {
           { label: `Unapproved (${p.expenseAnalysis.pendingCount || 0})`, amount: fmt(p.expenseAnalysis.pending) },
           { label: 'Expense paid (pay-out)', amount: fmt(p.expenseAnalysis.paid) },
         ]) +
-        reportSec('HR information') +
+        reportSec('HR information — by designation') +
         reportTable({
           headers: ['Staff designation', 'Present'],
           rows: p.hrRows.map(r => [r.designation, String(r.present)]),
           emptyText: 'No attendance for this date',
+        }) +
+        reportSec(`Daily attendance — ${p.date}`) +
+        reportTable({
+          headers: ['Staff', 'Biometric ID', 'Position', 'Status', 'Check In', 'Check Out'],
+          numbered: true,
+          rows: (p.hrAttendanceRows || []).map(r => [
+            r.staffName,
+            r.biometricId || '—',
+            r.position,
+            r.status,
+            r.checkIn ? formatTime12(r.checkIn) : '—',
+            r.checkOut ? formatTime12(r.checkOut) : '—',
+          ]),
+          emptyText: 'No attendance records for this date',
         })
 
     const html = wrapReportDoc({
@@ -696,6 +749,7 @@ export default function Dashboard() {
         ['Sales', 'Total', p.salesSummary.total].map(v => `"${v}"`).join(','),
         ...p.paymentRows.map(r => ['Payment', r.type, r.amount].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
         ...p.hrRows.map(r => ['HR', r.designation, r.present].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+        ...(p.hrAttendanceRows || []).map(r => ['Attendance', r.staffName, r.status, r.checkIn || '', r.checkOut || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
       ]
       const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
@@ -974,30 +1028,116 @@ export default function Dashboard() {
       </div>
 
       <Panel title="HR Information" icon={Users}>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Staff Designation</th>
-                <th className="text-right">Present</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hrRows.map(r => (
-                <tr key={r.designation}>
-                  <td>{r.designation}</td>
-                  <td className="text-right">{r.present}</td>
-                </tr>
-              ))}
-              {hrRows.length === 0 && (
-                <tr>
-                  <td colSpan={2} className="text-center text-[var(--color-text-muted)] py-6">
-                    No attendance recorded for {selectedDate}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+              <div className="text-2xl font-bold text-green-600">{hrAttendanceTable.stats.present}</div>
+              <div className="text-xs text-slate-500">Present</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+              <div className="text-2xl font-bold text-orange-600">{hrAttendanceTable.stats.late}</div>
+              <div className="text-xs text-slate-500">Late</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+              <div className="text-2xl font-bold text-blue-600">{hrAttendanceTable.stats.leave}</div>
+              <div className="text-xs text-slate-500">Leave</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+              <div className="text-2xl font-bold text-red-600">{hrAttendanceTable.stats.absent}</div>
+              <div className="text-xs text-slate-500">Absent</div>
+            </div>
+          </div>
+
+          {hrRows.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Staff Designation</th>
+                    <th className="text-right">Present</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hrRows.map(r => (
+                    <tr key={r.designation}>
+                      <td>{r.designation}</td>
+                      <td className="text-right">{r.present}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                <span className="h-2 w-2 rounded-full bg-teal-500" />
+                Daily Attendance — {selectedDate} ({hrAttendanceTable.rows.length})
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-700/50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Staff</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Biometric ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Position</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Status</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Check In</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Check Out</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                  {hrAttendanceTable.rows.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                        No attendance records for {selectedDate}
+                      </td>
+                    </tr>
+                  )}
+                  {hrAttendanceTable.rows.map((r, idx) => (
+                    <tr
+                      key={r.id}
+                      className={`transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/30 ${
+                        idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-sm font-bold text-white">
+                            {String(r.staffName || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`font-mono text-sm ${r.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>
+                          {r.biometricId || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                          {r.position}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${hrStatusClass(r.status)}`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
+                        {r.checkIn ? formatTime12(r.checkIn) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
+                        {r.checkOut ? formatTime12(r.checkOut) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </Panel>
     </div>

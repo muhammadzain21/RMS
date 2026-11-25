@@ -71,7 +71,7 @@ const DangerButton = ({ onClick, children, disabled }) => (
 
 function CollectionGrid({ targets, selected, onToggle, loading }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 max-h-80 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
       {targets.map(t => (
         <label
           key={t.key}
@@ -96,6 +96,85 @@ function CollectionGrid({ targets, selected, onToggle, loading }) {
       {!targets.length && !loading && (
         <div className="col-span-full text-sm text-slate-500 py-4 text-center">No collections loaded</div>
       )}
+    </div>
+  )
+}
+
+function RestoreSummaryDialog({ summary, onClose }) {
+  if (!summary) return null
+  const rows = (Array.isArray(summary.results) ? summary.results : [])
+    .map((r) => ({
+      key: r.key,
+      label: r.label || r.key,
+      count: Number(r.deletedThenInserted ?? r.inserted ?? r.count ?? 0),
+      error: r.error || '',
+    }))
+    .filter((r) => r.count > 0 || r.error)
+    .sort((a, b) => b.count - a.count)
+  const total = Number(summary.totalInserted ?? summary.inserted ?? 0)
+  const withData = rows.filter((r) => r.count > 0).length
+  const errors = rows.filter((r) => r.error).length
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Restore complete</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {summary.scope === 'branch'
+              ? `Restored into ${summary.branchLabel || 'this branch'}`
+              : 'Full database restore'}
+          </p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-emerald-50 px-3 py-2 dark:bg-emerald-900/20">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Docs</div>
+              <div className="text-xl font-bold text-emerald-800 dark:text-emerald-200">{total.toLocaleString()}</div>
+            </div>
+            <div className="rounded-xl bg-indigo-50 px-3 py-2 dark:bg-indigo-900/20">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Collections</div>
+              <div className="text-xl font-bold text-indigo-800 dark:text-indigo-200">{withData}</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Errors</div>
+              <div className={`text-xl font-bold ${errors ? 'text-rose-600' : 'text-slate-700 dark:text-slate-200'}`}>{errors}</div>
+            </div>
+          </div>
+          <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-bold text-slate-500">Collection</th>
+                  <th className="px-3 py-2 text-right text-xs font-bold text-slate-500">Restored</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="px-3 py-6 text-center text-slate-400">No collection details returned</td>
+                  </tr>
+                ) : rows.map((r) => (
+                  <tr key={r.key}>
+                    <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">
+                      {r.label}
+                      {r.error ? <div className="text-[11px] text-rose-500">{r.error}</div> : null}
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums text-gray-700 dark:text-gray-200">
+                      {r.count.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-500">The app will reload after you continue so all screens pick up the restored data.</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+          <PrimaryButton onClick={onClose}>Continue &amp; reload</PrimaryButton>
+        </div>
+      </div>
     </div>
   )
 }
@@ -235,14 +314,21 @@ export default function BackupSecurity() {
       confirmStyle: 'danger',
     })
     if (!confirmed) return
+    setRestoreBusy(true)
     try {
       const text = await file.text()
       const res = await fetch(`${API}/api/backup/import`, { method: 'POST', headers: authOnly, body: text })
-      if (!res.ok) throw new Error('Import failed')
-      toast.success('Global backup restored. App will reload.')
-      setTimeout(() => window.location.reload(), 400)
-    } catch {
-      toast.error('Failed to import backup. Ensure you are admin and logged in.')
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || 'Import failed')
+      finishRestore({
+        scope: 'global',
+        totalInserted: Number(j.totalInserted ?? j.inserted ?? 0),
+        results: Array.isArray(j.results) ? j.results : [],
+      })
+    } catch (e) {
+      toast.error(e.message || 'Failed to import backup. Ensure you are admin and logged in.')
+    } finally {
+      setRestoreBusy(false)
     }
   }
 
@@ -255,15 +341,22 @@ export default function BackupSecurity() {
       confirmStyle: 'danger',
     })
     if (!confirmed) return
+    setRestoreBusy(true)
     try {
       const text = await file.text()
       const res = await fetch(`${API}/api/backup/import-branch`, { method: 'POST', headers, body: text })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error || 'Import failed')
-      toast.success(`Branch restore done (${j.totalInserted || 0} docs). App will reload.`)
-      setTimeout(() => window.location.reload(), 400)
+      finishRestore({
+        scope: 'branch',
+        branchLabel: branchLabel || 'this branch',
+        totalInserted: Number(j.totalInserted || 0),
+        results: Array.isArray(j.results) ? j.results : [],
+      })
     } catch (e) {
       toast.error(e.message || 'Failed to restore branch backup')
+    } finally {
+      setRestoreBusy(false)
     }
   }
 
@@ -274,6 +367,17 @@ export default function BackupSecurity() {
   const [branchTargetsLoading, setBranchTargetsLoading] = useState(false)
   const [globalTargetsLoading, setGlobalTargetsLoading] = useState(false)
   const [purgeBusy, setPurgeBusy] = useState(false)
+  const [restoreSummary, setRestoreSummary] = useState(null)
+  const [restoreBusy, setRestoreBusy] = useState(false)
+
+  const finishRestore = (summary) => {
+    setRestoreSummary(summary)
+  }
+
+  const closeRestoreSummary = () => {
+    setRestoreSummary(null)
+    window.location.reload()
+  }
 
   const loadBranchTargets = async () => {
     if (!token || isAllBranches || !activeBranchId) {
@@ -471,6 +575,15 @@ export default function BackupSecurity() {
   return (
     <div className="space-y-4 w-full">
       {ConfirmDialog}
+      <RestoreSummaryDialog summary={restoreSummary} onClose={closeRestoreSummary} />
+      {restoreBusy ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
+          <div className="rounded-2xl bg-white px-6 py-5 text-center shadow-xl dark:bg-gray-900">
+            <div className="text-base font-bold text-gray-900 dark:text-white">Restoring backup…</div>
+            <div className="mt-1 text-sm text-gray-500">Please wait while data is imported</div>
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg">
           <HardDrive className="text-white" size={22} />

@@ -8,6 +8,7 @@ import DatePicker from '@shared/components/DatePicker.jsx'
 import { Plus, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -248,7 +249,7 @@ export default function RiderList() {
 
 <div className="border-2 border-cyan-200 dark:border-cyan-800 rounded-xl overflow-x-auto shadow-sm"><DataTable
  columns={[
- { label: 'Date', key: 'date' },
+ { label: 'Date', key: 'date', render: r => <span className="whitespace-nowrap">{recordDateTime(r)}</span> },
  { label: 'Token No', key: 'tokenNo', render: r => r.tokenNo || '—' },
  { label: 'Rider', key: 'riderName' },
  { label: 'Deliveries', key: 'deliveries' },

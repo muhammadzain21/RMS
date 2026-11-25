@@ -19,6 +19,7 @@ function methodLabel(p) {
   if (m === 'bank') return `Bank (${bankChannelLabel(p.bankChannel) || p.bankChannel || 'Transfer'}${p.bankLast4 ? ` ····${p.bankLast4}` : ''})`
   if (m === 'card') return `Card${p.bankLast4 ? ` ····${p.bankLast4}` : ''}`
   if (m === 'staff') return `Staff (${p.staffName || 'Member'})`
+  if (m === 'foodpanda') return 'Foodpanda'
   if (m === 'cash') return 'Cash'
   return m ? m.charAt(0).toUpperCase() + m.slice(1) : 'Pay'
 }
@@ -158,6 +159,7 @@ export default function PaymentMethodDialog({
     const rider = isDelivery && riderId
       ? { id: String(riderId), name: chosenRider?.name || '' }
       : null
+    const usesFoodpanda = pays.some(p => String(p.method || '').toLowerCase() === 'foodpanda')
     onConfirm({
       method: pays.length === 1 ? primary.method : 'split',
       payments: pays.map(p => ({
@@ -177,6 +179,8 @@ export default function PaymentMethodDialog({
       riderId: rider?.id || '',
       riderName: rider?.name || '',
       rider,
+      // Foodpanda tender also records order type so FP rates / My Day bucket apply
+      orderType: usesFoodpanda ? 'Foodpanda' : undefined,
     })
   }
 
@@ -510,6 +514,13 @@ export default function PaymentMethodDialog({
             className={`rounded-full px-3 py-3 text-sm font-bold text-white shadow hover:brightness-105 sm:py-3.5 sm:text-base ${method === 'staff' ? 'bg-[#2f5fb0] ring-2 ring-[#1e3f7a]' : 'bg-[#3d6ec4]'}`}
           >
             Staff Charge
+          </button>
+          <button
+            type="button"
+            onClick={() => addTender('foodpanda')}
+            className="rounded-full bg-[#c5d86a] px-3 py-3 text-sm font-bold text-[#3f4a16] shadow hover:brightness-105 sm:py-3.5 sm:text-base"
+          >
+            Foodpanda
           </button>
           <button type="button" onClick={onCancel} className="mt-auto rounded-full bg-[#e53935] px-3 py-3 text-sm font-bold text-white shadow hover:brightness-105 sm:py-3.5 sm:text-base">
             Close

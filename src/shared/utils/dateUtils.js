@@ -51,11 +51,46 @@ export function formatClock12(value, opts = {}) {
  */
 export function formatDateTime12(value, opts = {}) {
   if (value == null || value === '') return ''
+  // Pure business date (YYYY-MM-DD) — no clock time available
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim()
+  }
   const d = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(d.getTime())) return ''
   const datePart = getLocalDateString(d)
   const timePart = formatClock12(d, opts)
   return timePart ? `${datePart} ${timePart}` : datePart
+}
+
+/**
+ * Pick the best datetime display for a table row.
+ * Prefers createdAt / timestamps that include a clock time; falls back to business date.
+ */
+export function resolveRecordDateTime(...candidates) {
+  let ymdFallback = ''
+  for (const c of candidates) {
+    if (c == null || c === '') continue
+    if (typeof c === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.trim())) {
+      if (!ymdFallback) ymdFallback = c.trim()
+      continue
+    }
+    const formatted = formatDateTime12(c)
+    if (formatted) return formatted
+  }
+  return ymdFallback || '—'
+}
+
+/** Convenience: createdAt → updatedAt → at → date */
+export function recordDateTime(row) {
+  if (!row || typeof row !== 'object') return resolveRecordDateTime(row)
+  return resolveRecordDateTime(
+    row.createdAt,
+    row.created_at,
+    row.at,
+    row.deletedAt,
+    row.updatedAt,
+    row.date,
+  )
 }
 
 /**

@@ -94,11 +94,19 @@ export default function KDS() {
   const [dateTouched, setDateTouched] = useState(false)
   const [kots, setKots] = useState([])
   const [loading, setLoading] = useState(false)
-  const [soundOn, setSoundOn] = useState(true)
+  const [soundOn, setSoundOn] = useState(() => {
+    try { return localStorage.getItem('kds_sound_muted') !== '1' } catch { return true }
+  })
   const [autoRefresh, setAutoRefresh] = useState(true)
   // Mobile: show one kanban column at a time
   const [mobileCol, setMobileCol] = useState('active')
   const knownActiveIdsRef = useRef(null) // null = first load (don't beep)
+  const unreadActiveRef = useRef(new Set()) // keep alerting until muted or marked read
+  const [unreadAlertCount, setUnreadAlertCount] = useState(0)
+  const soundOnRef = useRef(soundOn)
+  useEffect(() => { soundOnRef.current = soundOn }, [soundOn])
+
+  const syncUnreadCount = () => setUnreadAlertCount(unreadActiveRef.current.size)
 
   useEffect(() => {
     if (!dateTouched && businessDate) setSelectedDate(businessDate)
@@ -137,11 +145,22 @@ export default function KDS() {
           let newOrders = 0
           let completedOrders = 0
           for (const id of activeIds) {
-            if (!prev.has(id)) newOrders++
+            if (!prev.has(id)) {
+              newOrders++
+              unreadActiveRef.current.add(id)
+            }
           }
           for (const id of prev) {
-            if (!activeIds.has(id)) completedOrders++
+            if (!activeIds.has(id)) {
+              completedOrders++
+              unreadActiveRef.current.delete(id)
+            }
           }
+          // Drop unread that are no longer active
+          for (const id of [...unreadActiveRef.current]) {
+            if (!activeIds.has(id)) unreadActiveRef.current.delete(id)
+          }
+          syncUnreadCount()
           if (soundOn) {
             if (newOrders > 0) playKdsAlert('new')
             else if (completedOrders > 0) playKdsAlert('completed')
@@ -155,6 +174,8 @@ export default function KDS() {
 
   useEffect(() => {
     knownActiveIdsRef.current = null
+    unreadActiveRef.current = new Set()
+    setUnreadAlertCount(0)
   }, [selectedDate])
 
   useEffect(() => {
@@ -162,6 +183,15 @@ export default function KDS() {
   }, [loadKots])
 
   useLiveRefresh(() => loadKots(true), { intervalMs: autoRefresh ? 15000 : 0 })
+
+  // Repeat alert while unread active KOTs remain and sound is on
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (!soundOnRef.current) return
+      if (unreadActiveRef.current.size > 0) playKdsAlert('new')
+    }, 4000)
+    return () => clearInterval(t)
+  }, [])
 
   const updateStatus = async (id, status) => {
     try {
@@ -199,6 +229,7 @@ export default function KDS() {
               next.delete(sid)
               knownActiveIdsRef.current = next
             }
+            if (unreadActiveRef.current.delete(sid)) syncUnreadCount()
           } catch {}
           if (soundOn) playKdsAlert('completed')
         }
@@ -415,21 +446,40 @@ export default function KDS() {
               })}
             </div>
 
-            {/* Sound toggle */}
+            {/* Sound toggle — mute stops repeating new-order alerts */}
             <button
+              type="button"
               onClick={() => {
                 const next = !soundOn
                 setSoundOn(next)
-                // Unlock audio/speech on user gesture (browser autoplay policy)
+                try { localStorage.setItem('kds_sound_muted', next ? '0' : '1') } catch {}
                 if (next) {
                   try { playKdsAlert('new') } catch {}
+                } else {
+                  // Muting also clears unread so it stays quiet until a brand-new KOT arrives
+                  unreadActiveRef.current = new Set()
+                  setUnreadAlertCount(0)
                 }
               }}
-              title={soundOn ? 'Sound on' : 'Sound off'}
+              title={soundOn ? 'Sound on (repeats for new orders)' : 'Sound muted'}
               className={`w-10 h-10 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center transition-colors ${soundOn ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}
             >
               {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
             </button>
+            {unreadAlertCount > 0 && soundOn ? (
+              <button
+                type="button"
+                onClick={() => {
+                  unreadActiveRef.current = new Set()
+                  setUnreadAlertCount(0)
+                  toast.success('KDS alert marked read')
+                }}
+                className="hidden sm:inline-flex items-center rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                title="Stop repeating alert for current new orders"
+              >
+                Mark read ({unreadAlertCount})
+              </button>
+            ) : null}
 
             {/* Auto refresh toggle */}
             <button

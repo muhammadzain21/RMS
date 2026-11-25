@@ -11,6 +11,7 @@ import { useConfirm } from '@shared/components/useConfirm.jsx'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { exportDateStamp } from '@shared/utils/listReportExport.js'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 export default function PayInOut() {
  const { state, dispatch, businessDate } = useData()
@@ -154,7 +155,7 @@ export default function PayInOut() {
  headers: ['Date', 'Type', 'Category', { t: 'Amount', align: 'r' }, 'Note', 'User'],
  numbered: true,
  rows: rows.map(r => [
- r.date,
+ recordDateTime(r),
  r.type,
  r.category || '-',
  { v: (r.type === 'IN' ? '+' : '-') + money(r.amount), align: 'r', cls: r.type === 'IN' ? 'pos' : 'neg' },
@@ -188,7 +189,7 @@ export default function PayInOut() {
  const header = ['Date','Type','Category','Amount','Note','User']
  const lines = [header.join(',')]
  rows.forEach(r => {
- lines.push([r.date, r.type, r.category, r.amount, JSON.stringify(r.note||''), r.userName||''].join(','))
+ lines.push([recordDateTime(r), r.type, r.category, r.amount, JSON.stringify(r.note||''), r.userName||''].join(','))
  })
  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
  const url = URL.createObjectURL(blob)
@@ -223,7 +224,7 @@ export default function PayInOut() {
 
  <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Transaction History</h2><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Type</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Amount</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {rows.map(r => (
- <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-medium">{r.date}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.type === 'IN' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200'}`}>{r.type === 'IN' ? 'IN' : 'OUT'}</span></td><td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.category || '-'}</td><td className="px-4 py-3"><span className={`font-semibold ${r.type === 'IN' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{r.type === 'IN' ? '+' : '-'}PKR {Number(r.amount).toLocaleString()}</span></td><td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-sm">{r.note || '-'}</td><td className="px-4 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-4 py-3"><button onClick={()=>remove(r.id)} disabled={closedDates.has(r.date)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium text-sm border border-red-200 dark:border-red-700 disabled:opacity-50 disabled:cursor-not-allowed">Delete</button></td></tr>
+ <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">{recordDateTime(r)}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.type === 'IN' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200'}`}>{r.type === 'IN' ? 'IN' : 'OUT'}</span></td><td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.category || '-'}</td><td className="px-4 py-3"><span className={`font-semibold ${r.type === 'IN' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{r.type === 'IN' ? '+' : '-'}PKR {Number(r.amount).toLocaleString()}</span></td><td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-sm">{r.note || '-'}</td><td className="px-4 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-4 py-3"><button onClick={()=>remove(r.id)} disabled={closedDates.has(r.date)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium text-sm border border-red-200 dark:border-red-700 disabled:opacity-50 disabled:cursor-not-allowed">Delete</button></td></tr>
  ))}
  </tbody><tfoot className="bg-gray-50 dark:bg-gray-800 font-semibold"><tr className="border-t"><td className="px-4 py-3 text-gray-700 dark:text-gray-300">Totals</td><td className="px-4 py-3" colSpan={2}></td><td className="px-4 py-3" colSpan={4}><div className="flex flex-wrap gap-4"><span className="text-emerald-600 dark:text-emerald-400">IN: PKR {totals.IN.toLocaleString()}</span><span className="text-rose-600 dark:text-rose-400">OUT: PKR {totals.OUT.toLocaleString()}</span><span className="text-blue-600 dark:text-blue-400 font-bold">NET: PKR {totals.NET.toLocaleString()}</span></div></td></tr></tfoot></table></div>
 

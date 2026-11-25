@@ -47,6 +47,7 @@ export default function PayrollTab({
   const [selected, setSelected] = useState([]);
   const [tab, setTab] = useState('draft');
   const [slipRun, setSlipRun] = useState(null);
+  const [staffSearch, setStaffSearch] = useState('');
 
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -78,7 +79,20 @@ export default function PayrollTab({
   const selectedDrafts = selected.filter((id) => draftIds.includes(id));
   const selectedApproved = selected.filter((id) => approvedIds.includes(id));
 
-  const tabRows = tab === 'draft' ? drafts : tab === 'approved' ? approved : paid;
+  const tabRowsRaw = tab === 'draft' ? drafts : tab === 'approved' ? approved : paid;
+  const tabRows = useMemo(() => {
+    const q = staffSearch.trim().toLowerCase();
+    if (!q) return tabRowsRaw;
+    return tabRowsRaw.filter((r) => {
+      const hay = [
+        r.staffName,
+        r.position,
+        r.slipNo,
+        r.status,
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }, [tabRowsRaw, staffSearch]);
   const visibleSelectable = tabRows.map((r) => String(r._id)).filter((id) => selectableIds.includes(id));
   const allVisibleSelected = visibleSelectable.length > 0 && visibleSelectable.every((id) => selected.includes(id));
 
@@ -396,24 +410,35 @@ export default function PayrollTab({
       {/* Table card */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
         {/* Status tabs */}
-        <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 px-3 pt-3">
-          {[
-            { key: 'draft', label: 'Draft', count: drafts.length, active: 'text-amber-700 border-amber-500', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
-            { key: 'approved', label: 'Approved', count: approved.length, active: 'text-blue-700 border-blue-500 dark:text-blue-400', badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-            { key: 'paid', label: 'Paid', count: paid.length, active: 'text-emerald-700 border-emerald-500 dark:text-emerald-400', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
-          ].map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${
-                tab === t.key ? t.active : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-              }`}
-            >
-              {t.label}
-              <span className={`rounded-full px-2 py-0.5 text-[10px] ${t.badge}`}>{t.count}</span>
-            </button>
-          ))}
+        <div className="flex flex-col gap-3 border-b border-slate-200 dark:border-slate-700 px-3 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {[
+              { key: 'draft', label: 'Draft', count: drafts.length, active: 'text-amber-700 border-amber-500', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+              { key: 'approved', label: 'Approved', count: approved.length, active: 'text-blue-700 border-blue-500 dark:text-blue-400', badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+              { key: 'paid', label: 'Paid', count: paid.length, active: 'text-emerald-700 border-emerald-500 dark:text-emerald-400', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+            ].map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
+                  tab === t.key ? t.active : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                {t.label}
+                <span className={`rounded-full px-2 py-0.5 text-[10px] ${t.badge}`}>{t.count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="pb-3 sm:pb-2 sm:min-w-[14rem]">
+            <input
+              type="text"
+              value={staffSearch}
+              onChange={(e) => setStaffSearch(e.target.value)}
+              placeholder="Search staff…"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+            />
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -439,7 +464,13 @@ export default function PayrollTab({
               {loading && !rows.length ? (
                 <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
               ) : tabRows.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400 dark:text-slate-500">{rows.length === 0 ? 'No payroll for this month. Click Run payroll.' : `No ${tab} payroll rows for ${month}.`}</td></tr>
+                <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400 dark:text-slate-500">{
+                  rows.length === 0
+                    ? 'No payroll for this month. Click Run payroll.'
+                    : staffSearch.trim()
+                      ? `No ${tab} rows match “${staffSearch.trim()}”.`
+                      : `No ${tab} payroll rows for ${month}.`
+                }</td></tr>
               ) : tabRows.map((r) => {
                 const id = String(r._id);
                 const locked = isPaid(r.status) || r.status === 'cancelled';

@@ -10,6 +10,7 @@ import Pagination from '@shared/components/Pagination.jsx'
 import BranchPurchaseModal from '@features/inventory/components/BranchPurchaseModal.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { exportDateStamp } from '@shared/utils/listReportExport.js'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -73,7 +74,7 @@ export default function SupplyHistory() {
       const sup = (state.suppliers || []).find(s => String(s.id) === String(r.supplierId))
       const supplier = (sup?.name || r.supplier || '').toLowerCase()
       const blob = [
-        r.date, r.invoiceNo, r.notes, supplier,
+        recordDateTime(r), r.invoiceNo, r.notes, supplier,
         ...(r.items || []).map(i => i.name),
       ].join(' ').toLowerCase()
       return blob.includes(q)
@@ -122,7 +123,7 @@ export default function SupplyHistory() {
         headers: ['Date', 'Supplier', 'Invoice', 'Items', { t: 'Total', align: 'r' }],
         numbered: true,
         rows: filtered.map(r => [
-          r.date,
+          recordDateTime(r),
           supplierName(r),
           r.invoiceNo || '—',
           String((r.items || []).length),
@@ -168,7 +169,7 @@ export default function SupplyHistory() {
     try {
       const header = ['Date', 'Supplier', 'Invoice', 'Items', 'Total']
       const lines = filtered.map(r =>
-        [r.date, supplierName(r), r.invoiceNo || '', (r.items || []).length, Number(r.cost || 0)]
+        [recordDateTime(r), supplierName(r), r.invoiceNo || '', (r.items || []).length, Number(r.cost || 0)]
           .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
       )
       const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' })
@@ -247,7 +248,7 @@ export default function SupplyHistory() {
               const lineCount = (r.items || []).length
               return (
                 <tr key={id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                  <td className="p-3 text-gray-700 dark:text-gray-300">{r.date}</td>
+                  <td className="p-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{recordDateTime(r)}</td>
                   <td className="p-3 text-gray-600 dark:text-gray-400">{supplierName(r)}</td>
                   <td className="p-3 text-gray-700 dark:text-gray-300">{r.invoiceNo || '—'}</td>
                   <td className="p-3 text-gray-600 dark:text-gray-400">

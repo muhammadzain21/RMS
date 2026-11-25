@@ -226,9 +226,10 @@ router.delete('/:id', async (req, res, next) => {
     const prev = await Recall.findById(id).lean()
     if (!prev) return res.json({ ok: true, alreadyGone: true })
     if (prev.clearedAt) return res.json({ ok: true, alreadyCleared: true })
+    const now = new Date()
     const updated = await Recall.findByIdAndUpdate(
       id,
-      { $set: { clearedAt: new Date() } },
+      { $set: { clearedAt: now, updatedAt: now } },
       { new: true }
     )
     try {

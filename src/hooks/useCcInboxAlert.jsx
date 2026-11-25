@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/state/AuthContext.jsx'
 
+const MUTE_KEY = 'cc_inbox_sound_muted'
+const READ_KEY = 'cc_inbox_read_ids'
+const REPEAT_MS = 4000
+const MAX_READ_IDS = 400
+
 function api() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 }
@@ -10,12 +15,51 @@ function orderId(o) {
   return String(o?._id || o?.id || '')
 }
 
+export function getCcInboxMuted() {
+  try { return localStorage.getItem(MUTE_KEY) === '1' } catch { return false }
+}
+
+export function setCcInboxMuted(on) {
+  const next = Boolean(on)
+  try { localStorage.setItem(MUTE_KEY, next ? '1' : '0') } catch {}
+  try { window.dispatchEvent(new CustomEvent('cc_inbox_mute', { detail: { muted: next } })) } catch {}
+  return next
+}
+
+export function loadCcInboxReadIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(READ_KEY) || '[]')
+    return new Set(Array.isArray(raw) ? raw.map(String) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveReadIds(set) {
+  try {
+    const arr = [...set]
+    localStorage.setItem(READ_KEY, JSON.stringify(arr.slice(-MAX_READ_IDS)))
+  } catch {}
+}
+
+/** Mark order ids as read — stops repeating alert for them. */
+export function markCcInboxRead(ids) {
+  const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean)
+  if (!list.length) return
+  const read = loadCcInboxReadIds()
+  for (const id of list) read.add(id)
+  saveReadIds(read)
+  try { window.dispatchEvent(new CustomEvent('cc_inbox_read', { detail: { ids: list } })) } catch {}
+}
+
 /** Soft beep when a new CC order arrives (no asset file required). */
-function playAlertTone() {
+export function playCcAlertTone() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext
     if (!Ctx) return
-    const ctx = new Ctx()
+    if (!playCcAlertTone._ctx) playCcAlertTone._ctx = new Ctx()
+    const ctx = playCcAlertTone._ctx
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.type = 'sine'
@@ -26,19 +70,42 @@ function playAlertTone() {
     osc.start()
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
     osc.stop(ctx.currentTime + 0.4)
-    setTimeout(() => { try { ctx.close() } catch {} }, 500)
   } catch {}
 }
 
 /**
  * Polls CC Inbox remaining orders for branch alerts.
- * Returns pending/remaining count for header / sidebar badges.
+ * Loops sound for unread remaining orders until mark-as-read or mute.
  */
 export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
   const { token } = useAuth()
   const [pendingCount, setPendingCount] = useState(0)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [muted, setMutedState] = useState(() => getCcInboxMuted())
   const knownIds = useRef(new Set())
   const primed = useRef(false)
+  const unreadRef = useRef(new Set())
+  const mutedRef = useRef(muted)
+  const remainingIdsRef = useRef([])
+
+  useEffect(() => { mutedRef.current = muted }, [muted])
+
+  const setMuted = useCallback((on) => {
+    const next = setCcInboxMuted(on)
+    setMutedState(next)
+    mutedRef.current = next
+  }, [])
+
+  const markRead = useCallback((ids) => {
+    markCcInboxRead(ids)
+    const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean)
+    for (const id of list) unreadRef.current.delete(id)
+    setUnreadCount(unreadRef.current.size)
+  }, [])
+
+  const markAllRead = useCallback(() => {
+    markRead(remainingIdsRef.current)
+  }, [markRead])
 
   const refresh = useCallback(async () => {
     if (!token || !enabled) return
@@ -50,9 +117,14 @@ export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
       if (!res.ok) return
       const rows = await res.json()
       const list = Array.isArray(rows) ? rows : []
-      // Remaining = pending + accepted (still needs cashier attention)
       const ids = list.map(orderId).filter(Boolean)
+      remainingIdsRef.current = ids
       setPendingCount(ids.length)
+
+      const read = loadCcInboxReadIds()
+      const unread = new Set(ids.filter((id) => !read.has(id)))
+      unreadRef.current = unread
+      setUnreadCount(unread.size)
 
       if (!primed.current) {
         knownIds.current = new Set(ids)
@@ -60,9 +132,9 @@ export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
         return
       }
 
-      const fresh = ids.filter(id => !knownIds.current.has(id))
+      const fresh = ids.filter((id) => !knownIds.current.has(id))
       if (fresh.length) {
-        const first = list.find(o => orderId(o) === fresh[0])
+        const first = list.find((o) => orderId(o) === fresh[0])
         const branch = first?.branchName || 'branch'
         const phone = first?.customer?.phone || first?.customer?.name || ''
         toast(
@@ -84,32 +156,69 @@ export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
           ),
           { duration: 8000, icon: '📞' },
         )
-        playAlertTone()
+        if (!mutedRef.current) playCcAlertTone()
       }
       knownIds.current = new Set(ids)
     } catch {}
   }, [token, enabled])
 
+  // Repeat alert while unread remain and not muted
+  useEffect(() => {
+    if (!enabled || !token) return undefined
+    const tick = () => {
+      if (mutedRef.current) return
+      if (unreadRef.current.size > 0) playCcAlertTone()
+    }
+    const t = setInterval(tick, REPEAT_MS)
+    return () => clearInterval(t)
+  }, [enabled, token])
+
   useEffect(() => {
     if (!enabled || !token) {
       setPendingCount(0)
+      setUnreadCount(0)
       primed.current = false
       knownIds.current = new Set()
+      unreadRef.current = new Set()
+      remainingIdsRef.current = []
       return undefined
     }
     refresh()
     const t = setInterval(refresh, intervalMs)
     const onLive = () => refresh()
+    const onMute = (e) => {
+      const next = Boolean(e?.detail?.muted)
+      setMutedState(next)
+      mutedRef.current = next
+    }
+    const onRead = () => {
+      const read = loadCcInboxReadIds()
+      const unread = new Set(remainingIdsRef.current.filter((id) => !read.has(id)))
+      unreadRef.current = unread
+      setUnreadCount(unread.size)
+    }
     window.addEventListener('live_refresh', onLive)
     window.addEventListener('epicspire:sync', onLive)
     window.addEventListener('data_rehydrated', onLive)
+    window.addEventListener('cc_inbox_mute', onMute)
+    window.addEventListener('cc_inbox_read', onRead)
     return () => {
       clearInterval(t)
       window.removeEventListener('live_refresh', onLive)
       window.removeEventListener('epicspire:sync', onLive)
       window.removeEventListener('data_rehydrated', onLive)
+      window.removeEventListener('cc_inbox_mute', onMute)
+      window.removeEventListener('cc_inbox_read', onRead)
     }
   }, [refresh, intervalMs, enabled, token])
 
-  return { pendingCount, refresh }
+  return {
+    pendingCount,
+    unreadCount,
+    muted,
+    setMuted,
+    markRead,
+    markAllRead,
+    refresh,
+  }
 }

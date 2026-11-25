@@ -16,6 +16,7 @@ import PageHero from '@shared/components/UiPageHero.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport } from '@shared/utils/reportDoc.js'
 import { THERMAL_SLIP_CSS, PROFESSIONAL_SLIP_CSS, openSlipPreviewDialog, printSaleReceiptUtil } from '@features/sales/utils/printUtils.js'
 import OrderViewDialog from '@features/sales/components/OrderViewDialog.jsx'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 function api() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -162,7 +163,7 @@ function mapSaleRows(list, { date, staff = [], onView, onPrint } = {}) {
     const rider = orderType === 'Delivery' ? (r.riderName || '—') : '—'
     const table = orderType === 'Dine-in' ? (r.tableNo || '—') : '—'
     return [
-      r.date || date || timeLabel(r.at),
+      recordDateTime(r) || r.date || date || timeLabel(r.at),
       billLabel(r, date),
       r.customer || '—',
       orderType,

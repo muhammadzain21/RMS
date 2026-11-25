@@ -136,6 +136,50 @@ async function upsertById(Model, id, clean, { mergeFn } = {}) {
   )
 }
 
+/**
+ * One cash opening / day close per (date, branchId).
+ * If cloud already has that day under a different _id, update that row
+ * instead of failing on the unique index (which used to skip the day forever).
+ */
+async function upsertByDateBranch(Model, id, clean, branchId) {
+  const payload = stripImmutable(clean)
+  const date = String(payload.date || '').slice(0, 10)
+  const bid = String(payload.branchId || branchId || '').trim()
+  payload.branchId = bid || payload.branchId
+
+  if (id) {
+    const byId = await Model.findById(id).lean()
+    if (byId) {
+      await Model.findByIdAndUpdate(id, { $set: payload }, { timestamps: false })
+      return
+    }
+  }
+
+  if (date && bid) {
+    const byKey = await Model.findOne({ date, branchId: bid }).lean()
+    if (byKey?._id) {
+      await Model.findByIdAndUpdate(byKey._id, { $set: payload }, { timestamps: false })
+      return
+    }
+  }
+
+  const doc = { ...payload }
+  if (id && /^[a-fA-F0-9]{24}$/.test(String(id))) doc._id = id
+  try {
+    await Model.create(doc)
+  } catch (e) {
+    // Race / unique index: fall back to date+branch update
+    if (date && bid && /E11000|duplicate/i.test(String(e?.message || e))) {
+      const again = await Model.findOne({ date, branchId: bid }).lean()
+      if (again?._id) {
+        await Model.findByIdAndUpdate(again._id, { $set: payload }, { timestamps: false })
+        return
+      }
+    }
+    throw e
+  }
+}
+
 function isHqAccount(user) {
   if (!user) return false
   if (user.isHq) return true
@@ -316,7 +360,9 @@ router.post('/push', async (req, res, next) => {
           }
 
           const mergeFn = MERGE_FNS[name]
-          if (id && mergeFn) {
+          if (name === 'cashOpenings' || name === 'dayCloses') {
+            await upsertByDateBranch(Model, id, clean, branchId)
+          } else if (id && mergeFn) {
             await upsertById(Model, id, clean, { mergeFn })
           } else if (id) {
             // Branch row replaces the cloud row. Same _id, no duplicate.

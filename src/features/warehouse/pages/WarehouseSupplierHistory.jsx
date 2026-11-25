@@ -12,6 +12,7 @@ import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp 
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { warehouseApiBase } from '@features/warehouse/utils/warehouseApi.js'
 import WarehousePaymentModal from '@features/warehouse/components/WarehousePaymentModal.jsx'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 const TABS = [
   { id: 'all', label: 'All', icon: ListTree },
@@ -172,7 +173,7 @@ export default function WarehouseSupplierHistory() {
   const reportRows = () => {
     if (tab === 'purchases') {
       return filteredPurchases.map(p => [
-        p.date || '',
+        recordDateTime(p),
         p.invoiceNo || '',
         (p.items || []).map(i => `${i.name}×${i.qty}`).join('; '),
         Number(p.total || 0),
@@ -182,7 +183,7 @@ export default function WarehouseSupplierHistory() {
     }
     if (tab === 'payments') {
       return filteredPayments.map(p => [
-        p.date || '',
+        recordDateTime(p),
         p.method || '',
         p.reference || '',
         Number(p.amount || 0),
@@ -190,7 +191,7 @@ export default function WarehouseSupplierHistory() {
       ])
     }
     return allRows.map(r => [
-      r.date || '',
+      recordDateTime(r),
       r.type,
       r.ref || '',
       r.debit || 0,
@@ -304,7 +305,7 @@ export default function WarehouseSupplierHistory() {
 
   const allColumns = [
     { label: 'SR No', key: 'srNo', render: (_, idx) => <span className="font-medium text-[var(--color-text-body)]">{(pageSafe - 1) * limit + idx + 1}</span> },
-    { label: 'Date', key: 'date', render: r => r.date || '—' },
+    { label: 'Date', key: 'date', render: r => <span className="whitespace-nowrap">{recordDateTime(r)}</span> },
     {
       label: 'Type',
       key: 'type',
@@ -327,7 +328,7 @@ export default function WarehouseSupplierHistory() {
 
   const purchaseColumns = [
     { label: 'SR No', key: 'srNo', render: (_, idx) => <span className="font-medium text-[var(--color-text-body)]">{(pageSafe - 1) * limit + idx + 1}</span> },
-    { label: 'Date', key: 'date', render: r => r.date || '—' },
+    { label: 'Date', key: 'date', render: r => <span className="whitespace-nowrap">{recordDateTime(r)}</span> },
     { label: 'Invoice', key: 'invoiceNo', render: r => r.invoiceNo || '—' },
     {
       label: 'Items',
@@ -390,7 +391,7 @@ export default function WarehouseSupplierHistory() {
 
   const paymentColumns = [
     { label: 'SR No', key: 'srNo', render: (_, idx) => <span className="font-medium text-[var(--color-text-body)]">{(pageSafe - 1) * limit + idx + 1}</span> },
-    { label: 'Date', key: 'date', render: r => r.date || '—' },
+    { label: 'Date', key: 'date', render: r => <span className="whitespace-nowrap">{recordDateTime(r)}</span> },
     { label: 'Invoice', key: 'invoiceNo', render: r => r.invoiceNo || (r.purchaseId ? String(r.purchaseId).slice(-6) : '—') },
     {
       label: 'Method',

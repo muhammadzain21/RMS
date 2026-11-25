@@ -65,17 +65,16 @@ export default function AddStaffTab({
  const [deviceLoading, setDeviceLoading] = useState(false);
  const [deviceError, setDeviceError] = useState('');
  const [mappings, setMappings] = useState([]);
- const [showBiometricPanel, setShowBiometricPanel] = useState(false);
  const [selectedMapping, setSelectedMapping] = useState({ enrollId: '', staffId: '' });
  const [biometricDeviceId, setBiometricDeviceId] = useState('ZK-01');
 
- // Fetch device users and mappings
+ // Fetch device users and mappings when page loads
  useEffect(() => {
- if (!token || !showBiometricPanel) return;
+ if (!token) return;
  fetchBiometricDeviceId();
  fetchDeviceUsers();
  fetchMappings();
- }, [token, showBiometricPanel]);
+ }, [token]);
 
  const fetchBiometricDeviceId = async () => {
  try {
@@ -257,33 +256,36 @@ export default function AddStaffTab({
  {/* Header Card */}
  <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><div><h2 className="text-lg font-semibold"> Staff Directory</h2><p className="text-blue-100 text-sm">Manage your team members and their details</p></div><div className="text-right"><div className="text-3xl font-bold">{staff.length}</div><div className="text-sm text-blue-100">Total Staff</div></div></div></div>
 
- {/* Biometric Device Panel Toggle */}
- <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4"><button
- onClick={() => setShowBiometricPanel(!showBiometricPanel)}
- className="flex items-center gap-2 w-full text-left"
- ><span className="text-2xl"></span><div className="flex-1"><h3 className="font-semibold text-slate-800 dark:text-slate-200">Biometric Device (K70)</h3><p className="text-sm text-slate-500 dark:text-slate-400">
- {showBiometricPanel ? 'Click to hide device panel' : 'Click to manage fingerprint device mappings'}
- </p></div><span className={`transform transition-transform ${showBiometricPanel ? 'rotate-180' : ''}`}></span></button></div>
-
- {/* Biometric Device Panel */}
- {showBiometricPanel && (
- <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"><div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center"><h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
- ZKTeco K70 Device
- </h3><button
+ {/* Map Staff — biometric device section (always visible) */}
+ <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+ <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+ <div>
+ <h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+ <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+ Map Staff — ZKTeco K70
+ </h3>
+ <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+ Map each device Enroll ID to a staff member for attendance
+ </p>
+ </div>
+ <button
+ type="button"
  onClick={fetchDeviceUsers}
  disabled={deviceLoading}
- className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50"
+ className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 self-start sm:self-auto"
  >
  {deviceLoading ? 'Loading...' : 'Refresh'}
- </button></div>
+ </button>
+ </div>
 
  {deviceError && (
- <div className="p-4 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800"><p className="text-red-600 dark:text-red-400 text-sm flex items-center gap-2"><span></span> {deviceError}
- </p></div>
+ <div className="p-4 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800">
+ <p className="text-red-600 dark:text-red-400 text-sm">{deviceError}</p>
+ </div>
  )}
 
- {/* Device Users Table */}
- <div className="p-4"><h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+ <div className="p-4">
+ <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
  Device Users ({deviceUsers.length})
  </h4>
  {deviceUsers.length === 0 && !deviceLoading && (
@@ -292,12 +294,25 @@ export default function AddStaffTab({
  </p>
  )}
  {deviceUsers.length > 0 && (
- <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-slate-100 dark:bg-slate-700/50"><th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Enroll ID</th><th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Device Name</th><th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Mapped To</th><th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Actions</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+ <div className="overflow-x-auto">
+ <table className="w-full text-sm">
+ <thead>
+ <tr className="bg-slate-100 dark:bg-slate-700/50">
+ <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Enroll ID</th>
+ <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Device Name</th>
+ <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Mapped To</th>
+ <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Actions</th>
+ </tr>
+ </thead>
+ <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
  {deviceUsers.map((user) => {
  const mappedStaff = getMappedStaff(user.enrollId);
  const mapping = mappings.find(m => m.enrollId === user.enrollId);
  return (
- <tr key={user.enrollId} className="hover:bg-slate-50 dark:hover:bg-slate-700/30"><td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300">{user.enrollId}</td><td className="px-3 py-2 text-slate-600 dark:text-slate-400">{user.name || '-'}</td><td className="px-3 py-2">
+ <tr key={user.enrollId} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+ <td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300">{user.enrollId}</td>
+ <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{user.name || '-'}</td>
+ <td className="px-3 py-2">
  {mappedStaff ? (
  <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-100 text-green-700 dark:bg-green-900/30 text-xs">
  {mappedStaff.name}
@@ -305,42 +320,54 @@ export default function AddStaffTab({
  ) : (
  <span className="text-slate-400 dark:text-slate-500 text-xs">Not mapped</span>
  )}
- </td><td className="px-3 py-2">
+ </td>
+ <td className="px-3 py-2">
  {mapping ? (
  <button
+ type="button"
  onClick={() => handleDeleteMapping(mapping._id)}
  className="text-red-500 hover:text-red-600 text-xs"
  >
  Remove
  </button>
  ) : (
- <div className="flex items-center gap-2"><select
+ <div className="flex items-center gap-2">
+ <select
  value={selectedMapping.enrollId === user.enrollId ? selectedMapping.staffId : ''}
  onChange={(e) => setSelectedMapping({ enrollId: user.enrollId, staffId: e.target.value })}
  className="text-xs border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600"
- ><option value="">Select staff...</option>
+ >
+ <option value="">Select staff...</option>
  {staff.filter(s => s.status !== 'inactive').map(s => (
  <option key={s.id} value={s.id}>{s.name}</option>
  ))}
- </select><button
+ </select>
+ <button
+ type="button"
  onClick={handleCreateMapping}
  disabled={selectedMapping.enrollId !== user.enrollId || !selectedMapping.staffId}
  className="text-blue-500 hover:text-blue-600 text-xs disabled:opacity-50"
  >
  Map
- </button></div>
+ </button>
+ </div>
  )}
- </td></tr>
+ </td>
+ </tr>
  );
  })}
- </tbody></table></div>
+ </tbody>
+ </table>
+ </div>
  )}
  </div>
 
- {/* Instructions */}
- <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-100 dark:border-blue-800"><p className="text-xs text-blue-600 dark:text-blue-400"><strong>Instructions:</strong> Enroll fingerprints directly on the K70 device. Then refresh this list and map each Enroll ID to a staff member. Once mapped, attendance will be automatically recorded when staff scan their fingerprint.
- </p></div></div>
- )}
+ <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-100 dark:border-blue-800">
+ <p className="text-xs text-blue-600 dark:text-blue-400">
+ <strong>Instructions:</strong> Enroll fingerprints directly on the K70 device. Then refresh this list and map each Enroll ID to a staff member. Once mapped, attendance will be automatically recorded when staff scan their fingerprint.
+ </p>
+ </div>
+ </div>
 
  {/* Action Bar */}
  <div className="flex flex-col md:flex-row justify-between items-center bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4 gap-4"><div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto"><div className="relative w-full sm:w-64"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></span><input

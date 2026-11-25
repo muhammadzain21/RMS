@@ -776,9 +776,55 @@ export default function SalesNew() {
   const continueAfterPaymentMethod = (ord, pay) => {
     if (paySubmittingRef.current) return
     applyPayOpts(pay)
-    setPendingPayOpts(pay)
-    const rider = pay?.rider || (pay?.riderId ? { id: pay.riderId, name: pay.riderName || '' } : null)
-    ;(async () => { await finalizePayment(ord, rider, pay) })()
+    const usesFp =
+      String(pay?.orderType || '') === 'Foodpanda' ||
+      String(pay?.method || '').toLowerCase() === 'foodpanda' ||
+      (Array.isArray(pay?.payments) && pay.payments.some(p => String(p.method || '').toLowerCase() === 'foodpanda'))
+
+    let nextOrd = ord
+    let nextPay = pay
+    if (usesFp) {
+      setOrderType('Foodpanda')
+      const fpLineTotal = createLineTotal(state.settings?.modifiers || {}, () => 'Foodpanda')
+      const menuList = state.menu || []
+      const cats = state.categories || []
+      const pricedItems = (ord.items || []).map(it => {
+        const m = menuList.find(x => String(x.id) === String(it.itemId))
+        const unit = resolvePersistUnitPrice(m, it, cats, fpLineTotal)
+        return { ...it, price: unit, name: it.name || m?.name || '' }
+      })
+      const sub = computeCategoryAwareSubtotal(pricedItems, menuList, cats, fpLineTotal)
+      const disc = computeCategoryAwareDiscount(pricedItems, menuList, cats, fpLineTotal)
+      const billDisc = Number(ord.billDiscount || 0)
+      const tax = Number(ord.taxAmt || 0)
+      const service = Number(ord.serviceAmt || 0)
+      const delivery = Number(ord.deliveryAmt || 0)
+      const totalAmount = Math.max(0, Math.round(sub - disc - billDisc + tax + service + delivery))
+      nextOrd = {
+        ...ord,
+        orderType: 'Foodpanda',
+        items: pricedItems,
+        subtotal: sub,
+        itemsDiscount: disc,
+        totalAmount,
+      }
+      // Single Foodpanda tender: align amount to FP total so rates stick on the bill
+      if (Array.isArray(pay?.payments) && pay.payments.length === 1 && String(pay.payments[0].method || '').toLowerCase() === 'foodpanda') {
+        nextPay = {
+          ...pay,
+          orderType: 'Foodpanda',
+          method: 'foodpanda',
+          payments: [{ ...pay.payments[0], amount: totalAmount }],
+          cashReceived: 0,
+          tipAmount: 0,
+        }
+      } else {
+        nextPay = { ...pay, orderType: 'Foodpanda' }
+      }
+    }
+    setPendingPayOpts(nextPay)
+    const rider = nextPay?.rider || (nextPay?.riderId ? { id: nextPay.riderId, name: nextPay.riderName || '' } : null)
+    ;(async () => { await finalizePayment(nextOrd, rider, nextPay) })()
   }
 
   const finalizePayment = async (ord, rider, payOverride = null) => {
@@ -830,11 +876,17 @@ export default function SalesNew() {
         Number(pay?.tipAmount || 0) || Math.max(0, (Number(cashIn) || 0) - (Number(ord.totalAmount) || 0)),
         Math.max(0, paidSum - (Number(ord.totalAmount) || 0)),
       )
+      const usesFpPay =
+        String(pay?.orderType || '') === 'Foodpanda' ||
+        String(method || '').toLowerCase() === 'foodpanda' ||
+        payments.some(p => String(p.method || '').toLowerCase() === 'foodpanda')
+      const saleOrderType = usesFpPay ? 'Foodpanda' : (ord.orderType || '')
+
       // 1) Create sale
       const saleBody = {
         createdAt: ord.createdAt || Date.now(),
         tokenNo: ord.tokenNo || '',
-        orderType: ord.orderType || '',
+        orderType: saleOrderType,
         items: (ord.items||[]).map(it => ({ itemId: it.itemId, name: it.name, price: Number(it.price||0), qty: Number(it.qty||0), mods: it.mods||{}, custom: it.custom||null })),
         waiterId: ord.waiterId || '',
         tableNo: ord.tableNo || '',

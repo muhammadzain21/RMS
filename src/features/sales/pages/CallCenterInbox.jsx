@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { format } from 'date-fns'
-import { Inbox, RefreshCw, ShoppingCart, Clock, CheckCircle2, List } from 'lucide-react'
+import { Inbox, RefreshCw, ShoppingCart, Clock, CheckCircle2, List, Volume2, VolumeX, CheckCheck } from 'lucide-react'
 import PageHero from '@shared/components/UiPageHero.jsx'
 import DataTable from '@shared/components/DataTable.jsx'
 import Pagination from '@shared/components/Pagination.jsx'
@@ -10,6 +10,12 @@ import DatePicker from '@shared/components/DatePicker.jsx'
 import { useAuth } from '@/state/AuthContext.jsx'
 import { useBranch } from '@/state/BranchContext.jsx'
 import { useBusinessDateFilter } from '@/hooks/useBusinessDateFilter.js'
+import {
+  getCcInboxMuted,
+  setCcInboxMuted,
+  markCcInboxRead,
+  playCcAlertTone,
+} from '@/hooks/useCcInboxAlert.jsx'
 import { ccStatusLabel, ccStatusStyle } from '@features/sales/utils/callCenterStatus.js'
 import { useLiveRefresh, pokeLiveRefresh } from '@/hooks/useLiveRefresh.js'
 
@@ -55,6 +61,8 @@ export default function CallCenterInbox() {
   const { branches, activeBranchId, setActiveBranchId } = useBranch()
   const navigate = useNavigate()
   const { from, setFrom, to, setTo } = useBusinessDateFilter()
+  const [muted, setMuted] = useState(() => getCcInboxMuted())
+  const [readTick, setReadTick] = useState(0)
   const [remaining, setRemaining] = useState([])
   const [complete, setComplete] = useState([])
   const [tab, setTab] = useState('all') // all | remaining | complete
@@ -63,6 +71,30 @@ export default function CallCenterInbox() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(100)
+
+  useEffect(() => {
+    const onMute = (e) => setMuted(Boolean(e?.detail?.muted))
+    const onRead = () => setReadTick((n) => n + 1)
+    window.addEventListener('cc_inbox_mute', onMute)
+    window.addEventListener('cc_inbox_read', onRead)
+    return () => {
+      window.removeEventListener('cc_inbox_mute', onMute)
+      window.removeEventListener('cc_inbox_read', onRead)
+    }
+  }, [])
+
+  const unreadCount = useMemo(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('cc_inbox_read_ids') || '[]')
+      const read = new Set(Array.isArray(raw) ? raw.map(String) : [])
+      return remaining.filter((o) => {
+        const id = String(o?._id || o?.id || '')
+        return id && !read.has(id)
+      }).length
+    } catch {
+      return remaining.length
+    }
+  }, [remaining, readTick])
 
   const branchName = (oOrId) => {
     if (oOrId && typeof oOrId === 'object') {
@@ -122,10 +154,14 @@ export default function CallCenterInbox() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
+    // Remaining always shows (no date filter) so stale online businessDate cannot hide new CC orders
     const rows = (sourceList || []).filter(o => {
+      const isRemaining = REMAINING_STATUSES.has(String(o.status || ''))
       const day = orderDay(o)
-      if (from && day && day < from) return false
-      if (to && day && day > to) return false
+      if (!isRemaining) {
+        if (from && day && day < from) return false
+        if (to && day && day > to) return false
+      }
       if (!q) return true
       const hay = [
         o.customer?.name, o.customer?.phone, o.customer?.address,
@@ -184,6 +220,7 @@ export default function CallCenterInbox() {
           const t = setTimeout(finish, 2200)
         })
       }
+      markCcInboxRead(id)
       pokeLiveRefresh({ source: 'call-center-accept', branchId: orderBranchId })
       navigate('/sales/new?from=callcenter')
     } catch (e) {
@@ -333,9 +370,39 @@ export default function CallCenterInbox() {
         subtitle="All branches — completed and remaining in one table (newest first)."
         icon={Inbox}
         actions={
-          <button type="button" onClick={load} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold">
-            <RefreshCw size={16} /> Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const next = setCcInboxMuted(!muted)
+                setMuted(next)
+                if (!next) playCcAlertTone()
+              }}
+              title={muted ? 'Sound muted' : 'Sound on — repeats until mark as read'}
+              className={`inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                muted ? 'bg-white/10 text-white/70' : 'bg-white/20 text-white'
+              }`}
+            >
+              {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              {muted ? 'Muted' : 'Sound on'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const ids = remaining.map((o) => String(o?._id || o?.id || '')).filter(Boolean)
+                markCcInboxRead(ids)
+                toast.success(unreadCount ? 'Marked as read — alert stopped' : 'No unread orders')
+              }}
+              title="Stop alert for current remaining orders"
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold"
+            >
+              <CheckCheck size={16} />
+              Mark read{unreadCount ? ` (${unreadCount})` : ''}
+            </button>
+            <button type="button" onClick={load} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-semibold">
+              <RefreshCw size={16} /> Refresh
+            </button>
+          </div>
         }
       />
 

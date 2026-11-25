@@ -25,6 +25,20 @@ const router = express.Router()
 // All routes require authentication
 router.use(authRequired)
 
+/** Soft-clear recall so sync can push clearedAt to cloud (hard delete never syncs). */
+async function softClearRecall(filterOrId) {
+  const now = new Date()
+  const patch = { clearedAt: now, updatedAt: now }
+  const notCleared = { $or: [{ clearedAt: null }, { clearedAt: { $exists: false } }] }
+  if (typeof filterOrId === 'string' || (filterOrId && /^[a-fA-F0-9]{24}$/.test(String(filterOrId)))) {
+    await Recall.findByIdAndUpdate(String(filterOrId), { $set: patch }).catch(() => {})
+    return
+  }
+  if (filterOrId && typeof filterOrId === 'object') {
+    await Recall.updateMany({ $and: [filterOrId, notCleared] }, { $set: patch }).catch(() => {})
+  }
+}
+
 // Helper: normalize a JS Date or timestamp to 'yyyy-MM-dd' in LOCAL timezone
 // This ensures Pakistan time is used regardless of server location
 const toYyyyMmDd = (dLike) => {
@@ -74,16 +88,21 @@ router.post('/', async (req, res) => {
       try {
         const existing = await Sale.findOne({ idempotencyKey: key }).lean()
         if (existing) {
-          // Even on idempotency hit, attempt to delete matching recall (idempotent operation)
+          // Soft-clear matching recall so cloud sync can drop it from online recall
           try {
             const rid = payload.recallId || payload.recall_id || null
             if (rid) {
-              await Recall.findByIdAndDelete(rid).catch(()=>{})
+              await softClearRecall(rid)
             } else {
               const or = []
               if (payload.orderNo) or.push({ orderNo: String(payload.orderNo) })
               if (payload.tokenNo) or.push({ tokenNo: String(payload.tokenNo) })
-              if (or.length) await Recall.deleteMany({ $and: [ { date: (payload.date || toYyyyMmDd(payload.createdAt) || toYyyyMmDd()) }, { $or: or } ] }).catch(()=>{})
+              if (or.length) {
+                await softClearRecall({
+                  date: (payload.date || toYyyyMmDd(payload.createdAt) || toYyyyMmDd()),
+                  $or: or,
+                })
+              }
             }
           } catch {}
           return res.status(200).json(existing)
@@ -364,12 +383,12 @@ router.post('/', async (req, res) => {
     try {
       const rid = payload.recallId || payload.recall_id || null
       if (rid) {
-        await Recall.findByIdAndDelete(rid).catch(()=>{})
+        await softClearRecall(rid)
       } else {
         const or = []
         if (payload.orderNo) or.push({ orderNo: String(payload.orderNo) })
         if (doc.tokenNo) or.push({ tokenNo: String(doc.tokenNo) })
-        if (or.length) await Recall.deleteMany({ $and: [ { date: dateStr }, { $or: or } ] }).catch(()=>{})
+        if (or.length) await softClearRecall({ date: dateStr, $or: or })
       }
     } catch {}
 

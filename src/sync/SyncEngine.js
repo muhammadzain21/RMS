@@ -250,13 +250,53 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
       break
     }
 
-    await cloudFetchJson(cloud, '/api/sync/push', {
+    const pushed = await cloudFetchJson(cloud, '/api/sync/push', {
       method: 'POST',
       token,
       cloudToken,
       branchId,
       body: { branchId, deviceId: deviceId(), docs },
     })
+
+    // Do not advance the cursor past rows that failed — otherwise day open/close
+    // (and other unique-key conflicts) would never retry and cloud stays on the old day.
+    const pushErrors = Array.isArray(pushed?.errors) ? pushed.errors : []
+    if (pushErrors.length) {
+      const failedIds = new Set(pushErrors.map((e) => String(e?.id || '')).filter(Boolean))
+      const failedCols = new Set(pushErrors.map((e) => String(e?.collection || '')).filter(Boolean))
+      let okMax = 0
+      for (const [col, rows] of Object.entries(docs || {})) {
+        if (!Array.isArray(rows)) continue
+        for (const row of rows) {
+          const rid = String(row?._id || row?.id || '')
+          if (failedIds.has(rid) || (failedCols.has(col) && !rid)) continue
+          if (failedIds.size && failedIds.has(rid)) continue
+          const t = new Date(row?.updatedAt || 0).getTime()
+          if (Number.isFinite(t) && t > okMax) okMax = t
+        }
+      }
+      // Keep since just before the oldest failed row so they are retried next cycle
+      let failMin = Infinity
+      for (const [col, rows] of Object.entries(docs || {})) {
+        if (!Array.isArray(rows)) continue
+        for (const row of rows) {
+          const rid = String(row?._id || row?.id || '')
+          if (!failedIds.has(rid) && !(failedCols.has(col) && !rid)) continue
+          const t = new Date(row?.updatedAt || 0).getTime()
+          if (Number.isFinite(t) && t < failMin) failMin = t
+        }
+      }
+      if (Number.isFinite(failMin) && failMin < Infinity) {
+        const next = new Date(Math.max(0, failMin - 1)).toISOString()
+        since = next
+        try { localStorage.setItem(sinceKey, next) } catch {}
+      } else if (okMax) {
+        const next = new Date(okMax).toISOString()
+        since = next
+        try { localStorage.setItem(sinceKey, next) } catch {}
+      }
+      break
+    }
 
     // Advance past the newest row we actually sent (not wall clock — avoids skipping mid-batch).
     // When more pages remain, step back 1ms so same-timestamp rows cut by the limit are not missed.
@@ -273,6 +313,30 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
 
     if (!localPull.hasMore) break
   }
+
+  // Heartbeat: always re-push latest day open/close so cloud business date matches offline SOT
+  // even if an earlier cursor advanced past a failed unique-key upsert.
+  try {
+    const [opens, closes] = await Promise.all([
+      fetchJson(`${local}/api/cash-openings?page=1&limit=5`, { headers: authHeaders(token) }),
+      fetchJson(`${local}/api/day-closes?page=1&limit=5`, { headers: authHeaders(token) }),
+    ])
+    const openRows = Array.isArray(opens) ? opens : (Array.isArray(opens?.rows) ? opens.rows : [])
+    const closeRows = Array.isArray(closes) ? closes : (Array.isArray(closes?.rows) ? closes.rows : [])
+    const dayDocs = {}
+    if (openRows.length) dayDocs.cashOpenings = openRows.slice(0, 3)
+    if (closeRows.length) dayDocs.dayCloses = closeRows.slice(0, 3)
+    if (batchHasRows(dayDocs)) {
+      await cloudFetchJson(cloud, '/api/sync/push', {
+        method: 'POST',
+        token,
+        cloudToken,
+        branchId,
+        body: { branchId, deviceId: deviceId(), docs: dayDocs },
+      })
+    }
+  } catch {}
+
   return { ok: true, pages, serverTime: lastServerTime }
 }
 

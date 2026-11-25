@@ -10,6 +10,7 @@ import { useData } from '@/state/DataContext.jsx'
 import { btnPrint, btnPdf, btnCsv, btnPrimary, downloadCsvFile, exportDateStamp } from '@shared/utils/listReportExport.js'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { warehouseApiBase } from '@features/warehouse/utils/warehouseApi.js'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 export default function WarehouseTransferHistory() {
   const { token } = useAuth()
@@ -58,7 +59,7 @@ export default function WarehouseTransferHistory() {
   const rows = filtered.slice((pageSafe - 1) * limit, pageSafe * limit)
 
   const reportRows = (items) => items.map(t => [
-    t.date || '',
+    recordDateTime(t),
     t.toBranchName || t.toBranchId || '',
     t.status || '',
     (t.items || []).map(i => `${i.name}×${i.qty}`).join('; '),
@@ -74,7 +75,7 @@ export default function WarehouseTransferHistory() {
         headers: ['Date', 'Branch', 'Status', 'Items', 'Notes'],
         numbered: true,
         rows: filtered.map(t => [
-          t.date || '-',
+          recordDateTime(t),
           t.toBranchName || t.toBranchId || '-',
           t.status || '-',
           (t.items || []).map(i => `${i.name}×${i.qty}`).join(', ') || '-',
@@ -169,7 +170,7 @@ export default function WarehouseTransferHistory() {
       <DataTable
         columns={[
           { label: 'SR No', key: 'srNo', render: (_, idx) => <span className="font-medium text-[var(--color-text-body)]">{(pageSafe - 1) * limit + idx + 1}</span> },
-          { label: 'Date', key: 'date', render: r => r.date || '—' },
+          { label: 'Date', key: 'date', render: r => <span className="whitespace-nowrap">{recordDateTime(r)}</span> },
           { label: 'Branch', key: 'toBranchName', render: r => <span className="font-medium">{r.toBranchName || r.toBranchId}</span> },
           {
             label: 'Status',

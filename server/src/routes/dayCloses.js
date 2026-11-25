@@ -28,24 +28,36 @@ function addOneDayYmd(ymd) {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
-const OPEN_RECALL_Q = {
-  $or: [{ clearedAt: null }, { clearedAt: { $exists: false } }],
+/** Open / unpaid recalls only — never cleared. */
+function openRecallFilter(branchId = '') {
+  const bid = String(branchId || '').trim()
+  const parts = [
+    { $or: [{ clearedAt: null }, { clearedAt: { $exists: false } }] },
+  ]
+  // Must match branch-scoped Recall list UI (exact branchId).
+  // Do not count other branches' open recalls when closing this branch.
+  if (bid) {
+    parts.push({ branchId: bid })
+  }
+  return { $and: parts }
 }
 
-/** Any unpaid recall still in DB blocks day close (including older dates). */
-async function countOpenRecalls() {
-  const pending = await Recall.find(OPEN_RECALL_Q)
-    .select('date createdAt tokenNo orderNo')
+/** Unpaid recalls for this branch block day close (including older dates). */
+async function countOpenRecalls(branchId = '') {
+  const filter = openRecallFilter(branchId)
+  const pending = await Recall.find(filter)
+    .select('date createdAt tokenNo orderNo branchId')
     .sort({ createdAt: -1 })
     .limit(200)
     .lean()
-  const count = await Recall.countDocuments(OPEN_RECALL_Q)
+  const count = await Recall.countDocuments(filter)
   return {
     count,
     items: pending.slice(0, 10).map(r => ({
       date: r.date || ymdFromCreatedAt(r.createdAt) || '',
       tokenNo: r.tokenNo || '',
       orderNo: r.orderNo || '',
+      branchId: r.branchId || '',
     })),
   }
 }
@@ -104,13 +116,19 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const existing = await DayClose.findOne({ date, branchId: branchIdForClose })
     if (existing) return res.status(409).json({ error: 'Day already closed for this date' })
 
-    const openRecalls = await countOpenRecalls()
+    const openRecalls = await countOpenRecalls(branchIdForClose)
     if (openRecalls.count > 0) {
+      const sample = (openRecalls.items || [])
+        .slice(0, 3)
+        .map(r => `${r.date || '?'}${r.tokenNo ? ` #${r.tokenNo}` : ''}`)
+        .filter(Boolean)
+        .join(', ')
       return res.status(400).json({
-        error: `Clear ${openRecalls.count} open recall(s) before day close (including older unpaid orders)`,
+        error: `Clear ${openRecalls.count} open recall(s) before day close (including older unpaid orders)${sample ? `: ${sample}` : ''}`,
         code: 'OPEN_RECALLS',
         count: openRecalls.count,
         recalls: openRecalls.items,
+        branchId: branchIdForClose || '',
       })
     }
 

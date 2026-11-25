@@ -225,14 +225,19 @@ router.post('/import', authRequired, requireRole('Admin', 'admin'), async (req, 
     await dropListedCollections(true)
 
     let inserted = 0
+    const results = []
     for (const t of FULL_BACKUP) {
-      inserted += await insertManySafe(t.Model, d[t.key], t.key)
+      const n = await insertManySafe(t.Model, d[t.key], t.key)
+      inserted += n
+      if (Array.isArray(d[t.key])) {
+        results.push({ key: t.key, label: t.label, inserted: n })
+      }
     }
     // Legacy alias: staffPayNotes → ignore; older backups without new keys are OK
 
     console.log(`[Import] Global restore completed (${inserted} docs)`)
-    await logAudit(req, 'backup', 'Global backup restored', { keys: Object.keys(d) })
-    res.json({ ok: true, scope: 'global', inserted })
+    await logAudit(req, 'backup', 'Global backup restored', { keys: Object.keys(d), inserted })
+    res.json({ ok: true, scope: 'global', inserted, totalInserted: inserted, results })
   } catch (e) { next(e) }
 })
 

@@ -7,6 +7,7 @@ import DatePicker from '@shared/components/DatePicker.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { exportDateStamp } from '@shared/utils/listReportExport.js'
 import { useBusinessDateValue } from '@/hooks/useBusinessDateFilter.js'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 const btnPrint = 'ui-btn ui-btn-print'
 const btnPdf = 'ui-btn ui-btn-pdf'
@@ -17,7 +18,9 @@ export default function ExpenseHistory() {
   const [date, setDate] = useBusinessDateValue()
   const [cat, setCat] = useState('')
 
-  const rows = useMemo(() => state.expenses.filter(e => (!date || e.date===date) && (!cat || e.category===cat)), [state.expenses, date, cat])
+  const rows = useMemo(() => state.expenses
+    .filter(e => (!date || e.date===date) && (!cat || e.category===cat))
+    .map(e => ({ ...e, dateTime: recordDateTime(e) })), [state.expenses, date, cat])
   const totalAmount = useMemo(() => rows.reduce((a, e) => a + Number(e.amount || 0), 0), [rows])
 
   const buildReportHtml = () => {
@@ -31,7 +34,7 @@ export default function ExpenseHistory() {
       reportTable({
         headers: ['Date', 'Category', 'Description', { t: 'Amount (PKR)', align: 'r' }],
         numbered: true,
-        rows: rows.map(e => [e.date, e.category, e.description || '-', { v: Number(e.amount || 0).toLocaleString(), align: 'r' }]),
+        rows: rows.map(e => [e.dateTime || e.date, e.category, e.description || '-', { v: Number(e.amount || 0).toLocaleString(), align: 'r' }]),
         emptyText: 'No expenses match filters',
       })
     const html = wrapReportDoc({
@@ -72,7 +75,7 @@ export default function ExpenseHistory() {
     try {
       const header = ['Date', 'Category', 'Description', 'Amount (PKR)']
       const lines = rows.map(e =>
-        [e.date, e.category, e.description || '', e.amount ?? 0]
+        [e.dateTime || e.date, e.category, e.description || '', e.amount ?? 0]
           .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
       )
       const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' })
@@ -111,7 +114,7 @@ export default function ExpenseHistory() {
       </div>
       <DataTable
         columns={[
-          { label: 'Date', key: 'date', tdClassName: 'whitespace-normal break-words' },
+          { label: 'Date', key: 'dateTime', tdClassName: 'whitespace-nowrap', render: r => r.dateTime || r.date },
           { label: 'Category', key: 'category', tdClassName: 'whitespace-normal break-words max-w-[10rem]' },
           { label: 'Description', key: 'description', tdClassName: 'whitespace-normal break-words max-w-[16rem]' },
           { label: 'Amount', key: 'amount', tdClassName: 'whitespace-normal break-words' },

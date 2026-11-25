@@ -10,6 +10,7 @@ import DatePicker from '@shared/components/DatePicker.jsx'
 import Pagination from '@shared/components/Pagination.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { exportDateStamp } from '@shared/utils/listReportExport.js'
+import { recordDateTime } from '@shared/utils/dateUtils.js'
 
 export default function ReturnHistory() {
  const { state, dispatch, businessDate } = useData()
@@ -56,6 +57,7 @@ export default function ReturnHistory() {
  let mapped = list.map((r) => ({
  id: r.id,
  date: r.date,
+ dateTime: recordDateTime(r),
  billNo: r.saleId ? (state.sales.find(s => s.id===r.saleId)?.billNo || '-') : '-',
  // Prefer customer.name when customer is an object, otherwise use string; fallback to linked sale's customer name
  customer: (typeof r.customer === 'object' && r.customer !== null ? (r.customer.name || '-') : (r.customer || state.sales.find(s => s.id===r.saleId)?.customer?.name || '-')),
@@ -72,7 +74,7 @@ export default function ReturnHistory() {
  }, [state.returns, state.sales, state.menu, fromDate, toDate, search])
 
  const cols = [
- { label: 'Date', key: 'date', render: r =><span className="font-medium">{r.date}</span> },
+ { label: 'Date', key: 'dateTime', render: r =><span className="font-medium whitespace-nowrap">{r.dateTime || r.date}</span> },
  { label: 'Bill No', key: 'billNo', render: r =><span className="text-blue-600 dark:text-blue-400">{r.billNo}</span> },
  { label: 'Customer', key: 'customer', render: r =><span className="text-gray-700 dark:text-gray-300">{r.customer}</span> },
  { label: 'Refund', key: 'refund', render: r =><span className="font-semibold text-emerald-600 dark:text-emerald-400">PKR {Number(r.refund).toLocaleString()}</span> },
@@ -113,7 +115,7 @@ export default function ReturnHistory() {
  reportTable({
  headers: ['Date', 'Bill No', 'Customer', { t: 'Refund', align: 'r' }, 'Payment', 'Reason', 'Items'],
  numbered: true,
- rows: rows.map(r => [r.date, r.billNo, r.customer, { v: money(r.refund), align: 'r' }, r.paymentMethod, r.reason, r.itemsText]),
+ rows: rows.map(r => [r.dateTime || r.date, r.billNo, r.customer, { v: money(r.refund), align: 'r' }, r.paymentMethod, r.reason, r.itemsText]),
  })
  const fileName = `Return-History-${exportDateStamp()}.pdf`
  const html = wrapReportDoc({
@@ -141,7 +143,7 @@ export default function ReturnHistory() {
 
  const exportCSV = () => {
  const headers = ['Date','Bill No','Customer','Refund (PKR)','Payment','Reason','Items']
- const lines = rows.map(r => [r.date,r.billNo,r.customer,r.refund,r.paymentMethod,r.reason,r.itemsText]
+ const lines = rows.map(r => [r.dateTime || r.date,r.billNo,r.customer,r.refund,r.paymentMethod,r.reason,r.itemsText]
  .map(v => '"' + String(v ?? '').replaceAll('"','""') + '"').join(',')).join('\n')
  const csv = headers.join(',') + '\n' + lines
  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
