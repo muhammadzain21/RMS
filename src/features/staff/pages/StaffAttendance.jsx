@@ -706,6 +706,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  token={token}
  API={API}
  settings={state?.settings}
+ shifts={settings.shifts || []}
  month={month}
  setMonth={setMonth}
  />

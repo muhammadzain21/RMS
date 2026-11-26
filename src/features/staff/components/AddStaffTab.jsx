@@ -47,6 +47,7 @@ export default function AddStaffTab({
  const [customPos, setCustomPos] = useState('');
  const [jump, setJump] = useState(1);
  const [roles, setRoles] = useState([]);
+ const [subTab, setSubTab] = useState('staff'); // staff | map
 
  // Roles for the login-account dropdown
  useEffect(() => {
@@ -68,13 +69,18 @@ export default function AddStaffTab({
  const [selectedMapping, setSelectedMapping] = useState({ enrollId: '', staffId: '' });
  const [biometricDeviceId, setBiometricDeviceId] = useState('ZK-01');
 
- // Fetch device users and mappings when page loads
+ // Mappings needed on Staff tab (bio id column); device users when Map tab is open
  useEffect(() => {
  if (!token) return;
  fetchBiometricDeviceId();
- fetchDeviceUsers();
  fetchMappings();
  }, [token]);
+
+ useEffect(() => {
+ if (!token || subTab !== 'map') return;
+ fetchDeviceUsers();
+ fetchMappings();
+ }, [token, subTab]);
 
  const fetchBiometricDeviceId = async () => {
  try {
@@ -254,9 +260,46 @@ export default function AddStaffTab({
  return (
  <div className="space-y-4">
  {/* Header Card */}
- <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white"><div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><div><h2 className="text-lg font-semibold"> Staff Directory</h2><p className="text-blue-100 text-sm">Manage your team members and their details</p></div><div className="text-right"><div className="text-3xl font-bold">{staff.length}</div><div className="text-sm text-blue-100">Total Staff</div></div></div></div>
+ <div className="bg-gradient-to-r from-blue-500 to-teal-500 rounded-xl shadow-lg p-4 text-white">
+  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   <div>
+    <h2 className="text-lg font-semibold">Staff Directory</h2>
+    <p className="text-blue-100 text-sm">Manage staff and biometric device mappings</p>
+   </div>
+   <div className="text-right">
+    <div className="text-3xl font-bold">{staff.length}</div>
+    <div className="text-sm text-blue-100">Total Staff</div>
+   </div>
+  </div>
+ </div>
 
- {/* Map Staff — biometric device section (always visible) */}
+ {/* Sub-tabs: Staff | Map Staff */}
+ <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 w-fit">
+  <button
+   type="button"
+   onClick={() => setSubTab('staff')}
+   className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+    subTab === 'staff'
+     ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 shadow'
+     : 'text-slate-600 dark:text-slate-300'
+   }`}
+  >
+   Staff
+  </button>
+  <button
+   type="button"
+   onClick={() => setSubTab('map')}
+   className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+    subTab === 'map'
+     ? 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 shadow'
+     : 'text-slate-600 dark:text-slate-300'
+   }`}
+  >
+   Map Staff
+  </button>
+ </div>
+
+ {subTab === 'map' && (
  <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
  <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
  <div>
@@ -368,7 +411,10 @@ export default function AddStaffTab({
  </p>
  </div>
  </div>
+ )}
 
+ {subTab === 'staff' && (
+ <>
  {/* Action Bar */}
  <div className="flex flex-col md:flex-row justify-between items-center bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 p-4 gap-4"><div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto"><div className="relative w-full sm:w-64"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></span><input
  type="text"
@@ -513,6 +559,8 @@ export default function AddStaffTab({
  {/* Pagination Controls */}
  {pagination.total > 0 && (
  <Pagination page={pagination.page} pages={pagination.pages} total={pagination.total} limit={pagination.limit} onLimitChange={n=>{ setPagination(prev => ({ ...prev, limit: n, page: 1 })); setJump(1); }} onPageChange={p=>setPagination(prev => ({ ...prev, page: p }))} />
+ )}
+ </>
  )}
 
  <StaffFormDialog

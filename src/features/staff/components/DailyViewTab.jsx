@@ -11,9 +11,10 @@ const btnPrint = 'ui-btn ui-btn-print';
 const btnPdf = 'ui-btn ui-btn-pdf';
 const btnCsv = 'ui-btn ui-btn-csv';
 
-export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, token, API, settings, month, setMonth }) {
+export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, token, API, settings, shifts = [], month, setMonth }) {
  const { businessDate, state } = useData();
  const [dailyDate, setDailyDate] = useState(businessDate || getLocalDateString());
+ const shiftList = shifts.length ? shifts : (settings?.shifts || []);
 
  // Keep attendance month in sync so changing the date actually loads that month's records
  useEffect(() => {
@@ -42,14 +43,23 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
  leave: daily.filter(r => r.status === 'Leave').length
  };
 
+ const shiftLabelFor = (st) => {
+  const shift = shiftList.find(sh => String(sh.id) === String(st?.shiftId || ''));
+  if (!shift) return 'No shift';
+  return `${shift.name || 'Shift'} (${fmt12(shift.checkIn)} – ${fmt12(shift.checkOut)})`;
+ };
+
  const reportRows = daily.map(r => {
-  const st = staff.find(s => s.id === r.staffId);
+  const st = staff.find(s => String(s.id) === String(r.staffId));
   return {
    staffName: r.staffName,
    position: st?.position || '-',
+   shift: shiftLabelFor(st),
    status: r.status,
    checkIn: r.checkIn ? fmt12(r.checkIn) : '-',
    checkOut: r.checkOut ? fmt12(r.checkOut) : '-',
+   lateMinutes: Number(r.lateMinutes || 0) > 0 ? Number(r.lateMinutes) : '-',
+   earlyMinutes: Number(r.earlyOutMinutes || 0) > 0 ? Number(r.earlyOutMinutes) : '-',
   };
  });
 
@@ -65,9 +75,9 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
    ]) +
    reportSec(`Daily Attendance — ${dailyDate}`) +
    reportTable({
-    headers: ['Staff', 'Position', 'Status', 'Check In', 'Check Out'],
+    headers: ['Staff', 'Position', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'],
     numbered: true,
-    rows: reportRows.map(r => [r.staffName, r.position, r.status, r.checkIn, r.checkOut]),
+    rows: reportRows.map(r => [r.staffName, r.position, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]),
     emptyText: 'No attendance records for this date',
    });
   const html = wrapReportDoc({
@@ -106,9 +116,9 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
 
  const exportCSV = () => {
   try {
-   const header = ['Staff', 'Position', 'Status', 'Check In', 'Check Out'];
+   const header = ['Staff', 'Position', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'];
    const lines = reportRows.map(r =>
-    [r.staffName, r.position, r.status, r.checkIn, r.checkOut]
+    [r.staffName, r.position, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]
      .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
    );
    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -154,32 +164,38 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
  {/* Records Table */}
  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"><div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><span className="w-2 h-2 bg-teal-500 rounded-full"></span>
  Attendance Records ({daily.length})
- </h3></div><div className="overflow-x-auto"><table className="w-full"><thead><tr className="bg-slate-100 dark:bg-slate-700/50"><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Biometric ID</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Position</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Status</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Check In</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Check Out</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Actions</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+ </h3></div><div className="overflow-x-auto"><table className="w-full"><thead><tr className="bg-slate-100 dark:bg-slate-700/50"><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Biometric ID</th><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Position</th><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Shift</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Status</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Check In</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Check Out</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Late Min</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Early Min</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Actions</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-700">
  {daily.length === 0 && (
- <tr><td colSpan={7} className="px-6 py-12 text-center"><div className="text-slate-400 dark:text-slate-500"><div className="text-4xl mb-2"></div><p>No records for {dailyDate}</p><p className="text-sm">Select a different date or mark attendance first</p></div></td></tr>
+ <tr><td colSpan={10} className="px-6 py-12 text-center"><div className="text-slate-400 dark:text-slate-500"><div className="text-4xl mb-2"></div><p>No records for {dailyDate}</p><p className="text-sm">Select a different date or mark attendance first</p></div></td></tr>
  )}
  {daily.map((r, idx) => {
  const st = staff.find(s => String(s.id) === String(r.staffId));
+ const lateMin = Number(r.lateMinutes || 0);
+ const earlyMin = Number(r.earlyOutMinutes || 0);
  return (
- <tr key={r.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
+ <tr key={r.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}><td className="px-4 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
  {r.staffName?.charAt(0).toUpperCase()}
- </div><span className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</span></div></td><td className="px-6 py-4"><span className={`font-mono text-sm ${st?.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>{st?.biometricId || '—'}</span></td><td className="px-6 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+ </div><span className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</span></div></td><td className="px-4 py-4"><span className={`font-mono text-sm ${st?.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>{st?.biometricId || '—'}</span></td><td className="px-4 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
  {st?.position || '-'}
- </span></td><td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
+ </span></td><td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">{shiftLabelFor(st)}</td><td className="px-4 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
  {r.status}
- </span></td><td className="px-6 py-4 text-center">
+ </span></td><td className="px-4 py-4 text-center">
  {r.checkIn ? (
  <span className="font-medium text-slate-700 dark:text-slate-300">{fmt12(r.checkIn)}</span>
  ) : (
  <span className="text-slate-400 dark:text-slate-500">-</span>
  )}
- </td><td className="px-6 py-4 text-center">
+ </td><td className="px-4 py-4 text-center">
  {r.checkOut ? (
  <span className="font-medium text-slate-700 dark:text-slate-300">{fmt12(r.checkOut)}</span>
  ) : (
  <span className="text-slate-400 dark:text-slate-500">-</span>
  )}
- </td><td className="px-6 py-4 text-center"><div className="flex gap-2 justify-center">
+ </td><td className="px-4 py-4 text-center">
+ {lateMin > 0 ? <span className="font-medium text-orange-600">{lateMin}</span> : <span className="text-slate-400">-</span>}
+ </td><td className="px-4 py-4 text-center">
+ {earlyMin > 0 ? <span className="font-medium text-blue-600">{earlyMin}</span> : <span className="text-slate-400">-</span>}
+ </td><td className="px-4 py-4 text-center"><div className="flex gap-2 justify-center">
  {r.status !== 'Leave' ? (
  <button
  onClick={() => onMarkLeave(r.staffId, dailyDate, true)}

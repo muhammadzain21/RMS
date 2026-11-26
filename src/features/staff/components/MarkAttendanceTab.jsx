@@ -79,13 +79,17 @@ export default function MarkAttendanceTab({
  const reportRows = useMemo(() => activeStaff.map(s => {
   const record = attendance.find(r => r.staffId === s.id && r.date === today);
   const shift = shifts.find(sh => sh.id === s.shiftId);
-  const shiftLabel = shift ? `${fmt12(shift.checkIn)} - ${fmt12(shift.checkOut)}` : 'No shift';
+  const shiftLabel = shift
+   ? `${shift.name || 'Shift'} (${fmt12(shift.checkIn)} – ${fmt12(shift.checkOut)})`
+   : 'No shift';
   let status = 'Not marked';
   if (record?.status === 'Leave') status = 'Leave';
   else if (record?.status === 'Late') status = 'Late';
   else if (record?.checkIn && record?.checkOut) status = 'Present';
   else if (record?.checkIn) status = 'Clocked in';
   else if (record) status = record.status || 'Absent';
+  const lateMinutes = Number(record?.lateMinutes || 0);
+  const earlyMinutes = Number(record?.earlyOutMinutes || 0);
   return {
    name: s.name,
    position: s.position || '-',
@@ -94,6 +98,8 @@ export default function MarkAttendanceTab({
    status,
    checkIn: record?.checkIn ? fmt12(record.checkIn) : '-',
    checkOut: record?.checkOut ? fmt12(record.checkOut) : '-',
+   lateMinutes: lateMinutes > 0 ? lateMinutes : '-',
+   earlyMinutes: earlyMinutes > 0 ? earlyMinutes : '-',
   };
  }), [activeStaff, attendance, today, shifts, fmt12]);
 
@@ -115,9 +121,9 @@ export default function MarkAttendanceTab({
    ]) +
    reportSec(`Mark attendance — ${today}`) +
    reportTable({
-    headers: ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out'],
+    headers: ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'],
     numbered: true,
-    rows: reportRows.map(r => [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut]),
+    rows: reportRows.map(r => [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]),
     emptyText: 'No active staff',
    });
   const html = wrapReportDoc({
@@ -154,9 +160,9 @@ export default function MarkAttendanceTab({
 
  const exportCSV = () => {
   try {
-   const header = ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out'];
+   const header = ['Staff', 'Position', 'Phone', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'];
    const lines = reportRows.map(r =>
-    [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut]
+    [r.name, r.position, r.phone, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]
      .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
    );
    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -202,9 +208,9 @@ export default function MarkAttendanceTab({
  {/* Staff Table Card */}
  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"><div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><h3 className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><span className="w-2 h-2 bg-teal-500 rounded-full"></span>
  Staff List ({activeStaff.length} active)
- </h3></div><div className="overflow-x-auto"><table className="w-full"><thead><tr className="bg-slate-100 dark:bg-slate-700/50"><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Biometric ID</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Position</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Phone</th><th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Shift</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock In</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock Out</th><th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Actions</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+ </h3></div><div className="overflow-x-auto"><table className="w-full"><thead><tr className="bg-slate-100 dark:bg-slate-700/50"><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Biometric ID</th><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Position</th><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Phone</th><th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Shift</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock In</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clock Out</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Late Min</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Early Min</th><th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Actions</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-700">
  {staff.length === 0 && (
- <tr><td colSpan={8} className="px-6 py-12 text-center"><div className="text-slate-400 dark:text-slate-500"><div className="text-4xl mb-2"></div><p>No staff members found</p><p className="text-sm">Add staff first to mark attendance</p></div></td></tr>
+ <tr><td colSpan={10} className="px-6 py-12 text-center"><div className="text-slate-400 dark:text-slate-500"><div className="text-4xl mb-2"></div><p>No staff members found</p><p className="text-sm">Add staff first to mark attendance</p></div></td></tr>
  )}
  {activeStaff.map((s, idx) => {
  const record = attendance.find(r => r.staffId === s.id && r.date === today);
@@ -212,30 +218,30 @@ export default function MarkAttendanceTab({
  const isClockedOut = !!record?.checkOut;
  const isLate = record?.status === 'Late';
  const isLeave = record?.status === 'Leave';
+ const lateMin = Number(record?.lateMinutes || 0);
+ const earlyMin = Number(record?.earlyOutMinutes || 0);
+ const shift = shifts.find(sh => sh.id === s.shiftId);
+ const shiftLabel = shift
+  ? `${shift.name || 'Shift'} (${fmt12(shift.checkIn)} – ${fmt12(shift.checkOut)})`
+  : 'No shift';
  
  return (
- <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
+ <tr key={s.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}><td className="px-4 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
  {s.name.charAt(0).toUpperCase()}
  </div><div><div className="font-semibold text-slate-800 dark:text-slate-200">{s.name}</div>
  {isLate && <span className="text-xs text-orange-500 font-medium"> Late</span>}
  {isLeave && <span className="text-xs text-blue-500 font-medium"> Leave</span>}
- </div></div></td><td className="px-6 py-4"><span className={`font-mono text-sm ${s.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>{s.biometricId || '—'}</span></td><td className="px-6 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+ </div></div></td><td className="px-4 py-4"><span className={`font-mono text-sm ${s.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>{s.biometricId || '—'}</span></td><td className="px-4 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
  {s.position}
- </span></td><td className="px-6 py-4 text-slate-600 dark:text-slate-400">{s.phone || '-'}</td><td className="px-6 py-4 text-slate-600 dark:text-slate-400">
- {(() => {
- const shift = shifts.find(sh => sh.id === s.shiftId);
- if (!shift) return 'No shift';
- return `${fmt12(shift.checkIn)} - ${fmt12(shift.checkOut)}`;
- })()}
- </td><td className="px-6 py-4 text-center">
+ </span></td><td className="px-4 py-4 text-slate-600 dark:text-slate-400">{s.phone || '-'}</td><td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">{shiftLabel}</td><td className="px-4 py-4 text-center">
  {record?.checkIn ? (
  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${isLate ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30' : 'bg-green-100 text-green-700 dark:bg-green-900/30'}`}>
- {isLate ? '' : ''} {fmt12(record.checkIn)}
+ {fmt12(record.checkIn)}
  </span>
  ) : (
  <span className="text-slate-400 dark:text-slate-500">-</span>
  )}
- </td><td className="px-6 py-4 text-center">
+ </td><td className="px-4 py-4 text-center">
  {record?.checkOut ? (
  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30">
  {fmt12(record.checkOut)}
@@ -243,35 +249,39 @@ export default function MarkAttendanceTab({
  ) : (
  <span className="text-slate-400 dark:text-slate-500">-</span>
  )}
- </td><td className="px-6 py-4"><div className="flex justify-center gap-2"><button
- className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+ </td><td className="px-4 py-4 text-center">
+ {lateMin > 0 ? <span className="font-medium text-orange-600">{lateMin}</span> : <span className="text-slate-400">-</span>}
+ </td><td className="px-4 py-4 text-center">
+ {earlyMin > 0 ? <span className="font-medium text-blue-600">{earlyMin}</span> : <span className="text-slate-400">-</span>}
+ </td><td className="px-4 py-4"><div className="flex flex-wrap justify-center gap-1"><button
+ className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
  isClockedIn 
  ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-700' 
- : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg hover:scale-105'
+ : 'bg-blue-500 text-white hover:bg-blue-600'
  }`}
  onClick={() => onClockIn(s.id)}
  disabled={isClockedIn}
  >
- {isClockedIn ? 'Clocked In' : 'Clock In'}
+ {isClockedIn ? 'In' : 'Clock In'}
  </button><button
- className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+ className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
  !isClockedIn || isClockedOut
  ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-700'
- : 'bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md hover:shadow-lg hover:scale-105'
+ : 'bg-slate-700 text-white hover:bg-slate-800'
  }`}
  onClick={() => onClockOut(s.id)}
  disabled={!isClockedIn || isClockedOut}
  >
- {isClockedOut ? 'Clocked Out' : 'Clock Out'}
+ {isClockedOut ? 'Out' : 'Clock Out'}
  </button><button
- className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+ className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
  isLeave
  ? 'bg-red-100 text-red-700 hover:bg-red-200'
  : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
  }`}
  onClick={() => onMarkLeave?.(s.id, today, !isLeave)}
  >
- {isLeave ? 'Remove Leave' : 'Mark Leave'}
+ {isLeave ? 'Unleave' : 'Leave'}
  </button></div></td></tr>
  );
  })}

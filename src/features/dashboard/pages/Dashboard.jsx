@@ -475,6 +475,8 @@ export default function Dashboard() {
         status: r.status || '—',
         checkIn: r.checkIn || '',
         checkOut: r.checkOut || '',
+        lateMinutes: Number(r.lateMinutes || 0),
+        earlyOutMinutes: Number(r.earlyOutMinutes || 0),
       }
     }).sort((a, b) => String(a.staffName).localeCompare(String(b.staffName)))
     const stats = {
@@ -690,7 +692,7 @@ export default function Dashboard() {
         }) +
         reportSec(`Daily attendance — ${p.date}`) +
         reportTable({
-          headers: ['Staff', 'Biometric ID', 'Position', 'Status', 'Check In', 'Check Out'],
+          headers: ['Staff', 'Biometric ID', 'Position', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'],
           numbered: true,
           rows: (p.hrAttendanceRows || []).map(r => [
             r.staffName,
@@ -699,6 +701,8 @@ export default function Dashboard() {
             r.status,
             r.checkIn ? formatTime12(r.checkIn) : '—',
             r.checkOut ? formatTime12(r.checkOut) : '—',
+            Number(r.lateMinutes || 0) > 0 ? String(r.lateMinutes) : '—',
+            Number(r.earlyOutMinutes || 0) > 0 ? String(r.earlyOutMinutes) : '—',
           ]),
           emptyText: 'No attendance records for this date',
         })
@@ -749,7 +753,7 @@ export default function Dashboard() {
         ['Sales', 'Total', p.salesSummary.total].map(v => `"${v}"`).join(','),
         ...p.paymentRows.map(r => ['Payment', r.type, r.amount].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
         ...p.hrRows.map(r => ['HR', r.designation, r.present].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
-        ...(p.hrAttendanceRows || []).map(r => ['Attendance', r.staffName, r.status, r.checkIn || '', r.checkOut || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+        ...(p.hrAttendanceRows || []).map(r => ['Attendance', r.staffName, r.status, r.checkIn || '', r.checkOut || '', r.lateMinutes || 0, r.earlyOutMinutes || 0].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
       ]
       const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
@@ -1048,27 +1052,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {hrRows.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Staff Designation</th>
-                    <th className="text-right">Present</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {hrRows.map(r => (
-                    <tr key={r.designation}>
-                      <td>{r.designation}</td>
-                      <td className="text-right">{r.present}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
           <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
             <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
@@ -1086,12 +1069,14 @@ export default function Dashboard() {
                     <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Status</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Check In</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Check Out</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Late Min</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Early Min</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                   {hrAttendanceTable.rows.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                      <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
                         No attendance records for {selectedDate}
                       </td>
                     </tr>
@@ -1131,6 +1116,16 @@ export default function Dashboard() {
                       </td>
                       <td className="px-4 py-3 text-center font-medium text-slate-700 dark:text-slate-300">
                         {r.checkOut ? formatTime12(r.checkOut) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {r.lateMinutes > 0
+                          ? <span className="font-medium text-orange-600">{r.lateMinutes}</span>
+                          : <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {r.earlyOutMinutes > 0
+                          ? <span className="font-medium text-blue-600">{r.earlyOutMinutes}</span>
+                          : <span className="text-slate-400">—</span>}
                       </td>
                     </tr>
                   ))}
