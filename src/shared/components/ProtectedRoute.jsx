@@ -16,8 +16,8 @@ export default function ProtectedRoute({ children, roles }) {
   
   if (!user) return <Navigate to="/login" replace />
 
-  // Admin / SuperAdmin always have full access
-  if (user.role === 'SuperAdmin' || user.role === 'Admin') return children
+  // SuperAdmin portal owner only — installation Admin still respects enabledPaths
+  if (user.role === 'SuperAdmin') return children
 
   const currentPath = location.pathname
   const isMyWorkRoute = currentPath === '/my' || currentPath.startsWith('/my/')
@@ -33,14 +33,17 @@ export default function ProtectedRoute({ children, roles }) {
   const allowedPaths = Array.isArray(user.permissions)
     ? user.permissions.filter(p => p.visible).map(p => p.path)
     : null
-  const fallbackPath = allowedPaths ? allowedPaths.find(isEnabled) : (canSeeMyWork ? (myWorkPages[0] || '/my') : null)
+  const adminFallback = FEATURE_PATHS.find(isEnabled) || (isEnabled('/') ? '/' : null)
+  const fallbackPath = user.role === 'Admin'
+    ? adminFallback
+    : (allowedPaths ? allowedPaths.find(isEnabled) : (canSeeMyWork ? (myWorkPages[0] || '/my') : null))
   const noAccess = (
     <div className="flex items-center justify-center h-full p-10 text-sm text-gray-500 dark:text-gray-400">
       You do not have access to any page. Please contact your administrator.
     </div>
   )
 
-  // Feature access: gated feature paths must be enabled by the superadmin
+  // Feature access: SuperAdmin portal gates apply to Admin and every other role
   if (Array.isArray(enabledPaths) && enabledPaths.length > 0) {
     // Longest feature path that owns this route (exact or prefix-segment match)
     const featurePath = FEATURE_PATHS
@@ -53,6 +56,9 @@ export default function ProtectedRoute({ children, roles }) {
         : noAccess
     }
   }
+
+  // Admin: full access to every page SuperAdmin left enabled
+  if (user.role === 'Admin') return children
 
   // Staff-linked accounts: My Work + Rider are granted per page from Add Staff, not role.
   if (user.staffId && (isMyWorkRoute || isRiderRoute)) {

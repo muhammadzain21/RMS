@@ -36,17 +36,17 @@ export function AuthProvider({ children }) {
             try {
               const u = data.user
               const hq = u?.role === 'Admin' || u?.role === 'SuperAdmin' || !!u?.isHq
-              if (!hq && u?.staffId) {
-                const branchId = String(u.homeBranchId || '')
-                const current = String(localStorage.getItem('active_branch_id') || '')
-                const allowed = new Set([
+              if (!hq) {
+                const allowed = [
                   ...(Array.isArray(u.branchIds) ? u.branchIds : []),
                   u.homeBranchId,
-                ].filter(Boolean).map(String))
-                if (!current || (allowed.size && !allowed.has(current))) {
-                  localStorage.setItem('active_branch_id', branchId)
-                  window.ACTIVE_BRANCH_ID = branchId
-                  window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: branchId }))
+                ].filter(Boolean).map(String)
+                const preferred = String(u.homeBranchId || allowed[0] || '')
+                const current = String(localStorage.getItem('active_branch_id') || '')
+                if (preferred && (!current || (allowed.length && !allowed.includes(current)))) {
+                  localStorage.setItem('active_branch_id', preferred)
+                  window.ACTIVE_BRANCH_ID = preferred
+                  window.dispatchEvent(new CustomEvent('active_branch_changed', { detail: preferred }))
                 }
               }
             } catch {}
@@ -184,9 +184,13 @@ export function AuthProvider({ children }) {
         try {
           const u = data.user
           const hq = u?.role === 'Admin' || u?.role === 'SuperAdmin' || !!u?.isHq
-          // Staff must not keep an admin branch in the header — that header is sent
-          // on every API call and comes back 403 Forbidden.
-          const branchId = hq ? '' : String(u?.homeBranchId || '')
+          // Staff/Manager must not keep Admin "All" or another branch in the header —
+          // that header is sent on every API call (including cloud sync) and 403s.
+          const allowed = [
+            ...(Array.isArray(u?.branchIds) ? u.branchIds : []),
+            u?.homeBranchId,
+          ].filter(Boolean).map(String)
+          const branchId = hq ? '' : String(u?.homeBranchId || allowed[0] || '')
           localStorage.setItem('active_branch_id', branchId)
           const uk = String(u?.id || u?._id || u?.username || '')
           if (uk) localStorage.setItem(`active_branch_id_u_${uk}`, branchId)

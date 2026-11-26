@@ -9,7 +9,7 @@ import {
   Timer, Utensils, Bike, ShoppingBag, Car, Printer,
 } from 'lucide-react'
 import DatePicker from '@shared/components/DatePicker.jsx'
-import { previewHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '@shared/utils/reportDoc.js'
+import { previewHtmlReport, downloadHtmlReport, wrapReportDoc, reportSummary, reportSec, reportTable } from '@shared/utils/reportDoc.js'
 import { useLiveRefresh } from '@/hooks/useLiveRefresh.js'
 import { useBusinessDateValue } from '@/hooks/useBusinessDateFilter.js'
 import { groupItemsByCategory } from '@features/sales/utils/cartUtils.js'
@@ -249,7 +249,8 @@ export default function KDS() {
       else groups.active.push(k)
     })
     Object.keys(groups).forEach(s => {
-      groups[s].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+      // Most recent KOTs first
+      groups[s].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     })
     return groups
   }, [kots])
@@ -323,83 +324,138 @@ export default function KDS() {
 
   const waiterName = (id) => staffById[id]?.name || '-'
 
+  const statusLabel = (s) => ((s || '') === 'completed' ? 'Completed' : 'Open')
+
+  const sortedKots = useMemo(
+    () => [...kots].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)),
+    [kots],
+  )
+
+  const buildKdsReport = () => {
+    const completed = sortedKots.filter(k => (k.status || '') === 'completed')
+    const avgMs = completed.length
+      ? completed.reduce((acc, k) => {
+          const end = kotCompletedAt(k)
+          if (!k.createdAt || !end) return acc
+          return acc + Math.max(0, new Date(end) - new Date(k.createdAt))
+        }, 0) / completed.length
+      : 0
+    const avgDur = avgMs
+      ? durationLabel(new Date(0), new Date(avgMs))
+      : '—'
+
+    const body =
+      reportSummary([
+        { label: 'Total KOTs', amount: String(sortedKots.length) },
+        { label: 'Open', amount: String(groupedByStatus.active?.length || 0) },
+        { label: 'Completed', amount: String(groupedByStatus.completed?.length || 0) },
+        { label: 'Avg cook time (completed)', amount: avgDur },
+      ]) +
+      reportSec(`Kitchen Orders (${sortedKots.length})`) +
+      reportTable({
+        headers: [
+          'Token',
+          'Type',
+          'Table',
+          'Status',
+          'KOT Time',
+          'Completed',
+          'Duration',
+          { t: 'Items', align: 'r' },
+          'Waiter',
+        ],
+        numbered: true,
+        rows: sortedKots.map(k => {
+          const doneAt = kotCompletedAt(k)
+          const endForDur = doneAt || ((k.status || '') !== 'completed' ? new Date() : null)
+          return [
+            `#${k.tokenNo || '-'}`,
+            k.orderType || 'Dine-in',
+            k.tableNo ? `${k.tableNo}${k.floor ? ` (${k.floor})` : ''}` : '—',
+            statusLabel(k.status || 'new'),
+            fmtClock(k.createdAt),
+            doneAt ? fmtClock(doneAt) : '—',
+            durationLabel(k.createdAt, endForDur),
+            { v: (k.items || []).length, align: 'r' },
+            waiterName(k.waiterId),
+          ]
+        }),
+        emptyText: 'No KOTs for this date',
+      })
+
+    const company = state?.settings?.companyName || 'Restaurant POS'
+    const fileName = `KDS-Report-${selectedDate || 'today'}.pdf`
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Kitchen Display Report',
+      reportLabel: 'KDS Report',
+      reportNo: `Rpt #: KDS-${selectedDate || 'today'}`,
+      metaLeft: [
+        ['Business Date:', selectedDate || 'Today', true],
+        ['Generated:', new Date().toLocaleString()],
+        ['Prepared by:', user?.username || user?.name || 'staff'],
+      ],
+      metaRight: [
+        ['Total KOTs:', String(sortedKots.length), true],
+        ['Completed:', String(completed.length), true],
+        ['Status:', 'FINAL'],
+      ],
+      body,
+      footNote: `Duration = Completed time − KOT time (live elapsed shown for open orders). ${company} · ${selectedDate || 'Today'}`,
+    })
+    return { html, fileName }
+  }
+
   const openPrintPreview = async () => {
     try {
-      const statusLabel = (s) => ((s || '') === 'completed' ? 'Completed' : 'Open')
-      const sorted = [...kots].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
-      const completed = sorted.filter(k => (k.status || '') === 'completed')
-      const avgMs = completed.length
-        ? completed.reduce((acc, k) => {
-            const end = kotCompletedAt(k)
-            if (!k.createdAt || !end) return acc
-            return acc + Math.max(0, new Date(end) - new Date(k.createdAt))
-          }, 0) / completed.length
-        : 0
-      const avgDur = avgMs
-        ? durationLabel(new Date(0), new Date(avgMs))
-        : '—'
-
-      const body =
-        reportSummary([
-          { label: 'Total KOTs', amount: String(sorted.length) },
-          { label: 'Open', amount: String(groupedByStatus.active?.length || 0) },
-          { label: 'Completed', amount: String(groupedByStatus.completed?.length || 0) },
-          { label: 'Avg cook time (completed)', amount: avgDur },
-        ]) +
-        reportSec(`Kitchen Orders (${sorted.length})`) +
-        reportTable({
-          headers: [
-            'Token',
-            'Type',
-            'Table',
-            'Status',
-            'KOT Time',
-            'Completed',
-            'Duration',
-            { t: 'Items', align: 'r' },
-            'Waiter',
-          ],
-          numbered: true,
-          rows: sorted.map(k => {
-            const doneAt = kotCompletedAt(k)
-            const endForDur = doneAt || ((k.status || '') !== 'completed' ? new Date() : null)
-            return [
-              `#${k.tokenNo || '-'}`,
-              k.orderType || 'Dine-in',
-              k.tableNo ? `${k.tableNo}${k.floor ? ` (${k.floor})` : ''}` : '—',
-              statusLabel(k.status || 'new'),
-              fmtClock(k.createdAt),
-              doneAt ? fmtClock(doneAt) : '—',
-              durationLabel(k.createdAt, endForDur),
-              { v: (k.items || []).length, align: 'r' },
-              waiterName(k.waiterId),
-            ]
-          }),
-          emptyText: 'No KOTs for this date',
-        })
-
-      const company = state?.settings?.companyName || 'Restaurant POS'
-      const html = wrapReportDoc({
-        settings: state?.settings || {},
-        title: 'Kitchen Display Report',
-        reportLabel: 'KDS Report',
-        reportNo: `Rpt #: KDS-${selectedDate || 'today'}`,
-        metaLeft: [
-          ['Business Date:', selectedDate || 'Today', true],
-          ['Generated:', new Date().toLocaleString()],
-          ['Prepared by:', user?.username || user?.name || 'staff'],
-        ],
-        metaRight: [
-          ['Total KOTs:', String(sorted.length), true],
-          ['Completed:', String(completed.length), true],
-          ['Status:', 'FINAL'],
-        ],
-        body,
-        footNote: `Duration = Completed time − KOT time (live elapsed shown for open orders). ${company} · ${selectedDate || 'Today'}`,
-      })
-      await previewHtmlReport(html, `KDS-Report-${selectedDate || 'today'}.pdf`)
+      const { html, fileName } = buildKdsReport()
+      await previewHtmlReport(html, fileName)
     } catch {
       toast.error('Print preview failed')
+    }
+  }
+
+  const exportPDF = async () => {
+    try {
+      const { html, fileName } = buildKdsReport()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF exported')
+    } catch (err) {
+      toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+    }
+  }
+
+  const exportCSV = () => {
+    try {
+      const headers = ['Token', 'Type', 'Table', 'Status', 'KOT Time', 'Completed', 'Duration', 'Items', 'Waiter', 'Customer', 'Phone']
+      const lines = sortedKots.map(k => {
+        const doneAt = kotCompletedAt(k)
+        const endForDur = doneAt || ((k.status || '') !== 'completed' ? new Date() : null)
+        return [
+          k.tokenNo || '-',
+          k.orderType || 'Dine-in',
+          k.tableNo ? `${k.tableNo}${k.floor ? ` (${k.floor})` : ''}` : '',
+          statusLabel(k.status || 'new'),
+          fmtClock(k.createdAt),
+          doneAt ? fmtClock(doneAt) : '',
+          durationLabel(k.createdAt, endForDur),
+          (k.items || []).length,
+          waiterName(k.waiterId),
+          k.customerName || '',
+          k.customerPhone || '',
+        ].map(v => '"' + String(v ?? '').replaceAll('"', '""') + '"').join(',')
+      }).join('\n')
+      const csv = headers.join(',') + '\n' + lines
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `KDS-${selectedDate || 'today'}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('CSV exported')
+    } catch {
+      toast.error('Failed to export CSV')
     }
   }
 
@@ -490,7 +546,7 @@ export default function KDS() {
               <RefreshCw size={18} className={autoRefresh ? 'animate-spin-slow' : ''} />
             </button>
 
-            {/* Print A4 preview */}
+            {/* Print / PDF / CSV */}
             <button
               onClick={openPrintPreview}
               className="ui-btn ui-btn-print text-sm flex items-center gap-1.5 min-h-10"
@@ -499,6 +555,8 @@ export default function KDS() {
               <Printer size={16} />
               <span className="hidden sm:inline">Print</span>
             </button>
+            <button type="button" onClick={exportPDF} className="ui-btn ui-btn-pdf text-sm min-h-10">PDF</button>
+            <button type="button" onClick={exportCSV} className="ui-btn ui-btn-csv text-sm min-h-10">CSV</button>
 
             {/* Manual refresh */}
             <button

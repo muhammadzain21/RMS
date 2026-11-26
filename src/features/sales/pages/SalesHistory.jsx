@@ -19,6 +19,7 @@ export default function SalesHistory() {
  const { from: fromDate, setFrom: setFromDate, to: toDate, setTo: setToDate } = useBusinessDateFilter()
  const [search, setSearch] = useState('')
  const [paymentFilter, setPaymentFilter] = useState('')
+ const [orderTypeFilter, setOrderTypeFilter] = useState('')
  const [waiterFilter, setWaiterFilter] = useState('')
  const [riderFilter, setRiderFilter] = useState('')
  const [drawerOpen, setDrawerOpen] = useState(false)
@@ -134,9 +135,23 @@ export default function SalesHistory() {
  if (paymentFilter) {
   const want = String(paymentFilter).toLowerCase()
   list = list.filter(s => {
+   // Foodpanda can be a tender and/or order type
+   if (want === 'foodpanda') {
+    const ot = String(s.orderType || '').trim().toLowerCase()
+    if (ot === 'foodpanda' || ot === 'food panda' || ot === 'drive-thru' || ot === 'drivethru') return true
+   }
    const pays = Array.isArray(s.payments) ? s.payments.filter(p => Number(p?.amount || 0) > 0) : []
    if (pays.length) return pays.some(p => String(p.method || '').toLowerCase() === want)
    return String(s.paymentMethod || 'cash').toLowerCase() === want
+  })
+ }
+ if (orderTypeFilter) {
+  const wantOt = String(orderTypeFilter).trim().toLowerCase()
+  list = list.filter(s => {
+   const ot = String(s.orderType || '').trim().toLowerCase()
+   if (wantOt === 'take-away') return ot === 'take-away' || ot === 'takeaway' || ot === 'take away'
+   if (wantOt === 'foodpanda') return ot === 'foodpanda' || ot === 'food panda' || ot === 'drive-thru' || ot === 'drivethru'
+   return ot === wantOt
   })
  }
  if (waiterFilter) list = list.filter(s => String(s.waiterId || '') === String(waiterFilter))
@@ -168,8 +183,11 @@ export default function SalesHistory() {
  const billDiscount = Number(s.billDiscount || s.discount || 0)
  const taxAmt = Number(s.taxAmt || 0)
  const serviceAmt = Number(s.serviceAmt || 0)
- return Math.max(0, subtotal - itemsDiscount - billDiscount + taxAmt + serviceAmt)
+ const deliveryAmt = Math.max(0, Number(s.deliveryAmt || s.deliveryCharges || 0))
+ return Math.max(0, subtotal - itemsDiscount - billDiscount + taxAmt + serviceAmt + deliveryAmt)
  })()
+ const deliveryAmt = Math.max(0, Number(s.deliveryAmt || s.deliveryCharges || 0))
+ const tipAmount = Math.max(0, Number(s.tipAmount || 0))
  // Check if this sale has a return recorded
  const hasReturn = (state.returns || []).some(r => r.saleId === s.id)
  return ({
@@ -186,6 +204,8 @@ export default function SalesHistory() {
  saleTotal: Number(subtotal),
  // Net Amount (final after discount)
  netAmount,
+ deliveryAmt,
+ tipAmount,
  paymentMethod: (() => {
  const pays = Array.isArray(s.payments) ? s.payments.filter(p => Number(p?.amount || 0) > 0) : []
  if (pays.length > 1 || String(s.paymentMethod || '').toLowerCase() === 'split') {
@@ -220,7 +240,7 @@ export default function SalesHistory() {
  mapped = mapped.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(t)))
  }
  return mapped
- }, [state.sales, state.menu, state.returns, fromDate, toDate, search, paymentFilter, waiterFilter, riderFilter])
+ }, [state.sales, state.menu, state.returns, fromDate, toDate, search, paymentFilter, orderTypeFilter, waiterFilter, riderFilter])
 
  // Summary stats from filtered rows
  const stats = useMemo(() => {
@@ -310,8 +330,16 @@ export default function SalesHistory() {
  staffId: sale.detail.staffId || '',
  staffName: sale.detail.staffName || '',
  staffSettlement: sale.detail.staffSettlement || '',
- cashReceived: sale.detail.cashReceived || sale.detail.total || 0,
- tipAmount: sale.detail.tipAmount || 0,
+ tipAmount: sale.detail.tipAmount || sale.tipAmount || 0,
+ deliveryAmt: sale.detail.deliveryAmt || sale.detail.deliveryCharges || sale.deliveryAmt || 0,
+ // What cashier collected = stored cashReceived, or bill total + tip
+ cashReceived: (() => {
+  const tip = Math.max(0, Number(sale.detail.tipAmount || sale.tipAmount || 0))
+  const stored = Math.max(0, Number(sale.detail.cashReceived || 0))
+  const bill = Math.max(0, Number(sale.detail.total ?? sale.detail.totalAmount ?? sale.netAmount ?? 0))
+  if (stored > 0) return stored
+  return bill + tip
+ })(),
  changeDue: sale.detail.changeDue || 0,
  payRemarks: sale.detail.payRemarks || '',
  lineTotal,
@@ -342,6 +370,8 @@ export default function SalesHistory() {
  { label: 'Waiter', key: 'waiterName', hideBelow: 'lg' },
  { label: 'Rider', key: 'riderName', hideBelow: 'lg' },
  { label: 'Sale Total', key: 'saleTotal', hideBelow: 'md', render: r => `PKR ${Number(r.saleTotal).toLocaleString()}` },
+ { label: 'Delivery Charges', key: 'deliveryAmt', render: r => Number(r.deliveryAmt || 0) > 0 ? `PKR ${Number(r.deliveryAmt).toLocaleString()}` : '—' },
+ { label: 'Waiter Tip', key: 'tipAmount', render: r => Number(r.tipAmount || 0) > 0 ? `PKR ${Number(r.tipAmount).toLocaleString()}` : '—' },
  { label: 'Net Amount', key: 'netAmount', render: r => `PKR ${Number(r.netAmount).toLocaleString()}` },
  { label: 'Payment Mode', key: 'paymentMethod' },
  { label: 'Status', key: 'status', render: r => (
@@ -398,7 +428,7 @@ export default function SalesHistory() {
  ]) +
  reportSec(`Sales (${rows.length})`) +
  reportTable({
- headers: ['Date', 'Bill#', 'Customer', 'Order Type', 'Table', 'Waiter', 'Rider', { t: 'Sale Total', align: 'r' }, { t: 'Net Amount', align: 'r' }, 'Payment', 'Status'],
+ headers: ['Date', 'Bill#', 'Customer', 'Order Type', 'Table', 'Waiter', 'Rider', { t: 'Sale Total', align: 'r' }, { t: 'Delivery Charges', align: 'r' }, { t: 'Waiter Tip', align: 'r' }, { t: 'Net Amount', align: 'r' }, 'Payment', 'Status'],
  numbered: true,
  rows: rows.map(r => [
  r.dateTime || r.date,
@@ -409,6 +439,8 @@ export default function SalesHistory() {
  r.waiterName,
  r.riderName,
  { v: money(r.saleTotal), align: 'r' },
+ { v: Number(r.deliveryAmt || 0) > 0 ? money(r.deliveryAmt) : '—', align: 'r' },
+ { v: Number(r.tipAmount || 0) > 0 ? money(r.tipAmount) : '—', align: 'r' },
  { v: money(r.netAmount), align: 'r' },
  r.paymentMethod,
  r.status,
@@ -446,8 +478,8 @@ export default function SalesHistory() {
  }
 
  const exportCSV = () => {
- const headers = ['Date','Bill Number','Customer','Order Type','Table','Waiter','Rider','Sale Total (PKR)','Net Amount (PKR)','Payment Mode','Status','Delivery Date']
- const lines = rows.map(r => [r.dateTime || r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.netAmount,r.paymentMethod,r.status,r.deliveryDate]
+ const headers = ['Date','Bill Number','Customer','Order Type','Table','Waiter','Rider','Sale Total (PKR)','Delivery Charges (PKR)','Waiter Tip (PKR)','Net Amount (PKR)','Payment Mode','Status','Delivery Date']
+ const lines = rows.map(r => [r.dateTime || r.date,r.billNo,r.customer,r.orderType,r.tableNo,r.waiterName,r.riderName,r.saleTotal,r.deliveryAmt || 0,r.tipAmount || 0,r.netAmount,r.paymentMethod,r.status,r.deliveryDate]
  .map(v => '"' + String(v ?? '').replaceAll('"','""') + '"').join(',')).join('\n')
  const csv = headers.join(',') + '\n' + lines
  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -498,10 +530,19 @@ export default function SalesHistory() {
     <select value={paymentFilter} onChange={e => { setPaymentFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500">
       <option value="">All Modes</option>
       <option value="cash">Cash</option>
+      <option value="card">Card</option>
       <option value="bank">Bank</option>
-      <option value="online">Online (old)</option>
-      <option value="complimentary">Personal</option>
-      <option value="staff">Staff</option>
+      <option value="foodpanda">Foodpanda</option>
+    </select>
+  </div>
+  <div className="filter-select min-w-0">
+    <label className="mb-1 block text-xs font-semibold text-indigo-700 dark:text-indigo-300">Order Type</label>
+    <select value={orderTypeFilter} onChange={e => { setOrderTypeFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500">
+      <option value="">All Order Types</option>
+      <option value="Dine-in">Dine-in</option>
+      <option value="Take-away">Take-away</option>
+      <option value="Delivery">Delivery</option>
+      <option value="Foodpanda">Foodpanda</option>
     </select>
   </div>
   <div className="filter-select min-w-0">
@@ -522,9 +563,9 @@ export default function SalesHistory() {
     <label className="mb-1 block text-xs font-semibold text-indigo-700 dark:text-indigo-300 sm:sr-only">Search</label>
     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="w-full px-4 py-2.5 border-2 border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500" />
   </div>
- </div><div className="border-2 border-indigo-300 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Rider</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
+ </div><div className="border-2 border-indigo-300 dark:border-indigo-800 rounded-xl overflow-x-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900"><tr><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Bill Number</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Customer</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Order Type</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Table</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Rider</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Sale Total</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Charges</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Waiter Tip</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Net Amount</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Payment Mode</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Status</th><th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Delivery Date</th><th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {paginatedRows.map(r => (
- <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{r.dateTime || r.date}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.billNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.customer}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.orderType}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.tableNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.waiterName}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.riderName}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span></td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deliveryDate}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => setViewSale(r)} className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600" title="View Order Details">View</button><button onClick={() => reprintSale(r)} className="px-2 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600" title="Reprint Receipt">Print</button><button onClick={() => {
+ <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="p-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{r.dateTime || r.date}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.billNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.customer}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.orderType}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.tableNo}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.waiterName}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.riderName}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.saleTotal).toLocaleString()}</td><td className="p-3 text-gray-700 dark:text-gray-300">{Number(r.deliveryAmt || 0) > 0 ? `PKR ${Number(r.deliveryAmt).toLocaleString()}` : '—'}</td><td className="p-3 text-gray-700 dark:text-gray-300">{Number(r.tipAmount || 0) > 0 ? `PKR ${Number(r.tipAmount).toLocaleString()}` : '—'}</td><td className="p-3 text-gray-700 dark:text-gray-300">PKR {Number(r.netAmount).toLocaleString()}</td><td className="p-3 text-gray-600 dark:text-gray-400">{r.paymentMethod}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.status === 'Returned' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>{r.status}</span></td><td className="p-3 text-gray-600 dark:text-gray-400">{r.deliveryDate}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => setViewSale(r)} className="px-2 py-1 text-xs rounded bg-indigo-500 text-white hover:bg-indigo-600" title="View Order Details">View</button><button onClick={() => reprintSale(r)} className="px-2 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600" title="Reprint Receipt">Print</button><button onClick={() => {
  if (closedDates.has(r.date)) return
  setDeleteTarget({ id: r.id, date: r.date, billNo: r.billNo })
  setDeleteKey('')
@@ -533,7 +574,7 @@ export default function SalesHistory() {
  }} disabled={closedDates.has(r.date)} className="px-2 py-1 text-xs rounded bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50">Delete</button></div></td></tr>
  ))}
  {!rows.length && (
- <tr><td colSpan={14} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No sales found</div></td></tr>
+ <tr><td colSpan={16} className="p-8 text-center text-gray-500 dark:text-gray-400"><div className="text-4xl mb-2"></div><div>No sales found</div></td></tr>
  )}
  </tbody></table></div>
 

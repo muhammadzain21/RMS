@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
 import { useAuth } from '@/state/AuthContext.jsx'
+import { useBranch } from '@/state/BranchContext.jsx'
 
 const MUTE_KEY = 'cc_inbox_sound_muted'
 const READ_KEY = 'cc_inbox_read_ids'
@@ -79,6 +80,7 @@ export function playCcAlertTone() {
  */
 export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
   const { token } = useAuth()
+  const { activeBranchId } = useBranch()
   const [pendingCount, setPendingCount] = useState(0)
   const [unreadCount, setUnreadCount] = useState(0)
   const [muted, setMutedState] = useState(() => getCcInboxMuted())
@@ -87,8 +89,22 @@ export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
   const unreadRef = useRef(new Set())
   const mutedRef = useRef(muted)
   const remainingIdsRef = useRef([])
+  const branchRef = useRef(String(activeBranchId || ''))
 
   useEffect(() => { mutedRef.current = muted }, [muted])
+
+  // Reset alert priming when branch switches so counts match the new branch
+  useEffect(() => {
+    const next = String(activeBranchId || '')
+    if (branchRef.current === next) return
+    branchRef.current = next
+    primed.current = false
+    knownIds.current = new Set()
+    unreadRef.current = new Set()
+    remainingIdsRef.current = []
+    setPendingCount(0)
+    setUnreadCount(0)
+  }, [activeBranchId])
 
   const setMuted = useCallback((on) => {
     const next = setCcInboxMuted(on)
@@ -110,13 +126,20 @@ export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
   const refresh = useCallback(async () => {
     if (!token || !enabled) return
     try {
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        ...(activeBranchId ? { 'X-Branch-Id': String(activeBranchId) } : {}),
+      }
       const res = await fetch(`${api()}/api/call-center-orders/inbox?tab=remaining`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
         cache: 'no-store',
       })
       if (!res.ok) return
       const rows = await res.json()
-      const list = Array.isArray(rows) ? rows : []
+      let list = Array.isArray(rows) ? rows : []
+      if (activeBranchId) {
+        list = list.filter((o) => String(o?.branchId || '') === String(activeBranchId))
+      }
       const ids = list.map(orderId).filter(Boolean)
       remainingIdsRef.current = ids
       setPendingCount(ids.length)
@@ -160,7 +183,7 @@ export function useCcInboxAlert({ intervalMs = 12000, enabled = true } = {}) {
       }
       knownIds.current = new Set(ids)
     } catch {}
-  }, [token, enabled])
+  }, [token, enabled, activeBranchId])
 
   // Repeat alert while unread remain and not muted
   useEffect(() => {

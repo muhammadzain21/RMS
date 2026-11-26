@@ -132,8 +132,8 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       })
     }
 
-    // All expenses for this business date must be approved before day close
-    // Include legacy docs with empty branchId for the active branch
+    // Cash expenses for this business date must be approved before day close.
+    // Bank expenses are tracked separately and do not block day close.
     const Expense = (await import('../models/Expense.js')).default
     const pendingExpenseFilter = {
       $and: [
@@ -147,6 +147,15 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
             { status: { $exists: false } },
             { status: null },
             { status: '' },
+          ],
+        },
+        // Cash drawer only — exclude bank account expenses
+        {
+          $or: [
+            { accountHead: 'cash' },
+            { accountHead: { $exists: false } },
+            { accountHead: null },
+            { accountHead: '' },
           ],
         },
       ],

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import {
@@ -16,6 +17,9 @@ import {
   BarChart3,
   Users,
   UserPlus,
+  ArrowLeftRight,
+  ArrowDownCircle,
+  ArrowUpCircle,
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
 import { useAuth } from '@/state/AuthContext.jsx'
@@ -211,6 +215,8 @@ export default function Dashboard() {
   const [daySalesOverride, setDaySalesOverride] = useState(null)
   // Expenses for selected business date (approved + pending)
   const [dayExpenses, setDayExpenses] = useState(null)
+  // Pay In / Out rows for selected business date
+  const [dayPayInOuts, setDayPayInOuts] = useState(null)
 
   const lineTotal = useMemo(() => createLineTotal(state.settings?.modifiers || {}), [state.settings?.modifiers])
 
@@ -314,23 +320,79 @@ export default function Dashboard() {
     let taxEx = 0
     let total = 0
     let paid = 0
+    let tipsFromSales = 0
+    let deliveryFromSales = 0
+    let cashSales = 0
+    let cardSales = 0
+    let bankSales = 0
+    let foodpandaSales = 0
     daySales.forEach(s => {
       sale += saleGrossBeforeTaxService(s)
       discount += totalDiscountOf(s)
-      charges += num(s.serviceAmt)
+      charges += num(s.serviceAmt) + num(s.deliveryAmt || s.deliveryCharges)
       const tax = num(s.taxAmt)
       if (s.taxInclusive) taxIn += tax
       else taxEx += tax
       total += num(s.total)
-      if (isPaidMethod(s.paymentMethod)) paid += num(s.total)
+      tipsFromSales += Math.max(0, num(s.tipAmount))
+      deliveryFromSales += Math.max(0, num(s.deliveryAmt || s.deliveryCharges))
+      const isFp = (() => {
+        const t = String(s.orderType || '').trim().toLowerCase()
+        return t === 'foodpanda' || t === 'food panda' || t === 'drive-thru' || t === 'drivethru'
+          || paymentBucket(s) === 'foodpanda'
+      })()
+      if (isFp) foodpandaSales += num(s.total)
+      else {
+        cashSales += saleTenderAmt(s, 'cash')
+        cardSales += saleTenderAmt(s, 'card')
+        bankSales += saleTenderAmt(s, ['bank', 'online'])
+      }
+      if (isPaidMethod(s.paymentMethod) || paymentBucket(s) === 'foodpanda' || isFp) {
+        paid += num(s.total) + Math.max(0, num(s.tipAmount))
+      }
     })
     const dayExp = Array.isArray(dayExpenses)
       ? dayExpenses
       : (state.expenses || []).filter(e => String(e.date) === String(selectedDate))
+    const cashExpenses = dayExp
+      .filter(e => String(e.accountHead || 'cash').toLowerCase() !== 'bank')
+      .reduce((a, e) => a + num(e.amount), 0)
     const expense = dayExp.reduce((a, e) => a + num(e.amount), 0)
+    const ioRows = Array.isArray(dayPayInOuts) ? dayPayInOuts : (state.payInOuts || [])
+    const isTipCat = (cat) => /waiter\s*tip/i.test(cat) || /^tips?$/i.test(String(cat || '').trim())
+    const isDelCat = (cat) => /delivery\s*charges?/i.test(cat) || /^delivery$/i.test(String(cat || '').trim())
+    const tipPayOut = ioRows
+      .filter(p => String(p.date) === String(selectedDate) && String(p.type || '').toUpperCase() === 'OUT' && isTipCat(p.category))
+      .reduce((a, p) => a + num(p.amount), 0)
+    const deliveryPayOut = ioRows
+      .filter(p => String(p.date) === String(selectedDate) && String(p.type || '').toUpperCase() === 'OUT' && isDelCat(p.category))
+      .reduce((a, p) => a + num(p.amount), 0)
+    const tips = tipsFromSales > 0 ? tipsFromSales : tipPayOut
+    const deliveryCharges = deliveryFromSales > 0 ? deliveryFromSales : deliveryPayOut
+    const payIn = ioRows
+      .filter(p => String(p.date) === String(selectedDate) && String(p.type || '').toUpperCase() === 'IN')
+      .reduce((a, p) => a + num(p.amount), 0)
+    const payOutManual = ioRows
+      .filter(p => {
+        if (String(p.date) !== String(selectedDate) || String(p.type || '').toUpperCase() !== 'OUT') return false
+        const cat = String(p.category || '')
+        return !isTipCat(cat) && !isDelCat(cat)
+      })
+      .reduce((a, p) => a + num(p.amount), 0)
+    const openingCash = (() => {
+      const entry = (state.cashOpenings || []).find(e => String(e.date) === String(selectedDate))
+      if (entry) return num(entry.openingCash)
+      if (state.daybook?.date === selectedDate) return num(state.daybook?.openingCash)
+      return 0
+    })()
+    const expectedCash = openingCash + cashSales + payIn - payOutManual - cashExpenses - tips - deliveryCharges
     const billSize = transactions ? total / transactions : 0
-    return { transactions, sale, discount, charges, taxIn, taxEx, total, paid, billSize, expense }
-  }, [daySales, state.expenses, dayExpenses, selectedDate])
+    return {
+      transactions, sale, discount, charges, taxIn, taxEx, total, paid, billSize, expense,
+      cashSales, cardSales, bankSales, foodpandaSales,
+      tips, deliveryCharges, cashExpenses, openingCash, payIn, payOut: payOutManual, expectedCash,
+    }
+  }, [daySales, state.expenses, dayExpenses, dayPayInOuts, state.payInOuts, state.cashOpenings, state.daybook, selectedDate])
 
   const recallStartByToken = useMemo(() => {
     const map = new Map()
@@ -422,6 +484,28 @@ export default function Dashboard() {
     return { billBooked, billPaid, totalPayable: Math.max(0, billBooked - billPaid) }
   }, [state.advanceBookings, pendingHelds, selectedDate, lineTotal])
 
+  const payInOutRows = useMemo(() => {
+    if (Array.isArray(dayPayInOuts)) return dayPayInOuts
+    return (state.payInOuts || []).filter(p => String(p.date) === String(selectedDate))
+  }, [dayPayInOuts, state.payInOuts, selectedDate])
+
+  const payInOutAnalysis = useMemo(() => {
+    let payIn = 0
+    let payOut = 0
+    payInOutRows.forEach(p => {
+      const amt = num(p.amount)
+      if (String(p.type || '').toUpperCase() === 'IN') payIn += amt
+      else payOut += amt
+    })
+    return {
+      payIn,
+      payOut,
+      net: payIn - payOut,
+      count: payInOutRows.length,
+      rows: [...payInOutRows].sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))),
+    }
+  }, [payInOutRows])
+
   const expenseAnalysis = useMemo(() => {
     const dayExp = Array.isArray(dayExpenses)
       ? dayExpenses
@@ -432,8 +516,8 @@ export default function Dashboard() {
     const approved = approvedRows.reduce((a, e) => a + num(e.amount), 0)
     const pending = pendingRows.reduce((a, e) => a + num(e.amount), 0)
     const booked = approved + pending
-    const paid = (state.payInOuts || [])
-      .filter(p => String(p.date) === String(selectedDate) && p.type === 'OUT')
+    const paid = payInOutRows
+      .filter(p => String(p.type || '').toUpperCase() === 'OUT')
       .reduce((a, p) => a + num(p.amount), 0)
     return {
       booked,
@@ -443,7 +527,7 @@ export default function Dashboard() {
       approvedCount: approvedRows.length,
       pendingCount: pendingRows.length,
     }
-  }, [dayExpenses, state.expenses, state.payInOuts, selectedDate])
+  }, [dayExpenses, state.expenses, payInOutRows, selectedDate])
 
   const authHeaders = useMemo(
     () => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }),
@@ -567,7 +651,12 @@ export default function Dashboard() {
         page: '1',
         limit: '200',
       })
-      const [salesRes, recallsRes, heldsRes, voidsRes, attRes, bookingsRes, expensesRes] = await Promise.all([
+      const payIoParams = new URLSearchParams({
+        from: selectedDate,
+        to: selectedDate,
+        limit: '200',
+      })
+      const [salesRes, recallsRes, heldsRes, voidsRes, attRes, bookingsRes, expensesRes, payIoRes] = await Promise.all([
         fetch(`${API}/api/sales?from=${selectedDate}&to=${selectedDate}`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/recalls`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/helds`, { headers: authHeaders, cache: 'no-store' }),
@@ -575,6 +664,7 @@ export default function Dashboard() {
         fetch(`${API}/api/attendance?date=${encodeURIComponent(selectedDate)}`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/advance-bookings`, { headers: authHeaders, cache: 'no-store' }),
         fetch(`${API}/api/expenses?${expenseParams}`, { headers: authHeaders, cache: 'no-store' }),
+        fetch(`${API}/api/pay-in-outs?${payIoParams}`, { headers: authHeaders, cache: 'no-store' }),
       ])
 
       const patch = {}
@@ -629,17 +719,29 @@ export default function Dashboard() {
         setDayExpenses([])
       }
 
+      if (payIoRes.ok) {
+        const data = await payIoRes.json()
+        const rows = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : []
+        const mapped = rows.map(x => ({ ...x, id: x.id || x._id }))
+        setDayPayInOuts(mapped)
+        const others = (state.payInOuts || []).filter(p => String(p.date) !== String(selectedDate))
+        dispatch({ type: 'HYDRATE', payload: { payInOuts: [...mapped, ...others] } })
+      } else {
+        setDayPayInOuts([])
+      }
+
       if (!quiet) toast.success('Dashboard refreshed')
     } catch {
       toast.error('Refresh failed')
     } finally {
       setRefreshing(false)
     }
-  }, [API, authHeaders, dispatch, selectedDate, state.sales, token])
+  }, [API, authHeaders, dispatch, selectedDate, state.sales, state.payInOuts, token])
 
   useEffect(() => {
     setDaySalesOverride(null)
     setDayExpenses(null)
+    setDayPayInOuts(null)
     refreshData({ quiet: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate])
@@ -658,6 +760,7 @@ export default function Dashboard() {
       paymentRows,
       billAnalysis,
       expenseAnalysis,
+      payInOutAnalysis,
       hrRows,
       hrAttendanceRows: hrAttendanceTable.rows,
       hrStats: hrAttendanceTable.stats,
@@ -675,6 +778,7 @@ export default function Dashboard() {
       paymentRows,
       billAnalysis,
       expenseAnalysis,
+      payInOutAnalysis,
       hrRows,
       hrAttendanceTable,
     ]
@@ -709,6 +813,28 @@ export default function Dashboard() {
             ],
           ],
         }) +
+        reportSec('Tender & cash utilization') +
+        reportTable({
+          headers: [
+            'Cash', 'Card', 'Bank', 'Foodpanda',
+            'Opening', 'Pay In', 'Tips', 'Delivery', 'Cash exp.', 'Pay Out', 'Expected cash',
+          ],
+          rows: [
+            [
+              fmt(p.salesSummary.cashSales),
+              fmt(p.salesSummary.cardSales),
+              fmt(p.salesSummary.bankSales),
+              fmt(p.salesSummary.foodpandaSales),
+              fmt(p.salesSummary.openingCash),
+              fmt(p.salesSummary.payIn),
+              fmt(p.salesSummary.tips),
+              fmt(p.salesSummary.deliveryCharges),
+              fmt(p.salesSummary.cashExpenses),
+              fmt(p.salesSummary.payOut),
+              fmt(p.salesSummary.expectedCash),
+            ],
+          ],
+        }) +
         reportSec('Time analysis') +
         reportTable({
           headers: ['Minutes', 'Invoice count'],
@@ -736,6 +862,22 @@ export default function Dashboard() {
           { label: `Unapproved (${p.expenseAnalysis.pendingCount || 0})`, amount: fmt(p.expenseAnalysis.pending) },
           { label: 'Expense paid (pay-out)', amount: fmt(p.expenseAnalysis.paid) },
         ]) +
+        reportSec(`Pay In / Out (${p.payInOutAnalysis.count})`) +
+        reportSummary([
+          { label: 'Pay In', amount: fmt(p.payInOutAnalysis.payIn) },
+          { label: 'Pay Out', amount: fmt(p.payInOutAnalysis.payOut) },
+          { label: 'Net', amount: fmt(p.payInOutAnalysis.net) },
+        ]) +
+        reportTable({
+          headers: ['Type', 'Category', 'Amount', 'Note'],
+          rows: (p.payInOutAnalysis.rows || []).map(r => [
+            String(r.type || ''),
+            String(r.category || '—'),
+            fmt(r.amount),
+            String(r.note || ''),
+          ]),
+          emptyText: 'No pay in/out for this date',
+        }) +
         reportSec('HR information — by designation') +
         reportTable({
           headers: ['Staff designation', 'Present'],
@@ -803,7 +945,21 @@ export default function Dashboard() {
         ['Sales', 'Transactions', p.salesSummary.transactions].map(v => `"${v}"`).join(','),
         ['Sales', 'Sale', p.salesSummary.sale].map(v => `"${v}"`).join(','),
         ['Sales', 'Total', p.salesSummary.total].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Cash sales', p.salesSummary.cashSales].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Card sales', p.salesSummary.cardSales].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Bank sales', p.salesSummary.bankSales].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Foodpanda', p.salesSummary.foodpandaSales].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Waiter tips', p.salesSummary.tips].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Delivery', p.salesSummary.deliveryCharges].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Cash expenses', p.salesSummary.cashExpenses].map(v => `"${v}"`).join(','),
+        ['CashUtil', 'Expected cash', p.salesSummary.expectedCash].map(v => `"${v}"`).join(','),
         ...p.paymentRows.map(r => ['Payment', r.type, r.amount].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+        ['PayInOut', 'Pay In', p.payInOutAnalysis.payIn].map(v => `"${v}"`).join(','),
+        ['PayInOut', 'Pay Out', p.payInOutAnalysis.payOut].map(v => `"${v}"`).join(','),
+        ['PayInOut', 'Net', p.payInOutAnalysis.net].map(v => `"${v}"`).join(','),
+        ...(p.payInOutAnalysis.rows || []).map(r =>
+          ['PayInOutRow', r.type, r.category || '', r.amount, r.note || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+        ),
         ...p.hrRows.map(r => ['HR', r.designation, r.present].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
         ...(p.hrAttendanceRows || []).map(r => ['Attendance', r.staffName, r.status, r.checkIn || '', r.checkOut || '', r.lateMinutes || 0, r.earlyOutMinutes || 0].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')),
       ]
@@ -960,6 +1116,44 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <div className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
+            Tender &amp; cash utilization (expected drawer)
+          </div>
+          <table className="tbl">
+            <thead>
+              <tr>
+                {[
+                  'Cash sales', 'Card sales', 'Bank sales', 'Foodpanda',
+                  'Opening', 'Pay In', 'Waiter tips', 'Delivery', 'Cash expenses', 'Pay Out',
+                  'Expected cash',
+                ].map(h => (
+                  <th key={h} className="whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="font-semibold text-emerald-700 dark:text-emerald-400">{fmt(salesSummary.cashSales)}</td>
+                <td>{fmt(salesSummary.cardSales)}</td>
+                <td>{fmt(salesSummary.bankSales)}</td>
+                <td>{fmt(salesSummary.foodpandaSales)}</td>
+                <td>{fmt(salesSummary.openingCash)}</td>
+                <td>{fmt(salesSummary.payIn)}</td>
+                <td className="text-rose-600 dark:text-rose-400">{fmt(salesSummary.tips)}</td>
+                <td className="text-orange-600 dark:text-orange-400">{fmt(salesSummary.deliveryCharges)}</td>
+                <td className="text-amber-600 dark:text-amber-400">{fmt(salesSummary.cashExpenses)}</td>
+                <td>{fmt(salesSummary.payOut)}</td>
+                <td className="font-bold text-blue-700 dark:text-blue-300">{fmt(salesSummary.expectedCash)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+            Expected cash = opening + cash sales + pay in − tips − delivery − cash expenses − pay out.
+            Tips and delivery are cash taken from drawer for waiters / riders (not bank expenses).
+          </p>
+        </div>
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -1083,6 +1277,64 @@ export default function Dashboard() {
         </Panel>
       </div>
 
+      <Panel title={`Pay In / Out · ${selectedDate}`} icon={ArrowLeftRight}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-3 flex-1">
+            <MiniStat icon={ArrowDownCircle} title="Pay In" value={payInOutAnalysis.payIn} iconColor="bg-emerald-500" />
+            <MiniStat icon={ArrowUpCircle} title="Pay Out" value={payInOutAnalysis.payOut} iconColor="bg-rose-500" />
+            <MiniStat icon={Wallet} title="Net" value={payInOutAnalysis.net} iconColor="bg-indigo-500" />
+          </div>
+          <Link
+            to="/sales/pay-in-out"
+            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100"
+          >
+            <ArrowLeftRight size={16} /> Open Pay In/Out
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                {['Type', 'Category', 'Amount', 'Note', 'User'].map(h => (
+                  <th key={h} className={h === 'Amount' ? 'text-right' : ''}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {payInOutAnalysis.rows.slice(0, 12).map(r => {
+                const isIn = String(r.type || '').toUpperCase() === 'IN'
+                return (
+                  <tr key={r.id || r._id}>
+                    <td>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${
+                        isIn
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                          : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                      }`}>
+                        {isIn ? 'IN' : 'OUT'}
+                      </span>
+                    </td>
+                    <td>{r.category || '—'}</td>
+                    <td className={`text-right font-semibold ${isIn ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {fmt(r.amount)}
+                    </td>
+                    <td className="max-w-[14rem] truncate">{r.note || '—'}</td>
+                    <td>{r.userName || '—'}</td>
+                  </tr>
+                )
+              })}
+              {payInOutAnalysis.rows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="text-center text-[var(--color-text-muted)] py-8">
+                    No pay in/out entries for this date
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
       <Panel title="HR Information" icon={Users}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -1115,6 +1367,7 @@ export default function Dashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-slate-700/50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">SR No</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Staff</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Biometric ID</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Position</th>
@@ -1128,7 +1381,7 @@ export default function Dashboard() {
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                   {hrAttendanceTable.rows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
+                      <td colSpan={9} className="px-4 py-10 text-center text-slate-400">
                         No attendance records for {selectedDate}
                       </td>
                     </tr>
@@ -1140,6 +1393,7 @@ export default function Dashboard() {
                         idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'
                       }`}
                     >
+                      <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">{idx + 1}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-sm font-bold text-white">

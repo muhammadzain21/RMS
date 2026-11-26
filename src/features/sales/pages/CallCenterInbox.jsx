@@ -234,15 +234,6 @@ export default function CallCenterInbox() {
 
   const columns = [
     {
-      label: 'SR No',
-      key: 'srNo',
-      render: (_, idx) => (
-        <span className="font-medium text-[var(--color-text-body)]">
-          {(pageSafe - 1) * limit + idx + 1}
-        </span>
-      ),
-    },
-    {
       label: 'Date',
       key: 'date',
       render: r => <span className="whitespace-nowrap text-sm font-medium">{orderDate(r)}</span>,
@@ -435,7 +426,7 @@ export default function CallCenterInbox() {
         </div>
       </div>
 
-      <div className="overflow-x-auto -mx-1 px-1">
+      <div className="-mx-1 px-1">
         <DataTable
           columns={columns}
           data={rows}
@@ -444,7 +435,7 @@ export default function CallCenterInbox() {
           pageSize={9999}
           showLimit={false}
           hidePagination
-          maxHeight={520}
+          maxHeight={null}
         />
       </div>
 

@@ -124,6 +124,12 @@ export default function OrderViewDialog({ open, sale, API, token, menu = [], onC
           ['Waiter', String(s.waiterName || '-')],
           ['Rider', String(s.riderName || '-')],
           ['Payment', String(det.paymentMethod || s.paymentMethod || '-').toUpperCase()],
+          ['Delivery Charges', Number(det.deliveryAmt || s.deliveryAmt || 0) > 0
+            ? `PKR ${Number(det.deliveryAmt || s.deliveryAmt || 0).toLocaleString()}`
+            : '—'],
+          ['Waiter Tip', Number(det.tipAmount || s.tipAmount || 0) > 0
+            ? `PKR ${Number(det.tipAmount || s.tipAmount || 0).toLocaleString()}`
+            : '—'],
           ['Net Total', `PKR ${Number(det.total || s.netAmount || 0).toLocaleString()}`],
         ],
         styles: { fontSize: 9, cellPadding: 4 },
@@ -222,6 +228,12 @@ export default function OrderViewDialog({ open, sale, API, token, menu = [], onC
                     ['Waiter', s.waiterName || '-'],
                     ['Rider', s.riderName || '-'],
                     ['Payment', (det.paymentMethod || s.paymentMethod || '-').toString().toUpperCase()],
+                    ['Delivery Charges', Number(det.deliveryAmt || s.deliveryAmt || 0) > 0
+                      ? `PKR ${Number(det.deliveryAmt || s.deliveryAmt || 0).toLocaleString()}`
+                      : '—'],
+                    ['Waiter Tip', Number(det.tipAmount || s.tipAmount || 0) > 0
+                      ? `PKR ${Number(det.tipAmount || s.tipAmount || 0).toLocaleString()}`
+                      : '—'],
                     ['Total', `PKR ${Number(det.total || s.netAmount || 0).toLocaleString()}`],
                   ].map(([label, val]) => (
                     <div key={label} className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/60 border dark:border-gray-700">

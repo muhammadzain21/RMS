@@ -201,48 +201,13 @@ export const navSections = () => {
  }))
 }
 
-/** Paths added after SuperAdmin may have last saved enabledPaths — show until explicitly disabled. */
-const UPGRADE_ENABLED_PATHS = [
-  '/warehouse/stock',
-  '/warehouse/suppliers',
-  '/warehouse/purchases',
-  '/warehouse/purchase-history',
-  '/warehouse/demands',
-  '/warehouse/transfers',
-  '/warehouse/transfer-history',
-  '/warehouse/finance',
-  '/branches',
-  '/hq/compare',
-  '/sales/my-shift',
-  '/sales/cash-count',
-  '/sales/kds',
-  '/sales/cc-inbox',
-  '/call-center',
-  '/reports/sales',
-  '/reports/inventory',
-  '/reports/consumption',
-  '/inventory/physical-stock',
-  '/backup-security',
-  '/printers',
-  '/cloud-sync',
-]
-
 /**
- * When SuperAdmin saved enabledPaths before new pages existed, those pages
- * would stay hidden. Merge known upgrade paths as enabled by default.
+ * SuperAdmin enabledPaths is authoritative.
+ * null / [] = everything enabled. Otherwise only listed paths are available
+ * (including for Admin). Do not re-add pages that were deliberately turned off.
  */
 export function expandEnabledPaths(enabledPaths) {
-  if (!Array.isArray(enabledPaths) || enabledPaths.length === 0) return enabledPaths
-  const known = new Set(visibleItems().map(i => i.path))
-  const set = new Set(enabledPaths)
-  let changed = false
-  for (const p of UPGRADE_ENABLED_PATHS) {
-    if (known.has(p) && !set.has(p)) {
-      set.add(p)
-      changed = true
-    }
-  }
-  return changed ? [...set] : enabledPaths
+  return enabledPaths
 }
 
 /** Default permission entries for new roles */

@@ -101,6 +101,33 @@ function sinceDate(since) {
   return Number.isFinite(d.getTime()) ? d : new Date(0)
 }
 
+/** Prefer header branch; if staff still has a stale All/other-branch header, fall back to home. */
+function resolveSyncBranch(req, { required = true } = {}) {
+  let branchId = String(resolveBranchId(req, { required: false }) || '').trim()
+  const home = String(req.user?.homeBranchId || '').trim()
+  const allowed = [
+    ...(Array.isArray(req.user?.branchIds) ? req.user.branchIds : []),
+    home,
+  ].filter(Boolean).map(String)
+  if (!branchId) {
+    branchId = home || allowed[0] || ''
+  } else {
+    try {
+      assertBranchAccess(req, branchId)
+    } catch (e) {
+      if (e?.status !== 403) throw e
+      branchId = home || allowed[0] || ''
+    }
+  }
+  if (!branchId && required) {
+    const err = new Error('branchId is required — select a branch in the header')
+    err.status = 400
+    throw err
+  }
+  if (branchId) assertBranchAccess(req, branchId)
+  return branchId
+}
+
 function stripImmutable(doc = {}) {
   const clean = { ...doc }
   delete clean._id
@@ -134,6 +161,41 @@ async function upsertById(Model, id, clean, { mergeFn } = {}) {
     { $set: payload },
     { upsert: true, setDefaultsOnInsert: true, timestamps: false }
   )
+}
+
+/**
+ * Branch row wins by _id. If cloud already has the same idempotencyKey under a
+ * different _id, remove that duplicate and upsert the branch _id — otherwise
+ * sales (and other keyed docs) fail with E11000 and never land on cloud.
+ */
+async function upsertByIdPreferBranch(Model, id, clean) {
+  const payload = stripImmutable(clean)
+  try {
+    await Model.findByIdAndUpdate(
+      id,
+      { $set: payload },
+      { upsert: true, setDefaultsOnInsert: true, timestamps: false }
+    )
+    return
+  } catch (err) {
+    const key = payload.idempotencyKey
+    if (err?.code !== 11000 || !key) throw err
+    const existing = await Model.findOne({ idempotencyKey: key }).lean()
+    if (existing?._id && String(existing._id) !== String(id)) {
+      await Model.deleteOne({ _id: existing._id })
+      await Model.findByIdAndUpdate(
+        id,
+        { $set: payload },
+        { upsert: true, setDefaultsOnInsert: true, timestamps: false }
+      )
+      return
+    }
+    if (existing?._id) {
+      await Model.findByIdAndUpdate(existing._id, { $set: payload }, { timestamps: false })
+      return
+    }
+    throw err
+  }
 }
 
 /**
@@ -269,8 +331,7 @@ async function upsertShared(Model, row) {
  */
 router.get('/pull', async (req, res, next) => {
   try {
-    const branchId = resolveBranchId(req, { required: true })
-    assertBranchAccess(req, branchId)
+    const branchId = resolveSyncBranch(req, { required: true })
     const since = sinceDate(req.query.since)
     const deviceId = String(req.query.deviceId || 'default')
     const limit = Math.min(Math.max(Number(req.query.limit) || 500, 50), 2000)
@@ -331,9 +392,17 @@ router.get('/pull', async (req, res, next) => {
  */
 router.post('/push', async (req, res, next) => {
   try {
-    const branchId = String(req.body?.branchId || resolveBranchId(req) || '').trim()
-    if (!branchId) return res.status(400).json({ error: 'branchId required' })
-    assertBranchAccess(req, branchId)
+    // Body branchId wins when allowed; otherwise fall back (staff after Admin "All")
+    let branchId = String(req.body?.branchId || '').trim()
+    if (branchId) {
+      try {
+        assertBranchAccess(req, branchId)
+      } catch (e) {
+        if (e?.status !== 403) throw e
+        branchId = ''
+      }
+    }
+    if (!branchId) branchId = resolveSyncBranch(req, { required: true })
     const deviceId = String(req.body?.deviceId || 'default')
     const docs = req.body?.docs || {}
     const results = {}
@@ -366,11 +435,8 @@ router.post('/push', async (req, res, next) => {
             await upsertById(Model, id, clean, { mergeFn })
           } else if (id) {
             // Branch row replaces the cloud row. Same _id, no duplicate.
-            await Model.findByIdAndUpdate(
-              id,
-              { $set: clean },
-              { upsert: true, setDefaultsOnInsert: true, timestamps: false }
-            )
+            // Sales/returns/etc. may collide on idempotencyKey — resolve that.
+            await upsertByIdPreferBranch(Model, id, clean)
           } else if (clean.idempotencyKey) {
             const existing = await Model.findOne({ idempotencyKey: clean.idempotencyKey }).lean()
             if (existing?._id) {
@@ -380,6 +446,25 @@ router.post('/push', async (req, res, next) => {
             }
           } else {
             await Model.create(clean)
+          }
+
+          // Deleted sale on branch ⇒ remove the live sale on cloud too
+          if (name === 'deletedSales') {
+            const orig = clean.originalSaleId || row.originalSaleId
+            if (orig) {
+              try { await Sale.findByIdAndDelete(orig) } catch {}
+            }
+            // Also drop by billNo+branch when id was remapped
+            if (clean.billNo && clean.branchId) {
+              try {
+                const q = {
+                  billNo: String(clean.billNo),
+                  branchId: String(clean.branchId),
+                }
+                if (clean.date) q.date = String(clean.date).slice(0, 10)
+                await Sale.deleteMany(q)
+              } catch {}
+            }
           }
           upserted += 1
         } catch (rowErr) {

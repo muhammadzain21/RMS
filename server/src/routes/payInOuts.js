@@ -68,6 +68,19 @@ router.patch('/:id', requireRole('Admin','Manager'), blockIfClosedFromModel(PayI
 
 router.delete('/:id', requireRole('Admin','Manager'), blockIfClosedFromModel(PayInOut), async (req, res, next) => {
   try {
+    // Same secret-key guard as sale / cash-opening deletion
+    const provided = req.headers['x-delete-key'] || req.query.key || (req.body && req.body.key) || ''
+    let branchId = ''
+    try {
+      const { resolveBranchId } = await import('../utils/branchScope.js')
+      branchId = resolveBranchId(req) || ''
+    } catch { branchId = '' }
+    const { getSettingsLean } = await import('../utils/settingsScope.js')
+    const s = await getSettingsLean(branchId)
+    const expected = String(s?.salesDeleteKey || '')
+    if (!expected) return res.status(403).json({ error: 'Delete key not set. Set it in Settings.' })
+    if (String(provided || '') !== expected) return res.status(403).json({ error: 'Invalid delete key' })
+
     await PayInOut.findByIdAndDelete(req.params.id)
     await logAudit(req, 'cash', `Deleted pay IO ${req.params.id}`, { id: req.params.id })
     res.json({ ok: true })

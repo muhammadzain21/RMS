@@ -41,7 +41,12 @@ export default function SalesNew() {
   const { requireBranch, branches } = useBranch()
   const { confirm, ConfirmDialog } = useConfirm()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
-  const authHeaders = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' }
+  const authHeaders = useMemo(
+    () => (token
+      ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      : { 'Content-Type': 'application/json' }),
+    [token],
+  )
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -776,15 +781,17 @@ export default function SalesNew() {
         itemsDiscount: disc,
         totalAmount,
       }
-      // Single Foodpanda tender: align amount to FP total so rates stick on the bill
+      // Single Foodpanda tender: align bill portion to FP rates; keep tip in method amount
       if (Array.isArray(pay?.payments) && pay.payments.length === 1 && String(pay.payments[0].method || '').toLowerCase() === 'foodpanda') {
+        const tipKeep = Math.max(0, Number(pay.tipAmount || 0))
+        const collected = totalAmount + tipKeep
         nextPay = {
           ...pay,
           orderType: 'Foodpanda',
           method: 'foodpanda',
-          payments: [{ ...pay.payments[0], amount: totalAmount }],
-          cashReceived: 0,
-          tipAmount: 0,
+          payments: [{ ...pay.payments[0], amount: collected }],
+          cashReceived: collected,
+          tipAmount: tipKeep,
         }
       } else {
         nextPay = { ...pay, orderType: 'Foodpanda' }
@@ -878,7 +885,7 @@ export default function SalesNew() {
         bankLast4: String(last4 || ''),
         bankRef: '',
         tipAmount,
-        cashReceived: Number(cashIn || 0) || payments.filter(p => p.method === 'cash').reduce((s, p) => s + Number(p.amount || 0), 0),
+        cashReceived: Number(cashIn || 0) || (Number(ord.totalAmount || 0) + tipAmount) || payments.reduce((s, p) => s + Number(p.amount || 0), 0),
         staffId: staffLeg ? String(staffIdPay) : '',
         staffName: staffLeg ? staffNamePay : '',
         staffSettlement: staffLeg ? 'pay_later' : '',
@@ -909,7 +916,7 @@ export default function SalesNew() {
       setRecallToPay(null)
       try { if (saleBody.callCenterOrderId) sessionStorage.removeItem('cc_order_id') } catch {}
 
-      // Print receipt — tip (not change) when customer overpays in cash
+      // Print receipt — tip (not change) when customer overpays (cash/card/bank/foodpanda)
       // Look up floor information from tables array for Dine-in orders
       const tableObj = saleBody.orderType === 'Dine-in' && saleBody.tableNo
         ? tables.find(t => (t.name || t.label || t.code || String(t)) === saleBody.tableNo)
@@ -958,15 +965,10 @@ export default function SalesNew() {
         // Avoid duplicates by id
         const exists = mapped?.id && prev.some(s => s.id === mapped.id)
         const nextSales = exists ? prev : [mapped, ...prev]
-        const hydrate = { sales: nextSales }
-        if (savedSale?.tipPayOut) {
-          const tipEntry = { ...savedSale.tipPayOut, id: savedSale.tipPayOut.id || savedSale.tipPayOut._id }
-          hydrate.payInOuts = [tipEntry, ...(state.payInOuts || [])]
-        }
-        dispatch({ type: 'HYDRATE', payload: hydrate })
+        dispatch({ type: 'HYDRATE', payload: { sales: nextSales } })
       } catch {}
       if (tipAmount > 0) {
-        toast.success(`Waiter tip Pay Out: PKR ${tipAmount.toLocaleString()}`)
+        toast.success(`Waiter tip: PKR ${tipAmount.toLocaleString()}`)
       }
 
       // Also refresh ingredients so inventory changes appear immediately across the app (e.g., Consumption page)
@@ -988,7 +990,7 @@ export default function SalesNew() {
           riderName: rider.name || '',
           deliveries: 1,
           amount: Number(ord.totalAmount||0),
-          deliveryCharge: Number(ord.deliveryCharge||0),
+          deliveryCharge: Number(ord.deliveryAmt || ord.deliveryCharge || 0),
           method: 'COD',
           orderId: String(savedSale?.id || savedSale?._id || ord.id || ''),
           note: ord.customer?.address || '',

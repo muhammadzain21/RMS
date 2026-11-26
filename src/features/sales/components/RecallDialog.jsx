@@ -51,16 +51,34 @@ export default function RecallDialog({
  // Start with loading=true when using server fetch to prevent empty table flash
  const showLoading = loading || (canFetch && !hasLoaded)
 
+ // Stabilize auth header object so parent re-renders don't retrigger fetch (dialog "shake")
+ const authKey = useMemo(() => {
+  try {
+   return JSON.stringify(authHeaders || {})
+  } catch {
+   return String(authHeaders?.Authorization || '')
+  }
+ }, [authHeaders])
+ const stableHeaders = useMemo(() => {
+  try { return authHeaders ? { ...authHeaders } : {} } catch { return {} }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [authKey])
+
  useEffect(() => {
  if (!open) return
  if (page !== 1) setPage(1)
  }, [open, waiterFilter, typeFilter, limit])
 
  const [refreshTick, setRefreshTick] = useState(0)
+ const quietRefreshRef = useRef(false)
 
  useEffect(() => {
  if (!open) return
- const bump = () => setRefreshTick((n) => n + 1)
+ // Soft background refresh — do not flash the loading overlay
+ const bump = () => {
+  quietRefreshRef.current = true
+  setRefreshTick((n) => n + 1)
+ }
  window.addEventListener('live_refresh', bump)
  window.addEventListener('epicspire:sync', bump)
  return () => {
@@ -76,18 +94,20 @@ export default function RecallDialog({
  const waiterId = String(waiterFilter || '').trim()
  const orderType = String(typeFilter || '').trim()
  const q = String(search || '').trim()
+ const quiet = quietRefreshRef.current
+ quietRefreshRef.current = false
 
  const ctrl = new AbortController()
  ;(async () => {
  try {
- setLoading(true)
+ if (!quiet) setLoading(true)
  const params = new URLSearchParams()
  params.set('page', String(page))
  params.set('limit', String(limit))
  if (waiterId) params.set('waiterId', waiterId)
  if (orderType) params.set('orderType', orderType)
  if (q) params.set('search', q)
- const res = await fetch(`${API}/api/recalls?${params.toString()}`, { headers: authHeaders, signal: ctrl.signal, cache: 'no-store' })
+ const res = await fetch(`${API}/api/recalls?${params.toString()}`, { headers: stableHeaders, signal: ctrl.signal, cache: 'no-store' })
  if (!res.ok) return
  const data = await res.json()
  const rows = (Array.isArray(data?.data) ? data.data : []).filter((r) => !r?.clearedAt)
@@ -96,10 +116,10 @@ export default function RecallDialog({
  setPages(Number(data?.pages || 1))
  setHasLoaded(true)
  } catch {}
- finally { setLoading(false) }
+ finally { if (!quiet) setLoading(false) }
  })()
  return () => ctrl.abort()
- }, [open, canFetch, API, authHeaders, page, limit, waiterFilter, typeFilter, search, refreshTick])
+ }, [open, canFetch, API, stableHeaders, page, limit, waiterFilter, typeFilter, search, refreshTick])
 
  const filtered = useMemo(() => {
  if (canFetch) return effectiveRows

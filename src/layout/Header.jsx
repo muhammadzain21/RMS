@@ -173,13 +173,13 @@ export default function Header({ brand, onMenuClick, onCollapseClick, collapsed,
         {/* Right meta — wraps instead of overlapping brand */}
         <div className="flex items-center justify-end gap-1.5 sm:gap-2 min-w-0 flex-[1_1_18rem] flex-wrap">
           {isHqUser && branches.length > 0 ? (
-            <label className="flex items-center gap-1 min-w-0 max-w-[9.5rem] sm:max-w-[12rem] lg:max-w-[14rem]" title="Header branch wins over page filters">
-              <span className="hidden xl:inline text-[10px] font-semibold text-white/80 whitespace-nowrap">Working as</span>
+            <label className="flex items-center gap-1 min-w-0 w-[14rem] sm:w-[16rem] lg:w-[18rem] max-w-full" title="Header branch wins over page filters">
+              <span className="hidden xl:inline text-[10px] font-semibold text-white/80 whitespace-nowrap shrink-0">Working as</span>
               <select
                 value={activeBranchId || ''}
                 onChange={(e) => setActiveBranchId(e.target.value)}
                 title="Working as — preferred over page branch filters"
-                className="min-w-0 w-full truncate rounded-lg border-0 bg-white/25 px-2 py-1.5 text-xs font-bold text-white outline-none shadow-sm"
+                className="min-w-0 flex-1 truncate rounded-lg border-0 bg-white/25 px-2.5 py-1.5 text-xs font-bold text-white outline-none shadow-sm"
               >
                 <option value="" className="text-slate-900">All branches</option>
                 {branches.map(b => (

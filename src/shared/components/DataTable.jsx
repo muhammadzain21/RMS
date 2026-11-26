@@ -89,7 +89,7 @@ export default function DataTable({
  {exportable && (
  <div className="flex items-center gap-2 ml-auto"><button onClick={exportCsv} className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">Export CSV</button></div>
  )}
- </div><div className="border border-gray-200 dark:border-gray-800 rounded" style={{ maxHeight, overflow: 'auto' }}><table className={`min-w-full ${compact ? 'text-xs' : 'text-sm'}`}><thead className="bg-gray-100 dark:bg-gray-800 sticky top-0 z-10"><tr>
+ </div><div className="border border-gray-200 dark:border-gray-800 rounded" style={maxHeight ? { maxHeight, overflow: 'auto' } : undefined}><table className={`min-w-full ${compact ? 'text-xs' : 'text-sm'}`}><thead className={`bg-gray-100 dark:bg-gray-800 ${maxHeight ? 'sticky top-0 z-10' : ''}`}><tr>
  {columns.map(col => {
  const key = col.key || col.label
  const isSortable = !!col.key

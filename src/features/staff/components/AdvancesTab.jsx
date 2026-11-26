@@ -295,6 +295,7 @@ export default function AdvancesTab({
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-100 dark:bg-slate-700/50">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">SR No</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Date</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Type</th>
@@ -306,7 +307,7 @@ export default function AdvancesTab({
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                 {monthAdvances.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
+                    <td colSpan={7} className="px-6 py-12 text-center">
                       <p className="text-slate-400 dark:text-slate-500">No advance records for {month}</p>
                     </td>
                   </tr>
@@ -316,6 +317,7 @@ export default function AdvancesTab({
                   const locked = t === 'payroll_deduct';
                   return (
                     <tr key={a.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}>
+                      <td className="px-6 py-4 font-medium text-slate-500 dark:text-slate-400">{idx + 1}</td>
                       <td className="px-6 py-4"><span className="font-medium text-slate-700 dark:text-slate-300">{a.date || '-'}</span></td>
                       <td className="px-6 py-4"><span className="font-medium text-slate-700 dark:text-slate-300">{a.staffName || staffName(a.staffId)}</span></td>
                       <td className="px-6 py-4">
@@ -356,6 +358,7 @@ export default function AdvancesTab({
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-100 dark:bg-slate-700/50">
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">SR No</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Salary</th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Limit</th>
@@ -366,13 +369,14 @@ export default function AdvancesTab({
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                 {filteredBalances.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center">
+                    <td colSpan={6} className="px-6 py-12 text-center">
                       <p className="text-slate-400 dark:text-slate-500">No staff</p>
                     </td>
                   </tr>
                 )}
                 {filteredBalances.map((b, idx) => (
                   <tr key={b.staffId} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}>
+                    <td className="px-6 py-4 font-medium text-slate-500 dark:text-slate-400">{idx + 1}</td>
                     <td className="px-6 py-4">
                       <div className="font-semibold text-slate-800 dark:text-slate-200">{b.name}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">{b.position || '—'}</div>

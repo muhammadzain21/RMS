@@ -57,14 +57,24 @@ router.get('/', authRequired, async (req, res, next) => {
 })
 
 /**
- * Inbox — all branches by default (not tied to header branch).
+ * Inbox — scoped to the active header branch (X-Branch-Id), so each branch
+ * only sees orders sent to it. Optional ?branchId= overrides; ?branchId=all for HQ-wide.
  * ?tab=remaining (default) → pending / accepted
  * ?tab=complete → kot_created and beyond (incl. cancelled)
- * optional ?branchId= to narrow
  */
 router.get('/inbox', authRequired, async (req, res, next) => {
   try {
-    const scope = callCenterListScope(req)
+    const qBranch = String(req.query.branchId || '').trim()
+    let scope
+    if (qBranch && qBranch.toLowerCase() === 'all') {
+      scope = branchFilter(req, { allowAllForHq: true, allAccessible: true })
+    } else if (qBranch) {
+      assertBranchAccess(req, qBranch)
+      scope = { branchId: qBranch }
+    } else {
+      // Active branch from header — branch cashiers see their own orders only
+      scope = branchFilter(req)
+    }
     const tab = String(req.query.tab || 'remaining').toLowerCase()
     // Remaining = waiting for cashier / still open at branch
     // Complete = kitchen progress + finished / cancelled

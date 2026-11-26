@@ -19,9 +19,10 @@ const isEnabled = (enabledPaths, path) =>
 
 export function isDashboardVisible(user, enabledPaths) {
  enabledPaths = expandEnabledPaths(enabledPaths)
- // Admin / SuperAdmin always see everything
- if (user?.role === 'SuperAdmin' || user?.role === 'Admin') return true
+ // SuperAdmin portal owner sees everything; Admin still respects installation gates
+ if (user?.role === 'SuperAdmin') return true
  if (!isEnabled(enabledPaths, '/')) return false
+ if (user?.role === 'Admin') return true
  if (user?.permissions && Array.isArray(user.permissions)) {
  return user.permissions.some(p => p.path === '/' && p.visible)
  }
@@ -47,9 +48,17 @@ function withStaffMyWork(sections, user) {
 export function getVisibleSections(user, enabledPaths) {
  enabledPaths = expandEnabledPaths(enabledPaths)
  const sections = navSections()
- // Admin / SuperAdmin always get every page
- if (user?.role === 'SuperAdmin' || user?.role === 'Admin') {
+ // SuperAdmin portal owner sees every page; Admin only sees SuperAdmin-enabled features
+ if (user?.role === 'SuperAdmin') {
  return withStaffMyWork(sections, user)
+ }
+ if (user?.role === 'Admin') {
+ return withStaffMyWork(
+  sections
+   .map(s => ({ ...s, items: s.items.filter(i => isEnabled(enabledPaths, i.to)) }))
+   .filter(s => s.items.length > 0),
+  user
+ )
  }
  if (user?.permissions && Array.isArray(user.permissions)) {
  const allowedPaths = new Set(user.permissions.filter(p => p.visible && p.path !== '/my').map(p => p.path))

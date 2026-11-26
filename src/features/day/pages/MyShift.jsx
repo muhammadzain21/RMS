@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast'
 import {
   RefreshCw, Wallet, Moon, ArrowLeftRight, Receipt,
   TrendingUp, ArrowDownLeft,
-  Printer, FileText, ClipboardList, CreditCard, Landmark, Bike, Users,
+  Printer, FileText, ClipboardList, CreditCard, Landmark, Bike, Users, ShoppingBag, HandCoins, Truck,
 } from 'lucide-react'
 import { useAuth } from '@/state/AuthContext.jsx'
 import { useData } from '@/state/DataContext.jsx'
@@ -77,13 +77,14 @@ function SectionTable({ title, icon: Icon, headers, rows, footer, emptyText }) {
         </div>
       ) : (
         <div className="overflow-x-auto -mx-1 px-1">
-          <table className="w-full min-w-[1100px] text-sm">
+          <table className="w-full min-w-[1100px] text-sm table-fixed">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
               <tr>
                 {headers.map(h => (
                   <th
                     key={h.key || h.label}
-                    className={`px-3 py-2.5 whitespace-nowrap ${h.align === 'r' ? 'text-right' : 'text-left'}`}
+                    className={`px-3 py-2.5 break-words whitespace-normal align-top ${h.align === 'r' ? 'text-right' : 'text-left'}`}
+                    style={h.width ? { width: h.width } : undefined}
                   >
                     {h.label}
                   </th>
@@ -96,8 +97,8 @@ function SectionTable({ title, icon: Icon, headers, rows, footer, emptyText }) {
                   {cells.map((c, j) => (
                     <td
                       key={j}
-                      className={`px-3 py-2.5 font-semibold text-slate-800 dark:text-slate-100 ${
-                        c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : 'whitespace-nowrap'
+                      className={`px-3 py-2.5 font-semibold text-slate-800 dark:text-slate-100 break-words whitespace-normal align-top ${
+                        c?.align === 'r' ? 'text-right tabular-nums' : ''
                       }`}
                       title={typeof (c?.v ?? c) === 'string' ? (c?.v ?? c) : undefined}
                     >
@@ -113,8 +114,8 @@ function SectionTable({ title, icon: Icon, headers, rows, footer, emptyText }) {
                   {footer.map((c, j) => (
                     <td
                       key={j}
-                      className={`px-3 py-2.5 font-bold text-slate-900 dark:text-slate-100 ${
-                        c?.align === 'r' ? 'text-right tabular-nums whitespace-nowrap' : ''
+                      className={`px-3 py-2.5 font-bold text-slate-900 dark:text-slate-100 break-words whitespace-normal ${
+                        c?.align === 'r' ? 'text-right tabular-nums' : ''
                       }`}
                     >
                       {c?.v ?? c}
@@ -139,6 +140,8 @@ const SALE_HEADERS = [
   { key: 'waiter', label: 'Waiter' },
   { key: 'rider', label: 'Rider' },
   { key: 'saleTotal', label: 'Sale Total', align: 'r' },
+  { key: 'delivery', label: 'Delivery Charges', align: 'r' },
+  { key: 'tip', label: 'Waiter Tip', align: 'r' },
   { key: 'net', label: 'Net Amount', align: 'r' },
   { key: 'pm', label: 'Payment Mode' },
   { key: 'status', label: 'Status' },
@@ -171,6 +174,8 @@ function mapSaleRows(list, { date, staff = [], onView, onPrint } = {}) {
       waiter,
       rider,
       { v: `PKR ${money(r.saleTotal ?? r.total)}`, align: 'r' },
+      { v: Number(r.deliveryAmt || 0) > 0 ? `PKR ${money(r.deliveryAmt)}` : '—', align: 'r' },
+      { v: Number(r.tipAmount || 0) > 0 ? `PKR ${money(r.tipAmount)}` : '—', align: 'r' },
       { v: `PKR ${money(r.netAmount ?? r.total)}`, align: 'r' },
       r.paymentMethod || '—',
       {
@@ -211,11 +216,15 @@ function mapSaleRows(list, { date, staff = [], onView, onPrint } = {}) {
 
 function saleFooter(list) {
   const saleTotal = (list || []).reduce((s, r) => s + Number((r.saleTotal ?? r.total) || 0), 0)
+  const deliveryTotal = (list || []).reduce((s, r) => s + Number(r.deliveryAmt || 0), 0)
+  const tipTotal = (list || []).reduce((s, r) => s + Number(r.tipAmount || 0), 0)
   const netTotal = (list || []).reduce((s, r) => s + Number((r.netAmount ?? r.total) || 0), 0)
   return [
     { v: 'Total' },
     '', '', '', '', '', '',
     { v: `PKR ${money(saleTotal)}`, align: 'r' },
+    { v: deliveryTotal > 0 ? `PKR ${money(deliveryTotal)}` : '—', align: 'r' },
+    { v: tipTotal > 0 ? `PKR ${money(tipTotal)}` : '—', align: 'r' },
     { v: `PKR ${money(netTotal)}`, align: 'r' },
     '', '', '', '',
   ]
@@ -264,7 +273,7 @@ export default function MyShift() {
   const who = user?.name || user?.username || data?.user?.name || 'User'
   const company = state?.settings?.companyName || 'Restaurant POS'
 
-  // Widgets always visible (day open or closed) — zeros are fine
+  // Exactly 8 cards → 2 rows × 4 (Pay In/Out combined)
   const widgets = useMemo(() => ([
     { title: 'Cash opening', value: `PKR ${money(summary.openingCash)}`, icon: Wallet, iconColor: 'bg-sky-500' },
     { title: 'Cash sales', value: `PKR ${money(summary.salesCash)}`, icon: Wallet, iconColor: 'bg-teal-500' },
@@ -272,11 +281,36 @@ export default function MyShift() {
     { title: 'Bank sales', value: `PKR ${money(summary.salesBank)}`, icon: Landmark, iconColor: 'bg-blue-600' },
     { title: 'Foodpanda', value: `PKR ${money(summary.salesFoodpanda)}`, icon: Bike, iconColor: 'bg-pink-500' },
     { title: 'Staff', value: `PKR ${money(summary.salesStaff)}`, icon: Users, iconColor: 'bg-violet-500' },
-    { title: 'Pay In', value: `PKR ${money(summary.payIn)}`, icon: ArrowDownLeft, iconColor: 'bg-cyan-500' },
-    { title: 'Pay Out', value: `PKR ${money(summary.payOut)}`, icon: Receipt, iconColor: 'bg-rose-500' },
-    { title: 'Expenses', value: `PKR ${money(summary.expenses)}`, icon: Receipt, iconColor: 'bg-amber-500' },
+    {
+      title: 'Pay In / Out',
+      value: `IN ${money(summary.payIn)} · OUT ${money(summary.payOut)}`,
+      icon: ArrowLeftRight,
+      iconColor: 'bg-cyan-600',
+    },
     { title: 'Expected drawer', value: `PKR ${money(summary.expectedDrawer)}`, icon: TrendingUp, iconColor: 'bg-slate-700' },
   ]), [summary])
+
+  // Utilization row — also 4 across
+  const chargeWidgets = useMemo(() => ([
+    { title: 'Tips', value: `PKR ${money(summary.tips)}`, icon: HandCoins, iconColor: 'bg-rose-600' },
+    { title: 'Charges', value: `PKR ${money(summary.deliveryCharges)}`, icon: Truck, iconColor: 'bg-orange-500' },
+    { title: 'Expense cash', value: `PKR ${money(summary.expensesCash ?? summary.expenses)}`, icon: Receipt, iconColor: 'bg-amber-500' },
+    {
+      title: 'Cash utilized',
+      value: `PKR ${money((Number(summary.tips) || 0) + (Number(summary.deliveryCharges) || 0) + (Number(summary.expensesCash ?? summary.expenses) || 0) + (Number(summary.payOut) || 0))}`,
+      icon: TrendingUp,
+      iconColor: 'bg-slate-600',
+    },
+  ]), [summary])
+
+  const utilization = summary.utilization || {
+    cashCollected: summary.cashCollected,
+    tips: summary.tips,
+    deliveryCharges: summary.deliveryCharges,
+    cashExpenses: summary.expensesCash ?? summary.expenses,
+    payOut: summary.payOut,
+    remainingInDrawer: summary.expectedDrawer,
+  }
 
   const onViewSale = useCallback((r) => {
     setViewSale({
@@ -335,11 +369,18 @@ export default function MyShift() {
         bankChannel: sale.bankChannel || '',
         bankLast4: sale.bankLast4 || '',
         bankRef: sale.bankRef || '',
-        tipAmount: Number(sale.tipAmount || 0),
+        tipAmount: Number(sale.tipAmount || r.tipAmount || 0),
+        deliveryAmt: Number(sale.deliveryAmt || sale.deliveryCharges || r.deliveryAmt || 0),
         staffId: sale.staffId || '',
         staffName: sale.staffName || '',
         staffSettlement: sale.staffSettlement || '',
-        cashReceived: sale.cashReceived || sale.total || sale.totalAmount || 0,
+        cashReceived: (() => {
+          const tip = Math.max(0, Number(sale.tipAmount || r.tipAmount || 0))
+          const stored = Math.max(0, Number(sale.cashReceived || 0))
+          const bill = Math.max(0, Number(sale.total ?? sale.totalAmount ?? r.netAmount ?? 0))
+          if (stored > 0) return stored
+          return bill + tip
+        })(),
         changeDue: sale.changeDue || 0,
         payRemarks: sale.payRemarks || '',
         lineTotal,
@@ -364,11 +405,24 @@ export default function MyShift() {
 
   const sections = useMemo(() => {
     const openings = tables.openings || []
-    const cashSales = tables.cashSales || []
-    const cardSales = tables.cardSales || []
-    const bankSales = tables.bankSales || []
-    const foodpandaSales = tables.foodpandaSales || []
-    const staffSales = tables.staffSales || []
+    // One combined sales table (API already returns deduped `tables.sales`)
+    const allSales = Array.isArray(tables.sales) && tables.sales.length
+      ? tables.sales
+      : (() => {
+          const byId = new Map()
+          for (const r of [
+            ...(tables.cashSales || []),
+            ...(tables.cardSales || []),
+            ...(tables.bankSales || []),
+            ...(tables.foodpandaSales || []),
+            ...(tables.staffSales || []),
+          ]) {
+            const id = String(r?.id || '')
+            if (id) byId.set(id, r)
+            else byId.set(`tmp-${byId.size}`, r)
+          }
+          return [...byId.values()]
+        })()
     const payIn = tables.payIn || []
     const payOut = tables.payOut || []
     const expenses = tables.expenses || []
@@ -399,44 +453,13 @@ export default function MyShift() {
         ] : null,
       },
       {
-        key: 'cashSales',
-        title: 'Cash Sales',
-        icon: Wallet,
+        key: 'sales',
+        title: 'Sales',
+        icon: ShoppingBag,
         headers: SALE_HEADERS,
-        rows: mapSaleRows(cashSales, saleOpts),
-        footer: cashSales.length ? saleFooter(cashSales) : null,
-      },
-      {
-        key: 'cardSales',
-        title: 'Card Sales',
-        icon: CreditCard,
-        headers: SALE_HEADERS,
-        rows: mapSaleRows(cardSales, saleOpts),
-        footer: cardSales.length ? saleFooter(cardSales) : null,
-      },
-      {
-        key: 'bankSales',
-        title: 'Bank Sales',
-        icon: Landmark,
-        headers: SALE_HEADERS,
-        rows: mapSaleRows(bankSales, saleOpts),
-        footer: bankSales.length ? saleFooter(bankSales) : null,
-      },
-      {
-        key: 'foodpandaSales',
-        title: 'Foodpanda Sales',
-        icon: Bike,
-        headers: SALE_HEADERS,
-        rows: mapSaleRows(foodpandaSales, saleOpts),
-        footer: foodpandaSales.length ? saleFooter(foodpandaSales) : null,
-      },
-      {
-        key: 'staffSales',
-        title: 'Staff Sales',
-        icon: Users,
-        headers: SALE_HEADERS,
-        rows: mapSaleRows(staffSales, saleOpts),
-        footer: staffSales.length ? saleFooter(staffSales) : null,
+        rows: mapSaleRows(allSales, saleOpts),
+        footer: allSales.length ? saleFooter(allSales) : null,
+        alwaysShow: true,
       },
       {
         key: 'payIn',
@@ -486,7 +509,7 @@ export default function MyShift() {
       },
       {
         key: 'expenses',
-        title: 'Expenses',
+        title: 'Expenses (cash + bank)',
         icon: Receipt,
         headers: [
           { key: 't', label: 'Time' },
@@ -541,7 +564,9 @@ export default function MyShift() {
         { label: 'Staff', amount: `PKR ${money(summary.salesStaff)}` },
         { label: 'Pay In', amount: `PKR ${money(summary.payIn)}` },
         { label: 'Pay Out', amount: `PKR ${money(summary.payOut)}` },
-        { label: 'Expenses', amount: `PKR ${money(summary.expenses)}` },
+        { label: 'Tips', amount: `PKR ${money(summary.tips)}` },
+        { label: 'Charges', amount: `PKR ${money(summary.deliveryCharges)}` },
+        { label: 'Expense cash', amount: `PKR ${money(summary.expensesCash ?? summary.expenses)}` },
         { label: 'Expected drawer', amount: `PKR ${money(summary.expectedDrawer)}` },
       ]
 
@@ -625,8 +650,19 @@ export default function MyShift() {
     ${row('Staff', summary.salesStaff)}
     ${row('Pay In', summary.payIn)}
     ${row('Pay Out', summary.payOut)}
-    ${row('Expenses', summary.expenses)}
+    ${row('Tips', summary.tips)}
+    ${row('Charges', summary.deliveryCharges)}
+    ${row('Expense cash', summary.expensesCash ?? summary.expenses)}
     <div class="kvrow big"><span>Expected drawer</span><span class="v">PKR ${money(summary.expectedDrawer)}</span></div>
+  </div>
+  <div class="block">
+    <div class="sec">Cash utilization</div>
+    ${row('Cash in (opening + sales + pay in)', utilization.cashCollected)}
+    ${row('→ Tips', utilization.tips)}
+    ${row('→ Charges', utilization.deliveryCharges)}
+    ${row('→ Expense cash', utilization.cashExpenses)}
+    ${row('→ Pay Out', utilization.payOut)}
+    <div class="kvrow big"><span>Left in drawer</span><span class="v">PKR ${money(utilization.remainingInDrawer)}</span></div>
   </div>
   <div class="endline">END OF DAY SUMMARY</div>
 </body></html>`
@@ -695,10 +731,21 @@ export default function MyShift() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {widgets.map(w => (
           <StatCard key={w.title} title={w.title} value={w.value} icon={w.icon} iconColor={w.iconColor} />
         ))}
+      </div>
+
+      <div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+          Cash utilization · Tips / Charges / Expense cash
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {chargeWidgets.map(w => (
+            <StatCard key={w.title} title={w.title} value={w.value} icon={w.icon} iconColor={w.iconColor} />
+          ))}
+        </div>
       </div>
 
       {loading && (

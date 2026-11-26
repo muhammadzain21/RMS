@@ -16,19 +16,29 @@ import {
 const inputClass =
   'w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all'
 
+function readFormFromStorage() {
+  try {
+    return {
+      enabled: isCloudSyncEnabled(),
+      url: getSavedCloudUrl() || String(localStorage.getItem('cloud_sync_url') || ''),
+      token: String(localStorage.getItem('cloud_sync_token') || ''),
+    }
+  } catch {
+    return { enabled: false, url: '', token: '' }
+  }
+}
+
+function sameOrigin(a, b) {
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    return String(a || '').replace(/\/+$/, '') === String(b || '').replace(/\/+$/, '')
+  }
+}
+
 export default function CloudSyncSettings() {
   const { token } = useAuth()
-  const [form, setForm] = useState(() => {
-    try {
-      return {
-        enabled: isCloudSyncEnabled(),
-        url: getSavedCloudUrl() || String(localStorage.getItem('cloud_sync_url') || ''),
-        token: String(localStorage.getItem('cloud_sync_token') || ''),
-      }
-    } catch {
-      return { enabled: false, url: '', token: '' }
-    }
-  })
+  const [form, setForm] = useState(readFormFromStorage)
   const [status, setStatus] = useState(() => getSyncStatus())
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -37,11 +47,35 @@ export default function CloudSyncSettings() {
     try { setStatus(getSyncStatus()) } catch {}
   }
 
+  // Re-read storage when opening the page (avoids stale form after other tabs / reloads)
+  useEffect(() => {
+    setForm(readFormFromStorage())
+    refreshStatus()
+  }, [])
+
   useEffect(() => {
     const onSync = () => refreshStatus()
+    const onConfig = () => {
+      setForm(readFormFromStorage())
+      refreshStatus()
+    }
     window.addEventListener('epicspire:sync', onSync)
-    return () => window.removeEventListener('epicspire:sync', onSync)
+    window.addEventListener('cloud_sync_config_changed', onConfig)
+    return () => {
+      window.removeEventListener('epicspire:sync', onSync)
+      window.removeEventListener('cloud_sync_config_changed', onConfig)
+    }
   }, [])
+
+  const persist = ({ url, tok, enabled }) => {
+    const normalized = normalizeCloudUrl(url)
+    if (normalized) localStorage.setItem('cloud_sync_url', normalized)
+    else localStorage.removeItem('cloud_sync_url')
+    if (tok) localStorage.setItem('cloud_sync_token', tok)
+    else localStorage.removeItem('cloud_sync_token')
+    setCloudSyncEnabled(enabled)
+    return normalized
+  }
 
   const applyEngine = (enabled, url) => {
     try {
@@ -50,28 +84,48 @@ export default function CloudSyncSettings() {
       }))
     } catch {}
     if (!token) return
-    if (enabled && url) startSyncEngine(() => token)
+    if (enabled && url) startSyncEngine(() => sessionStorage.getItem('auth_token') || token)
     else stopSyncEngine()
   }
 
   const save = () => {
     setSaving(true)
     try {
-      const url = normalizeCloudUrl(form.url)
       const tok = String(form.token || '').trim()
-      const enabled = Boolean(form.enabled)
+      let enabled = Boolean(form.enabled)
+      const typed = String(form.url || '').trim()
 
-      if (url) localStorage.setItem('cloud_sync_url', url)
-      else localStorage.removeItem('cloud_sync_url')
-      if (tok) localStorage.setItem('cloud_sync_token', tok)
-      else localStorage.removeItem('cloud_sync_token')
-      setCloudSyncEnabled(enabled)
+      if (!typed && enabled) {
+        toast.error('Enter a Cloud Sync URL before enabling')
+        setSaving(false)
+        return
+      }
 
-      setForm((v) => ({ ...v, url, token: tok, enabled }))
+      // Typing a URL and hitting Save should turn sync on (common “I saved but nothing happened”)
+      if (typed && !enabled) enabled = true
+
+      const url = persist({ url: typed, tok, enabled })
+      if (typed && !url) {
+        toast.error('Invalid Cloud Sync URL')
+        setSaving(false)
+        return
+      }
+
+      const local = status.local || ((typeof window !== 'undefined' && window.API_BASE) || '')
+      if (url && local && sameOrigin(url, local)) {
+        toast.error('Cloud URL must be your VPS, not this PC’s local API')
+        // Still keep the saved values so the field does not look “wiped”
+        setForm({ enabled, url, token: tok })
+        refreshStatus()
+        setSaving(false)
+        return
+      }
+
+      setForm({ enabled, url, token: tok })
       applyEngine(enabled, url)
       refreshStatus()
 
-      if (!url) toast.success('Cloud URL cleared')
+      if (!url) toast.success('Cloud URL cleared — sync off')
       else if (!enabled) toast.success('Cloud sync off — URL kept')
       else toast.success(`Cloud sync on (${url})`)
     } catch {
@@ -82,15 +136,17 @@ export default function CloudSyncSettings() {
   }
 
   const toggleEnabled = (on) => {
-    setForm((v) => ({ ...v, enabled: on }))
-    // Instant toggle without requiring Save for the switch itself, but keep URL
     try {
-      const url = normalizeCloudUrl(form.url) || getSavedCloudUrl()
-      setCloudSyncEnabled(on)
-      if (url && !localStorage.getItem('cloud_sync_url')) {
-        localStorage.setItem('cloud_sync_url', url)
+      const typed = String(form.url || '').trim()
+      const url = normalizeCloudUrl(typed) || getSavedCloudUrl()
+      if (on && !url) {
+        toast.error('Enter and save a Cloud Sync URL first')
+        return
       }
-      applyEngine(on, url)
+      const tok = String(form.token || '').trim()
+      const savedUrl = persist({ url: url || typed, tok, enabled: on })
+      setForm((v) => ({ ...v, enabled: on, url: savedUrl || v.url }))
+      applyEngine(on, savedUrl)
       refreshStatus()
       toast.success(on ? 'Cloud sync enabled' : 'Cloud sync disabled')
     } catch {
@@ -197,9 +253,18 @@ export default function CloudSyncSettings() {
               className={inputClass}
               value={form.url}
               onChange={(e) => setForm((v) => ({ ...v, url: e.target.value }))}
+              onBlur={() => {
+                const normalized = normalizeCloudUrl(form.url)
+                if (normalized && normalized !== form.url) {
+                  setForm((v) => ({ ...v, url: normalized }))
+                }
+              }}
               placeholder="https://forksnknives.epicspire.com"
               autoComplete="off"
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Save once with the VPS URL — sync stays on for every login (cashier included).
+            </p>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -210,7 +275,7 @@ export default function CloudSyncSettings() {
               className={inputClass}
               value={form.token}
               onChange={(e) => setForm((v) => ({ ...v, token: e.target.value }))}
-              placeholder="Optional HQ JWT"
+              placeholder="Optional HQ JWT (recommended if VPS secret differs)"
               autoComplete="off"
             />
           </div>

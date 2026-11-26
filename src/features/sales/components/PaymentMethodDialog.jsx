@@ -149,12 +149,12 @@ export default function PaymentMethodDialog({
       return
     }
     const paid = pays.reduce((s, p) => s + Number(p.amount || 0), 0)
+    // Payments may include tip in the method amount (paid >= due)
     if (due > 0 && paid + 0.0001 < due) {
       setErr(`Still short ${fmt(due - paid)} — add another method`)
       return
     }
     const primary = pays[0]
-    const cashSum = pays.filter(p => p.method === 'cash').reduce((s, p) => s + Number(p.amount || 0), 0)
     const tip = Math.max(0, Number(tipAmount) || Math.max(0, paid - due))
     const rider = isDelivery && riderId
       ? { id: String(riderId), name: chosenRider?.name || '' }
@@ -172,7 +172,8 @@ export default function PaymentMethodDialog({
       })),
       bankChannel: pays.find(p => p.method === 'bank')?.bankChannel || '',
       bankLast4: pays.find(p => p.method === 'bank' || p.method === 'card')?.bankLast4 || '',
-      cashReceived: cashSum + tip,
+      // Full amount collected on the tender(s), including tip
+      cashReceived: Math.max(paid, due + tip),
       tipAmount: tip,
       staffId: pays.find(p => p.method === 'staff')?.staffId || '',
       staffName: pays.find(p => p.method === 'staff')?.staffName || '',
@@ -218,12 +219,13 @@ export default function PaymentMethodDialog({
       return
     }
 
+    // Overpayment on cash / card / bank / foodpanda = waiter tip.
+    // Tip stays IN the method amount so the bill shows full collected on that tender.
     let tipExtra = 0
-    if (m === 'cash') {
-      if (take > remaining) {
-        tipExtra = take - remaining
-        take = remaining
-      }
+    const tipAllowed = m === 'cash' || m === 'card' || m === 'bank' || m === 'foodpanda'
+    if (tipAllowed && take > remaining) {
+      tipExtra = take - remaining
+      // keep `take` as full collected (bill portion + tip)
     } else if (take > remaining) {
       take = remaining
     }
@@ -242,8 +244,9 @@ export default function PaymentMethodDialog({
     setPayments(next)
     setMethod('cash')
 
-    const nextPaid = next.reduce((s, p) => s + Number(p.amount || 0), 0)
-    if (nextPaid >= due) {
+    // Bill portion covered = sum of amounts minus tips embedded in this add
+    const nextBillCovered = next.reduce((s, p) => s + Number(p.amount || 0), 0) - tipExtra
+    if (nextBillCovered + 0.0001 >= due) {
       finish(next, tipExtra)
     }
   }
@@ -407,7 +410,7 @@ export default function PaymentMethodDialog({
               className="w-16 rounded-lg border border-[#d9d2c6] bg-white px-2 py-1.5 text-center text-sm text-[#5c4033]"
               title="Split into n parts"
             />
-            <span className="text-xs text-[#8a7364]">for 1/n · tip = cash over remaining</span>
+            <span className="text-xs text-[#8a7364]">for 1/n · tip = amount over remaining (cash/card/bank/FP)</span>
           </div>
 
           {payments.length > 0 && (
@@ -470,7 +473,13 @@ export default function PaymentMethodDialog({
                 onClick={() => addTender(method)}
                 className="w-full rounded-xl bg-[#1e4d8c] py-2.5 text-sm font-bold text-white"
               >
-                Add {method === 'bank' ? bankChannelLabel(bankChannel) || 'Bank' : method === 'card' ? 'Card' : 'Staff'} {fmt(amount > 0 ? Math.min(amount, remaining) : remaining)}
+                {(() => {
+                  const take = amount > 0 ? amount : remaining
+                  const tip = method !== 'staff' && take > remaining ? take - remaining : 0
+                  const label = method === 'bank' ? (bankChannelLabel(bankChannel) || 'Bank') : method === 'card' ? 'Card' : 'Staff'
+                  if (tip > 0) return `Add ${label} ${fmt(remaining)} + tip ${fmt(tip)}`
+                  return `Add ${label} ${fmt(take > 0 ? Math.min(take, remaining) : remaining)}`
+                })()}
               </button>
             </div>
           )}

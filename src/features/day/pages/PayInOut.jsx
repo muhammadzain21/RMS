@@ -7,7 +7,7 @@ import { useBusinessDateFilter } from '@/hooks/useBusinessDateFilter.js'
 import DatePicker from '@shared/components/DatePicker.jsx'
 import Pagination from '@shared/components/Pagination.jsx'
 import { toast } from 'react-hot-toast'
-import { useConfirm } from '@shared/components/useConfirm.jsx'
+import DeleteKeyModal from '@shared/components/DeleteKeyModal.jsx'
 import { X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { exportDateStamp } from '@shared/utils/listReportExport.js'
@@ -16,7 +16,6 @@ import { recordDateTime } from '@shared/utils/dateUtils.js'
 export default function PayInOut() {
  const { state, dispatch, businessDate } = useData()
  const { user, token } = useAuth()
- const { confirm, ConfirmDialog } = useConfirm()
  const today = businessDate || format(new Date(), 'yyyy-MM-dd')
 
  const [date, setDate] = useState(today)
@@ -25,6 +24,10 @@ export default function PayInOut() {
  const [amount, setAmount] = useState('')
  const [note, setNote] = useState('')
  const [showAddDialog, setShowAddDialog] = useState(false)
+ const [deleteOpen, setDeleteOpen] = useState(false)
+ const [deleteTarget, setDeleteTarget] = useState(null)
+ const [deleteBusy, setDeleteBusy] = useState(false)
+ const [deleteErr, setDeleteErr] = useState('')
 
  const { from: from, setFrom: setFrom, to: to, setTo: setTo } = useBusinessDateFilter()
  const [search, setSearch] = useState('')
@@ -36,7 +39,7 @@ export default function PayInOut() {
  const [serverRows, setServerRows] = useState([])
 
  // preset categories
- const presetCategories = ['Petty Cash','Supplies','Maintenance','Tips','Refund','Misc']
+ const presetCategories = ['Petty Cash','Supplies','Maintenance','Tips','Waiter Tip','Delivery Charges','Refund','Misc']
 
  // lock edits after day close
  const closedDates = useMemo(() => new Set((state.dayCloses||[]).map(d => d.date)), [state.dayCloses])
@@ -126,16 +129,41 @@ export default function PayInOut() {
  }
  }
 
- const remove = async (id) => {
- const confirmed = await confirm({ title: 'Delete Entry', message: 'Delete this entry?' })
- if (!confirmed) return
+ const onDelete = (row) => {
+ if (closedDates.has(row.date)) return
+ setDeleteTarget(row)
+ setDeleteErr('')
+ setDeleteOpen(true)
+ }
+
+ const submitDelete = async (key) => {
+ if (!deleteTarget) return
  try {
- const res = await fetch(`${API}/api/pay-in-outs/${id}`, { method: 'DELETE', headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
- if (!res.ok) throw new Error('Failed')
+ setDeleteBusy(true)
+ setDeleteErr('')
+ const res = await fetch(`${API}/api/pay-in-outs/${deleteTarget.id}`, {
+ method: 'DELETE',
+ headers: {
+ ...(token ? { Authorization: `Bearer ${token}` } : {}),
+ 'X-Delete-Key': key,
+ },
+ })
+ if (!res.ok) {
+ const j = await res.json().catch(() => ({}))
+ setDeleteErr(j?.error || `Failed to delete (${res.status})`)
+ setDeleteBusy(false)
+ return
+ }
+ setDeleteBusy(false)
+ setDeleteOpen(false)
+ const id = deleteTarget.id
+ setDeleteTarget(null)
  dispatch({ type: 'DELETE_PAY_IO', payload: { id } })
  await refreshPayIO()
+ toast.success('Pay In/Out entry deleted')
  } catch {
- toast.error('Failed to delete entry')
+ setDeleteErr('Network error')
+ setDeleteBusy(false)
  }
  }
 
@@ -224,7 +252,7 @@ export default function PayInOut() {
 
  <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Transaction History</h2><div className="overflow-x-auto border-2 border-gray-200 dark:border-gray-700 rounded-xl"><table className="min-w-full text-sm"><thead className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"><tr><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Date</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Type</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Category</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Amount</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Note</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">User</th><th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th></tr></thead><tbody>
  {rows.map(r => (
- <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">{recordDateTime(r)}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.type === 'IN' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200'}`}>{r.type === 'IN' ? 'IN' : 'OUT'}</span></td><td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.category || '-'}</td><td className="px-4 py-3"><span className={`font-semibold ${r.type === 'IN' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{r.type === 'IN' ? '+' : '-'}PKR {Number(r.amount).toLocaleString()}</span></td><td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-sm">{r.note || '-'}</td><td className="px-4 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-4 py-3"><button onClick={()=>remove(r.id)} disabled={closedDates.has(r.date)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium text-sm border border-red-200 dark:border-red-700 disabled:opacity-50 disabled:cursor-not-allowed">Delete</button></td></tr>
+ <tr key={r.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"><td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">{recordDateTime(r)}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${r.type === 'IN' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200'}`}>{r.type === 'IN' ? 'IN' : 'OUT'}</span></td><td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.category || '-'}</td><td className="px-4 py-3"><span className={`font-semibold ${r.type === 'IN' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{r.type === 'IN' ? '+' : '-'}PKR {Number(r.amount).toLocaleString()}</span></td><td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-sm">{r.note || '-'}</td><td className="px-4 py-3 text-gray-600 dark:text-gray-400">{r.userName || '-'}</td><td className="px-4 py-3"><button onClick={()=>onDelete(r)} disabled={closedDates.has(r.date)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors font-medium text-sm border border-red-200 dark:border-red-700 disabled:opacity-50 disabled:cursor-not-allowed">Delete</button></td></tr>
  ))}
  </tbody><tfoot className="bg-gray-50 dark:bg-gray-800 font-semibold"><tr className="border-t"><td className="px-4 py-3 text-gray-700 dark:text-gray-300">Totals</td><td className="px-4 py-3" colSpan={2}></td><td className="px-4 py-3" colSpan={4}><div className="flex flex-wrap gap-4"><span className="text-emerald-600 dark:text-emerald-400">IN: PKR {totals.IN.toLocaleString()}</span><span className="text-rose-600 dark:text-rose-400">OUT: PKR {totals.OUT.toLocaleString()}</span><span className="text-blue-600 dark:text-blue-400 font-bold">NET: PKR {totals.NET.toLocaleString()}</span></div></td></tr></tfoot></table></div>
 
@@ -244,7 +272,17 @@ export default function PayInOut() {
  <tr><td className="px-4 py-6 text-center text-gray-500 dark:text-gray-400" colSpan={2}><div className="text-2xl mb-1"></div><div>No data.</div></td></tr>
  )}
  </tbody></table></div></div></div>
- {ConfirmDialog}
+ <DeleteKeyModal
+ open={deleteOpen}
+ title="Delete Pay In/Out"
+ description={deleteTarget
+  ? `Enter the secret key to delete this ${deleteTarget.type === 'IN' ? 'Pay In' : 'Pay Out'} (PKR ${Number(deleteTarget.amount || 0).toLocaleString()}).`
+  : 'Enter the secret key to delete this entry.'}
+ busy={deleteBusy}
+ error={deleteErr}
+ onSubmit={submitDelete}
+ onClose={() => { if (!deleteBusy) { setDeleteOpen(false); setDeleteTarget(null); setDeleteErr('') } }}
+ />
  </div>
  )
 }

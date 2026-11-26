@@ -451,6 +451,7 @@ export default function PayrollTab({
                 <th className="px-3 py-3">
                   <input type="checkbox" checked={allVisibleSelected} onChange={() => setSelected(allVisibleSelected ? selected.filter((id) => !visibleSelectable.includes(id)) : [...new Set([...selected, ...visibleSelectable])])} />
                 </th>
+                <th className="px-3 py-3">SR No</th>
                 <th className="px-3 py-3">Employee</th>
                 <th className="px-3 py-3 text-right">Basic</th>
                 <th className="px-3 py-3 text-right">Extras</th>
@@ -465,16 +466,16 @@ export default function PayrollTab({
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {loading && !rows.length ? (
-                <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
+                <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-400">Loading…</td></tr>
               ) : tabRows.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400 dark:text-slate-500">{
+                <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-400 dark:text-slate-500">{
                   rows.length === 0
                     ? 'No payroll for this month. Click Run payroll.'
                     : staffSearch.trim()
                       ? `No ${tab} rows match “${staffSearch.trim()}”.`
                       : `No ${tab} payroll rows for ${month}.`
                 }</td></tr>
-              ) : tabRows.map((r) => {
+              ) : tabRows.map((r, idx) => {
                 const id = String(r._id);
                 const locked = isPaid(r.status) || r.status === 'cancelled';
                 return (
@@ -482,6 +483,7 @@ export default function PayrollTab({
                     <td className="px-3 py-2">
                       <input type="checkbox" disabled={locked} checked={selected.includes(id)} onChange={() => toggle(id, r.status)} />
                     </td>
+                    <td className="px-3 py-2 font-medium text-slate-500 dark:text-slate-400">{idx + 1}</td>
                     <td className="px-3 py-2">
                       <div className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</div>
                       {(() => {

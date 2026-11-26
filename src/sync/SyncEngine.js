@@ -135,6 +135,7 @@ export function resolveSyncBranchId() {
   try {
     const active = String(window.ACTIVE_BRANCH_ID || localStorage.getItem('active_branch_id') || '').trim()
     if (active) return active
+    // Prefer the branch tied to this device's sync home (set when a real branch was selected)
     const home = String(localStorage.getItem('sync_home_branch_id') || '').trim()
     if (home) return home
     const last = String(localStorage.getItem('sync_last_branch_id') || '').trim()
@@ -156,7 +157,9 @@ export function rememberSyncBranch(branchId) {
 }
 
 async function fetchJson(url, opts) {
-  const res = await fetch(url, opts)
+  // Always bypass HTTP cache — a 304 with empty body was silently skipping
+  // sales heartbeat and leaving cloud without recent bills.
+  const res = await fetch(url, { ...opts, cache: 'no-store' })
   const ct = String(res.headers.get('content-type') || '')
   const text = await res.text()
   if (ct.includes('text/html') || /^\s*<!doctype/i.test(text) || /^\s*<html/i.test(text)) {
@@ -267,10 +270,12 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
       let okMax = 0
       for (const [col, rows] of Object.entries(docs || {})) {
         if (!Array.isArray(rows)) continue
+        // Never advance past a collection that had push errors — sales used to
+        // get skipped when sibling collections in the same batch succeeded.
+        if (failedCols.has(col)) continue
         for (const row of rows) {
           const rid = String(row?._id || row?.id || '')
-          if (failedIds.has(rid) || (failedCols.has(col) && !rid)) continue
-          if (failedIds.size && failedIds.has(rid)) continue
+          if (rid && failedIds.has(rid)) continue
           const t = new Date(row?.updatedAt || 0).getTime()
           if (Number.isFinite(t) && t > okMax) okMax = t
         }
@@ -281,7 +286,8 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
         if (!Array.isArray(rows)) continue
         for (const row of rows) {
           const rid = String(row?._id || row?.id || '')
-          if (!failedIds.has(rid) && !(failedCols.has(col) && !rid)) continue
+          const hit = (rid && failedIds.has(rid)) || failedCols.has(col)
+          if (!hit) continue
           const t = new Date(row?.updatedAt || 0).getTime()
           if (Number.isFinite(t) && t < failMin) failMin = t
         }
@@ -294,6 +300,11 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
         const next = new Date(okMax).toISOString()
         since = next
         try { localStorage.setItem(sinceKey, next) } catch {}
+      }
+      // Surface first error so the Cloud Sync badge shows why sales stalled
+      const first = pushErrors[0]
+      if (first?.error) {
+        lastError = `Push ${first.collection || 'docs'}: ${first.error}`
       }
       break
     }
@@ -314,18 +325,43 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
     if (!localPull.hasMore) break
   }
 
-  // Heartbeat: always re-push latest day open/close so cloud business date matches offline SOT
-  // even if an earlier cursor advanced past a failed unique-key upsert.
+  // Heartbeat: always re-push latest day open/close + recent sales so cloud matches
+  // offline SOT even if the push cursor advanced past a failed unique-key upsert.
   try {
-    const [opens, closes] = await Promise.all([
+    const ymd = (d) => {
+      const x = new Date(d)
+      if (!Number.isFinite(x.getTime())) return ''
+      const y = x.getFullYear()
+      const m = String(x.getMonth() + 1).padStart(2, '0')
+      const day = String(x.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+    const toDate = ymd(new Date())
+    const fromDate = ymd(Date.now() - 7 * 864e5)
+    const [opens, closes, sales, deletedSales] = await Promise.all([
       fetchJson(`${local}/api/cash-openings?page=1&limit=5`, { headers: authHeaders(token) }),
       fetchJson(`${local}/api/day-closes?page=1&limit=5`, { headers: authHeaders(token) }),
+      fetchJson(
+        `${local}/api/sales?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
+        { headers: authHeaders(token) },
+      ),
+      fetchJson(
+        `${local}/api/sales/deleted?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
+        { headers: authHeaders(token) },
+      ),
     ])
     const openRows = Array.isArray(opens) ? opens : (Array.isArray(opens?.rows) ? opens.rows : [])
     const closeRows = Array.isArray(closes) ? closes : (Array.isArray(closes?.rows) ? closes.rows : [])
+    const saleRows = Array.isArray(sales) ? sales : (Array.isArray(sales?.rows) ? sales.rows : [])
+    const deletedRows = Array.isArray(deletedSales)
+      ? deletedSales
+      : (Array.isArray(deletedSales?.rows) ? deletedSales.rows : [])
     const dayDocs = {}
     if (openRows.length) dayDocs.cashOpenings = openRows.slice(0, 3)
     if (closeRows.length) dayDocs.dayCloses = closeRows.slice(0, 3)
+    // Cap so a busy week does not stall the 5s sync loop
+    if (saleRows.length) dayDocs.sales = saleRows.slice(0, 400)
+    if (deletedRows.length) dayDocs.deletedSales = deletedRows.slice(0, 200)
     if (batchHasRows(dayDocs)) {
       await cloudFetchJson(cloud, '/api/sync/push', {
         method: 'POST',

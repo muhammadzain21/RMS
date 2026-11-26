@@ -90,6 +90,35 @@ function PortalModal({ onClose, dispatch }) {
 
   const toggle = (path) => setEnabled(prev => ({ ...prev, [path]: !prev[path] }))
 
+  // Group items by section (preserves order)
+  const grouped = useMemo(() => {
+    const g = {}
+    items.forEach(i => {
+      const s = i.section || 'Dashboard'
+      if (!g[s]) g[s] = []
+      g[s].push(i)
+    })
+    Object.keys(g).forEach(k => g[k].sort((a, b) => a.order - b.order))
+    return g
+  }, [items])
+
+  const setSectionEnabled = (section, on) => {
+    setEnabled(prev => {
+      const next = { ...prev }
+      ;(grouped[section] || []).forEach(i => { next[i.path] = on })
+      return next
+    })
+  }
+
+  const sectionState = (section) => {
+    const rows = grouped[section] || []
+    if (!rows.length) return 'off'
+    const on = rows.filter(i => enabled[i.path]).length
+    if (on === 0) return 'off'
+    if (on === rows.length) return 'on'
+    return 'mixed'
+  }
+
   const save = async () => {
     const enabledPaths = items.filter(i => enabled[i.path]).map(i => i.path)
     if (enabledPaths.length === 0) {
@@ -106,7 +135,10 @@ function PortalModal({ onClose, dispatch }) {
       if (res.ok) {
         const s = await res.json()
         dispatch?.({ type: 'UPDATE_SETTINGS', payload: { enabledPaths: s.enabledPaths } })
-        toast.success('Feature access updated')
+        try {
+          window.dispatchEvent(new CustomEvent('live_refresh', { detail: { source: 'enabledPaths' } }))
+        } catch {}
+        toast.success('Feature access updated — applies to Admin and all users')
         onClose()
       } else {
         const body = await res.json().catch(() => ({}))
@@ -125,17 +157,12 @@ function PortalModal({ onClose, dispatch }) {
     setEnabled(map)
   }
 
-  // Group items by section (preserves order)
-  const grouped = useMemo(() => {
-    const g = {}
-    items.forEach(i => {
-      const s = i.section || 'Dashboard'
-      if (!g[s]) g[s] = []
-      g[s].push(i)
-    })
-    Object.keys(g).forEach(k => g[k].sort((a, b) => a.order - b.order))
-    return g
-  }, [items])
+  const disableAll = () => {
+    const map = {}
+    // Keep Dashboard so the install always has somewhere to land
+    items.forEach(i => { map[i.path] = i.path === '/' })
+    setEnabled(map)
+  }
 
   const enabledCount = items.filter(i => enabled[i.path]).length
 
@@ -202,25 +229,53 @@ function PortalModal({ onClose, dispatch }) {
           <>
             <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 flex-wrap">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                <span className="font-semibold text-gray-900 dark:text-white">{enabledCount}</span> of {items.length} pages enabled — applies to all users on this install
+                <span className="font-semibold text-gray-900 dark:text-white">{enabledCount}</span> of {items.length} pages enabled — hidden pages are removed for Admin and every user
               </p>
-              <button onClick={enableAll} className="text-xs font-medium text-purple-600 dark:text-purple-400 hover:underline">
-                Enable all
-              </button>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={enableAll} className="text-xs font-medium text-purple-600 dark:text-purple-400 hover:underline">
+                  Enable all
+                </button>
+                <button type="button" onClick={disableAll} className="text-xs font-medium text-slate-500 dark:text-slate-400 hover:underline">
+                  Disable all
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {loading ? (
                 <p className="text-sm text-gray-500 text-center py-8">Loading...</p>
               ) : (
-                Object.keys(grouped).map(section => (
+                Object.keys(grouped).map(section => {
+                  const st = sectionState(section)
+                  const sectionOn = st === 'on'
+                  return (
                   <div key={section} className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                    <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/50 text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">
-                      {section}
+                    <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/50 flex items-center justify-between gap-3">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                        {section}
+                        {st === 'mixed' ? (
+                          <span className="ml-2 normal-case tracking-normal font-medium text-amber-600 dark:text-amber-400">partial</span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={sectionOn}
+                        title={sectionOn ? `Disable entire ${section} section` : `Enable entire ${section} section`}
+                        onClick={() => setSectionEnabled(section, !sectionOn)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
+                          sectionOn ? 'bg-purple-600' : st === 'mixed' ? 'bg-purple-400' : 'bg-gray-300 dark:bg-gray-600'
+                        }`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          sectionOn || st === 'mixed' ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
+                      </button>
                     </div>
                     <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {grouped[section].map(item => (
                         <button
                           key={item.path}
+                          type="button"
                           onClick={() => toggle(item.path)}
                           className={`flex items-center justify-between p-2.5 rounded-lg border transition-all text-left ${
                             enabled[item.path]
@@ -242,7 +297,8 @@ function PortalModal({ onClose, dispatch }) {
                       ))}
                     </div>
                   </div>
-                ))
+                  )
+                })
               )}
             </div>
             <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">

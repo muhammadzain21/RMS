@@ -134,9 +134,14 @@ export async function printSaleReceiptUtil(opts = {}) {
     const nonCashPaid = splitPays
       .filter(p => String(p.method || '').toLowerCase() !== 'cash')
       .reduce((s, p) => s + Number(p.amount || 0), 0)
-    const cashPaid = splitPays.length
-      ? cashPaidFromTenders
-      : Number(opts.cashReceived ?? total)
+    // Cash paid = what the cashier actually collected (includes waiter tip).
+    // Prefer stored cashReceived; otherwise tender cash + tip (payments store bill portion only).
+    const cashReceivedOpt = Math.max(0, Number(opts.cashReceived || 0))
+    const cashPaid = cashReceivedOpt > 0
+      ? cashReceivedOpt
+      : (splitPays.length
+        ? cashPaidFromTenders + tipAmt
+        : total + tipAmt)
     // Change only against the cash portion of a split bill
     const cashDue = splitPays.length ? Math.max(0, total - nonCashPaid) : total
     const balance = tipAmt > 0 ? 0 : Math.max(0, cashPaid - cashDue)
@@ -157,21 +162,31 @@ export async function printSaleReceiptUtil(opts = {}) {
               ? 'Split'
               : pmRaw.charAt(0).toUpperCase() + pmRaw.slice(1)
 
-    const paymentBreakdownHtml = splitPays.length
-      ? splitPays.map(p => (
-          `<div class="kv"><span>${escapeHtml(payMethodLabel(p))} paid</span><span>${fmt(Number(p.amount || 0))}</span></div>`
-        )).join('')
-        + (cashPaid > 0
-          ? (tipAmt > 0
-            ? `<div class="kv"><span>Waiter tip</span><span>${fmt(tipAmt)}</span></div>`
-            : `<div class="kv"><span>Cash balance</span><span>${fmt(balance)}</span></div>`)
-          : '')
-      : (
-          `<div class="kv"><span>Cash paid</span><span>${fmt(cashPaid)}</span></div>`
-          + (tipAmt > 0
-            ? `<div class="kv"><span>Waiter tip</span><span>${fmt(tipAmt)}</span></div>`
-            : `<div class="kv"><span>Cash balance</span><span>${fmt(balance)}</span></div>`)
-        )
+    const paidLabel = (() => {
+      if (isSplit) return 'Total paid'
+      const m = String(splitPays[0]?.method || pmLower || 'cash').toLowerCase()
+      if (m === 'card') return 'Card paid'
+      if (m === 'bank') return 'Bank paid'
+      if (m === 'foodpanda') return 'Foodpanda paid'
+      if (m === 'staff') return 'Staff charged'
+      return 'Cash paid'
+    })()
+    // Method totals include tip when collected on that tender
+    const collectedTotal = Math.max(
+      cashPaid,
+      total + tipAmt,
+      splitPays.reduce((s, p) => s + Number(p.amount || 0), 0),
+    )
+    const paymentBreakdownHtml =
+      (splitPays.length
+        ? splitPays.map(p =>
+            `<div class="kv"><span>${escapeHtml(payMethodLabel(p))} paid</span><span>${fmt(Number(p.amount || 0))}</span></div>`,
+          ).join('')
+        : `<div class="kv"><span>${escapeHtml(paidLabel)}</span><span>${fmt(collectedTotal)}</span></div>`)
+      + (tipAmt > 0 ? `<div class="kv"><span>Waiter tip (included)</span><span>${fmt(tipAmt)}</span></div>` : '')
+      + (!splitPays.length && tipAmt <= 0 && cashPaidFromTenders >= 0
+        ? `<div class="kv"><span>Cash balance</span><span>${fmt(balance)}</span></div>`
+        : '')
     const waiter = opts.waiter || (opts.waiterId ? (state.staff||[]).find(s=>s.id===opts.waiterId)?.name : '') || '-'
     const rider = opts.rider || (opts.riderId ? (state.riders||[]).find(r=>r.id===opts.riderId)?.name : '') || ''
     const tableNo = opts.tableNo || ''

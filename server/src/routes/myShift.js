@@ -92,9 +92,9 @@ router.get('/', async (req, res, next) => {
     ] = await Promise.all([
       CashOpening.find({ date, ...bf }).sort({ createdAt: 1 }).lean(),
       DayClose.find({ date, ...bf }).sort({ createdAt: 1 }).lean(),
-      Sale.find({ date, ...bf, ...um }).sort({ createdAt: 1 }).lean(),
-      PayInOut.find({ date, ...bf, ...um }).sort({ createdAt: 1 }).lean(),
-      // Branch-wide for the business date (same as openings) — not limited to current user
+      // Branch-wide day totals (same scope as expenses / opening) so widgets match the daybook
+      Sale.find({ date, ...bf }).sort({ createdAt: 1 }).lean(),
+      PayInOut.find({ date, ...bf }).sort({ createdAt: 1 }).lean(),
       Expense.find({ date, ...bf }).sort({ createdAt: 1 }).lean(),
       CashCount.find({ date, ...bf, ...um }).sort({ createdAt: 1 }).lean(),
       Void.find({
@@ -325,18 +325,39 @@ router.get('/', async (req, res, next) => {
     const payInRows = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'IN')
     const payOutRows = (payMoves || []).filter(p => String(p.type).toUpperCase() === 'OUT')
     const payIn = payInRows.reduce((s, p) => s + money(p.amount), 0)
-    const payOut = payOutRows.reduce((s, p) => s + money(p.amount), 0)
+    const isTipPayOut = (p) => /waiter\s*tip/i.test(String(p.category || '')) || /^tips?$/i.test(String(p.category || '').trim())
+    const isDeliveryPayOut = (p) => /delivery\s*charges?/i.test(String(p.category || '')) || /^delivery$/i.test(String(p.category || '').trim())
+    // Legacy auto tip/delivery Pay Outs — keep for history, but don't double-count vs sale fields
+    const tipPayOutTotal = payOutRows.filter(isTipPayOut).reduce((s, p) => s + money(p.amount), 0)
+    const deliveryPayOutTotal = payOutRows.filter(isDeliveryPayOut).reduce((s, p) => s + money(p.amount), 0)
+    const manualPayOutRows = payOutRows.filter(p => !isTipPayOut(p) && !isDeliveryPayOut(p))
+    const payOut = manualPayOutRows.reduce((s, p) => s + money(p.amount), 0)
     const expenseModuleRows = expenses || []
+    const isCashExpense = (e) => String(e.accountHead || 'cash').toLowerCase() !== 'bank'
     const expenseModuleTotal = expenseModuleRows.reduce((s, e) => s + money(e.amount), 0)
     const expenseModulePending = expenseModuleRows.filter(e => e.status !== 'approved').length
     const expenseModuleApproved = expenseModuleRows.filter(e => e.status === 'approved').length
-    // Cash expenses (approved or pending) that hit the drawer
-    const expenseCashTotal = expenseModuleRows
-      .filter(e => String(e.accountHead || 'cash').toLowerCase() === 'cash')
-      .reduce((s, e) => s + money(e.amount), 0)
+    // Cash expenses (approved or pending) that hit the drawer — bank expenses listed but not expected
+    const expenseCashRows = expenseModuleRows.filter(isCashExpense)
+    const expenseBankRows = expenseModuleRows.filter(e => !isCashExpense(e))
+    const expenseCashTotal = expenseCashRows.reduce((s, e) => s + money(e.amount), 0)
+    const expenseBankTotal = expenseBankRows.reduce((s, e) => s + money(e.amount), 0)
+    // Prefer tip/delivery on sales; fall back to legacy Pay Out categories for older days
+    const tipsFromSales = (sales || []).reduce((s, x) => s + Math.max(0, Number(x.tipAmount || 0)), 0)
+    const deliveryFromSales = (sales || []).reduce(
+      (s, x) => s + Math.max(0, Number(x.deliveryAmt || x.deliveryCharges || 0)),
+      0,
+    )
+    const tipsTotal = tipsFromSales > 0 ? tipsFromSales : tipPayOutTotal
+    const deliveryTotal = deliveryFromSales > 0 ? deliveryFromSales : deliveryPayOutTotal
     const supplierPayTotal = (warehousePayments || []).reduce((s, p) => s + money(p.amount), 0)
     const openingCash = money(myOpening?.openingCash)
-    const expectedDrawer = openingCash + salesCash + payIn - payOut - expenseCashTotal
+    // Cash sales tenders may include tip; tip + delivery are utilized out of the drawer
+    const expectedDrawer =
+      openingCash + salesCash + payIn - payOut - expenseCashTotal - tipsTotal - deliveryTotal
+    const cashCollected = openingCash + salesCash + payIn
+    const cashUtilized = tipsTotal + deliveryTotal + expenseCashTotal + payOut
+    const cashRemaining = expectedDrawer
 
     const customerText = (c) => {
       if (!c) return ''
@@ -394,6 +415,8 @@ router.get('/', async (req, res, next) => {
         saleTotal,
         netAmount: net,
         total: net,
+        deliveryAmt: Math.max(0, Number(s.deliveryAmt || s.deliveryCharges || 0)),
+        tipAmount: Math.max(0, Number(s.tipAmount || 0)),
         paymentMethod: paymentLabel(s),
         paymentMethodRaw: s.paymentMethod || 'cash',
         payments: Array.isArray(s.payments) ? s.payments : [],
@@ -438,15 +461,29 @@ router.get('/', async (req, res, next) => {
         salesStaff,
         payIn,
         payOut,
-        expenses: expenseModuleTotal,
+        expenses: expenseCashTotal,
         expensesCash: expenseCashTotal,
+        expensesBank: expenseBankTotal,
         expensesPending: expenseModulePending,
         expensesApproved: expenseModuleApproved,
         expensesAll: expenseModuleTotal,
+        tips: tipsTotal,
+        deliveryCharges: deliveryTotal,
+        cashCollected,
+        cashUtilized,
+        cashRemaining,
         supplierPayments: supplierPayTotal,
         voids: voidsDay.length,
         kots: kotsDay.length,
         expectedDrawer,
+        utilization: {
+          cashCollected,
+          tips: tipsTotal,
+          deliveryCharges: deliveryTotal,
+          cashExpenses: expenseCashTotal,
+          payOut,
+          remainingInDrawer: expectedDrawer,
+        },
       },
       // Structured tables for UI / print (omit empty on client)
       tables: {
@@ -464,7 +501,8 @@ router.get('/', async (req, res, next) => {
         foodpandaSales: foodpandaSalesRows.map(mapSale),
         staffSales: staffSalesRows.map(mapSale),
         payIn: payInRows.map(mapPay),
-        payOut: payOutRows.map(mapPay),
+        // Manual pay outs only — tip/delivery shown as utilization, not Pay Out rows
+        payOut: manualPayOutRows.map(mapPay),
         expenses: expenseModuleRows.map(e => {
           const lines = Array.isArray(e.lines) ? e.lines : []
           const headFromLines = [...new Set(lines.map(l => l.expenseHead).filter(Boolean))]

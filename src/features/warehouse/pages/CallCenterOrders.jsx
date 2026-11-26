@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-hot-toast'
+import { format } from 'date-fns'
 import { Headphones, RefreshCw, Trash2, ShoppingCart, Link2 } from 'lucide-react'
 import CategoryBar from '@features/sales/components/CategoryBar.jsx'
 import ItemsList from '@features/sales/components/ItemsList.jsx'
@@ -15,6 +16,8 @@ import {
   dealCompositionKey,
 } from '@features/sales/utils/cartUtils.js'
 import { useLiveRefresh, pokeLiveRefresh } from '@/hooks/useLiveRefresh.js'
+import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
+import { exportDateStamp } from '@shared/utils/listReportExport.js'
 
 function api() {
   return (typeof window !== 'undefined' && window.API_BASE) || import.meta.env.VITE_API_BASE || 'http://localhost:5000'
@@ -731,6 +734,103 @@ export default function CallCenterOrders() {
     )
   }
 
+  const orderDateLabel = (o) => {
+    const raw = o?.createdAt || o?.date || ''
+    try {
+      const d = new Date(raw)
+      if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd h:mm a')
+    } catch {}
+    return String(raw).slice(0, 16) || '—'
+  }
+  const itemsText = (o) => (Array.isArray(o.items) ? o.items : []).map(i => `${i.name || 'Item'}×${Number(i.qty) || 1}`).join(', ') || '—'
+
+  const buildCcOrdersReport = () => {
+    const moneyFmt = (n) => 'PKR ' + Number(n || 0).toLocaleString()
+    const body =
+      reportSummary([
+        { label: 'Orders', amount: String(orders.length) },
+        { label: 'Filter', amount: statusFilter === 'open' ? 'Active' : 'All' },
+        { label: 'Total amount', amount: moneyFmt(orders.reduce((s, o) => s + Number(o.total || 0), 0)) },
+      ]) +
+      reportSec(`Call Center queue (${orders.length})`) +
+      reportTable({
+        headers: ['Date', 'Branch', 'Customer', 'Phone', 'Type', 'Items', { t: 'Total', align: 'r' }, 'Status', 'Address', 'Remarks'],
+        numbered: true,
+        rows: orders.map(o => [
+          orderDateLabel(o),
+          branchName(o),
+          o.customer?.name || '—',
+          o.customer?.phone || '—',
+          o.orderType || '—',
+          itemsText(o),
+          { v: moneyFmt(o.total), align: 'r' },
+          ccStatusLabel(o.status),
+          o.customer?.address || '—',
+          o.remarks || '—',
+        ]),
+        emptyText: 'No orders in queue',
+      })
+    const fileName = `Call-Center-${exportDateStamp()}.pdf`
+    const html = wrapReportDoc({
+      settings: state?.settings || {},
+      title: 'Call Center',
+      reportLabel: 'Call Center Queue Report',
+      reportNo: `Rpt #: CC-${format(new Date(), 'yyyyMMdd-HHmm')}`,
+      metaLeft: [['Generated', format(new Date(), 'yyyy-MM-dd h:mm a')]],
+      metaRight: [['Records', String(orders.length)]],
+      body,
+    })
+    return { html, fileName }
+  }
+
+  const openPrintPreview = async () => {
+    try {
+      const { html, fileName } = buildCcOrdersReport()
+      await previewHtmlReport(html, fileName)
+    } catch {
+      toast.error('Print preview failed')
+    }
+  }
+
+  const exportPDF = async () => {
+    try {
+      const { html, fileName } = buildCcOrdersReport()
+      await downloadHtmlReport(html, fileName)
+      toast.success('PDF exported')
+    } catch (err) {
+      toast.error('Failed to export PDF: ' + (err?.message || 'unknown error'))
+    }
+  }
+
+  const exportCSV = () => {
+    try {
+      const headers = ['Date', 'Branch', 'Customer', 'Phone', 'Type', 'Items', 'Total', 'Status', 'Address', 'Remarks']
+      const lines = orders.map(o => [
+        orderDateLabel(o),
+        branchName(o),
+        o.customer?.name || '',
+        o.customer?.phone || '',
+        o.orderType || '',
+        itemsText(o),
+        Number(o.total || 0),
+        ccStatusLabel(o.status),
+        o.customer?.address || '',
+        o.remarks || '',
+      ].map(v => `"${String(v ?? '').replaceAll('"', '""')}"`).join(','))
+      const csv = [headers.join(','), ...lines].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `call-center-${exportDateStamp()}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('CSV exported')
+    } catch {
+      toast.error('Failed to export CSV')
+    }
+  }
+
   const queuePanel = (
     <div className={`min-h-[50dvh] flex-col rounded-2xl border bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50 lg:min-h-0 lg:flex ${mobileTab === 'queue' ? 'flex' : 'hidden lg:flex'}`}>
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">
@@ -850,6 +950,9 @@ export default function CallCenterOrders() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={openPrintPreview} className="ui-btn ui-btn-print">Print</button>
+          <button type="button" onClick={exportPDF} className="ui-btn ui-btn-pdf">PDF</button>
+          <button type="button" onClick={exportCSV} className="ui-btn ui-btn-csv">CSV</button>
           <select className="rounded-lg border px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-800" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="open">Active (Pending → Ready)</option>
             <option value="all">All statuses</option>

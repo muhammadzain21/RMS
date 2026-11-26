@@ -121,6 +121,7 @@ router.post('/', async (req, res) => {
       )
       tokenNo = String(counter?.seq || '1')
     }
+    const deliveryAmt = Math.max(0, Number(payload.deliveryAmt || payload.deliveryCharges || 0))
     const totalComputed = (payload.total != null)
       ? Number(payload.total)
       : Number(
@@ -132,6 +133,7 @@ router.post('/', async (req, res) => {
                 - Number(payload.billDiscount || 0)
                 + Number(payload.taxAmt || 0)
                 + Number(payload.serviceAmt || 0)
+                + deliveryAmt
               )
         )
     const billNo = payload.billNo || `${dateStr}_${tokenNo}`
@@ -165,9 +167,17 @@ router.post('/', async (req, res) => {
       if (!staffDoc) return res.status(404).json({ error: 'Staff not found' })
     }
 
-    const hasCash = payments.some(p => p.method === 'cash') || paymentMethod === 'cash'
-    const tipAmount = hasCash
-      ? Math.max(0, Number(payload.tipAmount || 0) || Math.max(0, Number(payload.cashReceived || 0) - Number(totalComputed || 0)))
+    const tipMethods = new Set(['cash', 'card', 'bank', 'foodpanda', 'split'])
+    const tipAllowed =
+      tipMethods.has(String(paymentMethod || '').toLowerCase()) ||
+      payments.some(p => tipMethods.has(String(p.method || '').toLowerCase()))
+    // Waiter tip from overpayment — cash, card, bank, or foodpanda (not staff charge)
+    const tipAmount = tipAllowed
+      ? Math.max(
+          0,
+          Number(payload.tipAmount || 0) ||
+            Math.max(0, Number(payload.cashReceived || 0) - Number(totalComputed || 0)),
+        )
       : 0
     const { stampBranchId } = await import('../utils/branchScope.js')
     const doc = stampBranchId(req, {
@@ -176,6 +186,7 @@ router.post('/', async (req, res) => {
       tokenNo,
       billNo,
       total: totalComputed,
+      deliveryAmt,
       paymentMethod,
       payments: payments.length ? payments : undefined,
       tipAmount,
@@ -187,6 +198,7 @@ router.post('/', async (req, res) => {
       userName: payload.userName || req.user?.username || req.user?.name || '',
     })
     const saved = await Sale.create(doc)
+    const branchIdForIo = String(saved.branchId || doc.branchId || '')
 
     // Linked call-center order → mark Completed when bill is paid
     try {
@@ -198,24 +210,8 @@ router.post('/', async (req, res) => {
       console.error('[sales] call-center complete failed for sale', String(saved._id), ccErr?.message)
     }
 
-    // Cash overpayment = waiter tip → Pay Out so drawer expected cash stays balanced
-    let tipPayOut = null
-    if (tipAmount > 0) {
-      try {
-        tipPayOut = await PayInOut.create({
-          date: dateStr,
-          type: 'OUT',
-          amount: tipAmount,
-          category: 'Waiter Tip',
-          note: `Auto tip from bill ${billNo}${payload.tokenNo ? ` / token ${payload.tokenNo}` : ''}`,
-          userId: req.user?.id || '',
-          userName: req.user?.username || 'system',
-        })
-        await logAudit(req, 'cash', `Waiter tip Pay Out ${tipAmount} for ${billNo}`, { id: tipPayOut._id, saleId: saved._id })
-      } catch (tipErr) {
-        console.error('[sales] tip pay-out failed for sale', String(saved._id), tipErr?.message)
-      }
-    }
+    // Tip + delivery stay on the sale only (no auto Pay Out).
+    // Day close / My Day subtract cash tip & delivery from expected drawer as utilization.
 
     // Record the staff purchase as pending — payroll deducts it unless the
     // staff settles it in cash first (or it's converted early via /deduct).
@@ -400,12 +396,6 @@ router.post('/', async (req, res) => {
     } catch {}
 
     const out = typeof saved.toObject === 'function' ? saved.toObject() : { ...saved }
-    if (tipPayOut) {
-      out.tipPayOut = {
-        ...(typeof tipPayOut.toObject === 'function' ? tipPayOut.toObject() : tipPayOut),
-        id: tipPayOut._id || tipPayOut.id,
-      }
-    }
     res.status(201).json(out)
   } catch (e) {
     console.error('[sales] create failed:', e?.message || e, e?.stack)
@@ -608,13 +598,18 @@ router.delete('/:id', async (req, res) => {
     if (!sale) return res.status(404).json({ error: 'Sale not found' })
     
     // Copy to DeletedSale collection
+    // Force fresh updatedAt — copying the sale's old updatedAt made sync skip
+    // these rows forever once the push cursor had already advanced past them.
+    const deletedAt = new Date()
     const deletedSaleDoc = {
       ...sale,
       originalSaleId: sale._id,
-      deletedAt: new Date(),
-      deletedDate: toYyyyMmDd(new Date()),
+      deletedAt,
+      deletedDate: toYyyyMmDd(deletedAt),
       deletedBy: req.user?.username || 'system',
-      userName: req.user?.username || ''
+      userName: req.user?.username || '',
+      createdAt: deletedAt,
+      updatedAt: deletedAt,
     }
     delete deletedSaleDoc._id
     delete deletedSaleDoc.__v

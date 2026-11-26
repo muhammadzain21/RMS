@@ -347,6 +347,7 @@ export default function AddStaffTab({
  <table className="w-full text-sm">
  <thead>
  <tr className="bg-slate-100 dark:bg-slate-700/50">
+ <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">SR No</th>
  <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Enroll ID</th>
  <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Device Name</th>
  <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 dark:text-slate-400">Mapped To</th>
@@ -354,11 +355,12 @@ export default function AddStaffTab({
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
- {deviceUsers.map((user) => {
+ {deviceUsers.map((user, idx) => {
  const mappedStaff = getMappedStaff(user.enrollId);
  const mapping = mappings.find(m => m.enrollId === user.enrollId);
  return (
  <tr key={user.enrollId} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+ <td className="px-3 py-2 font-medium text-slate-500 dark:text-slate-400">{idx + 1}</td>
  <td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300">{user.enrollId}</td>
  <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{user.name || '-'}</td>
  <td className="px-3 py-2">
@@ -462,6 +464,7 @@ export default function AddStaffTab({
    <table className="w-full">
     <thead>
      <tr className="bg-slate-100 dark:bg-slate-700/50">
+      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">SR No</th>
       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff</th>
       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Position</th>
       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Phone</th>
@@ -481,6 +484,7 @@ export default function AddStaffTab({
         key={s.id}
         className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${s.status === 'inactive' ? 'opacity-70' : ''} ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}
        >
+        <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">{idx + 1}</td>
         <td className="px-4 py-3">
          <div className="flex items-center gap-3">
           <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 ${s.status === 'inactive' ? 'bg-slate-400' : 'bg-gradient-to-br from-teal-400 to-blue-500'}`}>
