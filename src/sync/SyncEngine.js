@@ -228,6 +228,91 @@ function maxUpdatedAt(docs) {
   return max ? new Date(max).toISOString() : ''
 }
 
+/** Missed/failed push rows kept for the next sync cycle (by collection → id → doc). */
+function failedPushKey(branchId) {
+  return `sync_push_failed_${String(branchId || '').trim()}`
+}
+
+function loadFailedPushDocs(branchId) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(failedPushKey(branchId)) || '{}')
+    return raw && typeof raw === 'object' ? raw : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveFailedPushDocs(branchId, map) {
+  try {
+    const clean = {}
+    for (const [col, byId] of Object.entries(map || {})) {
+      if (!byId || typeof byId !== 'object') continue
+      const ids = Object.keys(byId)
+      if (!ids.length) continue
+      // Cap per collection so localStorage stays small
+      const keep = ids.slice(-300)
+      clean[col] = {}
+      for (const id of keep) clean[col][id] = byId[id]
+    }
+    if (Object.keys(clean).length) localStorage.setItem(failedPushKey(branchId), JSON.stringify(clean))
+    else localStorage.removeItem(failedPushKey(branchId))
+  } catch {}
+}
+
+function rememberFailedPushDocs(branchId, docs, pushErrors) {
+  const failed = loadFailedPushDocs(branchId)
+  const failedIds = new Set((pushErrors || []).map((e) => String(e?.id || '')).filter(Boolean))
+  const failedCols = new Set((pushErrors || []).map((e) => String(e?.collection || '')).filter(Boolean))
+  for (const [col, rows] of Object.entries(docs || {})) {
+    if (!Array.isArray(rows) || !rows.length) continue
+    if (!failedCols.has(col) && !rows.some((r) => failedIds.has(String(r?._id || r?.id || '')))) continue
+    if (!failed[col]) failed[col] = {}
+    for (const row of rows) {
+      const id = String(row?._id || row?.id || '')
+      if (!id) continue
+      if (failedIds.has(id) || failedCols.has(col)) failed[col][id] = row
+    }
+  }
+  saveFailedPushDocs(branchId, failed)
+}
+
+function clearFailedPushDocs(branchId, docs, pushErrors) {
+  const failed = loadFailedPushDocs(branchId)
+  if (!Object.keys(failed).length) return
+  const errIds = new Set((pushErrors || []).map((e) => String(e?.id || '')).filter(Boolean))
+  const errCols = new Set((pushErrors || []).map((e) => String(e?.collection || '')).filter(Boolean))
+  for (const [col, rows] of Object.entries(docs || {})) {
+    if (!Array.isArray(rows) || !failed[col]) continue
+    for (const row of rows) {
+      const id = String(row?._id || row?.id || '')
+      if (!id || !failed[col][id]) continue
+      // Keep if this id/collection still reported an error
+      if (errIds.has(id) || errCols.has(col)) continue
+      delete failed[col][id]
+    }
+    if (!Object.keys(failed[col] || {}).length) delete failed[col]
+  }
+  saveFailedPushDocs(branchId, failed)
+}
+
+/** Merge previously missed docs into this batch so resync uploads them again. */
+function mergeFailedPushDocs(branchId, docs) {
+  const failed = loadFailedPushDocs(branchId)
+  const out = { ...(docs || {}) }
+  for (const [col, byId] of Object.entries(failed)) {
+    const pending = Object.values(byId || {}).filter(Boolean)
+    if (!pending.length) continue
+    const existing = Array.isArray(out[col]) ? out[col] : []
+    const seen = new Set(existing.map((r) => String(r?._id || r?.id || '')).filter(Boolean))
+    const extra = pending.filter((r) => {
+      const id = String(r?._id || r?.id || '')
+      return id && !seen.has(id)
+    })
+    if (extra.length) out[col] = [...existing, ...extra]
+  }
+  return out
+}
+
 /** Push local changes to cloud (drain pages so overnight offline backlog clears). */
 async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
   const sinceKey = `sync_push_since_${branchId}`
@@ -243,13 +328,14 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
       { headers: authHeaders(token) }
     )
 
-    const docs = pickDocs(localPull.data, PUSH_COLLECTIONS)
+    const pullDocs = pickDocs(localPull.data, PUSH_COLLECTIONS)
+    // Re-attach anything that failed or was skipped earlier so resync uploads it again
+    const docs = mergeFailedPushDocs(branchId, pullDocs)
     lastServerTime = localPull.serverTime || lastServerTime
 
     if (!batchHasRows(docs)) {
-      if (localPull.serverTime) {
-        try { localStorage.setItem(sinceKey, localPull.serverTime) } catch {}
-      }
+      // Do NOT jump cursor to wall-clock serverTime — that permanently skips
+      // sales whose updatedAt is already behind the stored since.
       break
     }
 
@@ -265,22 +351,12 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
     // (and other unique-key conflicts) would never retry and cloud stays on the old day.
     const pushErrors = Array.isArray(pushed?.errors) ? pushed.errors : []
     if (pushErrors.length) {
+      rememberFailedPushDocs(branchId, docs, pushErrors)
+      clearFailedPushDocs(branchId, docs, pushErrors)
       const failedIds = new Set(pushErrors.map((e) => String(e?.id || '')).filter(Boolean))
       const failedCols = new Set(pushErrors.map((e) => String(e?.collection || '')).filter(Boolean))
-      let okMax = 0
-      for (const [col, rows] of Object.entries(docs || {})) {
-        if (!Array.isArray(rows)) continue
-        // Never advance past a collection that had push errors — sales used to
-        // get skipped when sibling collections in the same batch succeeded.
-        if (failedCols.has(col)) continue
-        for (const row of rows) {
-          const rid = String(row?._id || row?.id || '')
-          if (rid && failedIds.has(rid)) continue
-          const t = new Date(row?.updatedAt || 0).getTime()
-          if (Number.isFinite(t) && t > okMax) okMax = t
-        }
-      }
-      // Keep since just before the oldest failed row so they are retried next cycle
+      // Keep since just before the oldest failed row so they are retried next cycle.
+      // Never advance with okMax while errors remain — that skipped missed sales.
       let failMin = Infinity
       for (const [col, rows] of Object.entries(docs || {})) {
         if (!Array.isArray(rows)) continue
@@ -296,10 +372,6 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
         const next = new Date(Math.max(0, failMin - 1)).toISOString()
         since = next
         try { localStorage.setItem(sinceKey, next) } catch {}
-      } else if (okMax) {
-        const next = new Date(okMax).toISOString()
-        since = next
-        try { localStorage.setItem(sinceKey, next) } catch {}
       }
       // Surface first error so the Cloud Sync badge shows why sales stalled
       const first = pushErrors[0]
@@ -309,19 +381,26 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
       break
     }
 
-    // Advance past the newest row we actually sent (not wall clock — avoids skipping mid-batch).
-    // When more pages remain, step back 1ms so same-timestamp rows cut by the limit are not missed.
-    const advanced = maxUpdatedAt(docs) || localPull.serverTime
-    if (advanced) {
-      let next = advanced
-      if (localPull.hasMore) {
-        const t = new Date(advanced).getTime()
-        if (Number.isFinite(t) && t > 0) next = new Date(t - 1).toISOString()
+    // Full success — drop any queued retries that were in this batch
+    clearFailedPushDocs(branchId, docs, [])
+
+    // Advance only from incremental pull rows (not replayed retries), so a successful
+    // retry of an old missed sale does not rewind the cursor and re-flood the cloud.
+    if (batchHasRows(pullDocs)) {
+      const advanced = maxUpdatedAt(pullDocs) || localPull.serverTime
+      if (advanced) {
+        let next = advanced
+        if (localPull.hasMore) {
+          const t = new Date(advanced).getTime()
+          if (Number.isFinite(t) && t > 0) next = new Date(t - 1).toISOString()
+        }
+        since = next
+        try { localStorage.setItem(sinceKey, next) } catch {}
       }
-      since = next
-      try { localStorage.setItem(sinceKey, next) } catch {}
     }
 
+    // If this page was only retries (no new pull rows), stop draining — heartbeat covers the rest
+    if (!batchHasRows(pullDocs)) break
     if (!localPull.hasMore) break
   }
 
@@ -337,10 +416,17 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
       return `${y}-${m}-${day}`
     }
     const toDate = ymd(new Date())
-    const fromDate = ymd(Date.now() - 7 * 864e5)
+    const fromDate = ymd(Date.now() - 14 * 864e5)
     const [opens, closes, sales, deletedSales] = await Promise.all([
-      fetchJson(`${local}/api/cash-openings?page=1&limit=5`, { headers: authHeaders(token) }),
-      fetchJson(`${local}/api/day-closes?page=1&limit=5`, { headers: authHeaders(token) }),
+      // Date range (not a 3-row page) so an offline day close is always in the next upload
+      fetchJson(
+        `${local}/api/cash-openings?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
+        { headers: authHeaders(token) },
+      ),
+      fetchJson(
+        `${local}/api/day-closes?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
+        { headers: authHeaders(token) },
+      ),
       fetchJson(
         `${local}/api/sales?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
         { headers: authHeaders(token) },
@@ -356,22 +442,38 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
     const deletedRows = Array.isArray(deletedSales)
       ? deletedSales
       : (Array.isArray(deletedSales?.rows) ? deletedSales.rows : [])
-    const dayDocs = {}
-    if (openRows.length) dayDocs.cashOpenings = openRows.slice(0, 3)
-    if (closeRows.length) dayDocs.dayCloses = closeRows.slice(0, 3)
-    // Cap so a busy week does not stall the 5s sync loop
-    if (saleRows.length) dayDocs.sales = saleRows.slice(0, 400)
-    if (deletedRows.length) dayDocs.deletedSales = deletedRows.slice(0, 200)
+    let dayDocs = {}
+    if (openRows.length) dayDocs.cashOpenings = openRows
+    if (closeRows.length) dayDocs.dayCloses = closeRows
+    // Prefer newest first; include queued retries via mergeFailedPushDocs
+    if (saleRows.length) {
+      dayDocs.sales = [...saleRows].sort((a, b) =>
+        String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')),
+      ).slice(0, 800)
+    }
+    if (deletedRows.length) dayDocs.deletedSales = deletedRows.slice(0, 400)
+    dayDocs = mergeFailedPushDocs(branchId, dayDocs)
     if (batchHasRows(dayDocs)) {
-      await cloudFetchJson(cloud, '/api/sync/push', {
+      const hb = await cloudFetchJson(cloud, '/api/sync/push', {
         method: 'POST',
         token,
         cloudToken,
         branchId,
         body: { branchId, deviceId: deviceId(), docs: dayDocs },
       })
+      const hbErrors = Array.isArray(hb?.errors) ? hb.errors : []
+      if (hbErrors.length) {
+        rememberFailedPushDocs(branchId, dayDocs, hbErrors)
+        clearFailedPushDocs(branchId, dayDocs, hbErrors)
+        const first = hbErrors[0]
+        if (first?.error) lastError = `Push ${first.collection || 'docs'}: ${first.error}`
+      } else {
+        clearFailedPushDocs(branchId, dayDocs, [])
+      }
     }
-  } catch {}
+  } catch (e) {
+    if (!lastError) lastError = e?.message || 'Heartbeat push failed'
+  }
 
   return { ok: true, pages, serverTime: lastServerTime }
 }

@@ -77,7 +77,7 @@ function SectionTable({ title, icon: Icon, headers, rows, footer, emptyText }) {
         </div>
       ) : (
         <div className="overflow-x-auto -mx-1 px-1">
-          <table className="w-full min-w-[1100px] text-sm table-fixed">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
               <tr>
                 {headers.map(h => (
@@ -405,24 +405,54 @@ export default function MyShift() {
 
   const sections = useMemo(() => {
     const openings = tables.openings || []
-    // One combined sales table (API already returns deduped `tables.sales`)
-    const allSales = Array.isArray(tables.sales) && tables.sales.length
-      ? tables.sales
-      : (() => {
-          const byId = new Map()
-          for (const r of [
+    const customerText = (c) => {
+      if (!c) return ''
+      if (typeof c === 'string') return c
+      return c.name || c.phone || ''
+    }
+    const localSaleRows = (state?.sales || [])
+      .filter(s => String(s?.date || '') === String(date))
+      .map(s => ({
+        id: String(s.id || s._id || ''),
+        at: s.createdAt,
+        date: s.date || date,
+        tokenNo: s.tokenNo || '',
+        billNo: s.billNo || '',
+        customer: customerText(s.customer),
+        orderType: s.orderType || '',
+        tableNo: s.orderType === 'Dine-in' ? (s.tableNo || '') : '',
+        waiterId: s.waiterId || '',
+        waiterName: s.waiterName || s.waiter || '',
+        riderName: s.riderName || s.rider || '',
+        saleTotal: Number(s.subtotal || s.total || s.totalAmount || 0),
+        netAmount: Number(s.total ?? s.totalAmount ?? 0),
+        total: Number(s.total ?? s.totalAmount ?? 0),
+        deliveryAmt: Number(s.deliveryAmt || s.deliveryCharges || 0),
+        tipAmount: Number(s.tipAmount || 0),
+        paymentMethod: s.paymentMethod || 'cash',
+        paymentMethodRaw: s.paymentMethod || 'cash',
+        status: 'Paid',
+        deliveryDate: s.deliveryDate || s.date || date,
+      }))
+    // Union API rows with local sales so a missed sync response still lists every bill
+    const allSales = (() => {
+      const byId = new Map()
+      const apiRows = Array.isArray(tables.sales) && tables.sales.length
+        ? tables.sales
+        : [
             ...(tables.cashSales || []),
             ...(tables.cardSales || []),
             ...(tables.bankSales || []),
             ...(tables.foodpandaSales || []),
             ...(tables.staffSales || []),
-          ]) {
-            const id = String(r?.id || '')
-            if (id) byId.set(id, r)
-            else byId.set(`tmp-${byId.size}`, r)
-          }
-          return [...byId.values()]
-        })()
+          ]
+      for (const r of [...apiRows, ...localSaleRows]) {
+        const id = String(r?.id || '')
+        if (id) byId.set(id, { ...(byId.get(id) || {}), ...r })
+        else byId.set(`tmp-${byId.size}`, r)
+      }
+      return [...byId.values()].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+    })()
     const payIn = tables.payIn || []
     const payOut = tables.payOut || []
     const expenses = tables.expenses || []
@@ -550,7 +580,7 @@ export default function MyShift() {
         alwaysShow: true,
       },
     ].filter(s => s.alwaysShow || s.rows.length > 0)
-  }, [tables, date, staff, onViewSale, onPrintSale])
+  }, [tables, date, staff, onViewSale, onPrintSale, state?.sales])
 
   const printA4 = async () => {
     if (!data) { toast.error('Nothing to print'); return }
@@ -760,7 +790,13 @@ export default function MyShift() {
           headers={sec.headers}
           rows={sec.rows}
           footer={sec.footer}
-          emptyText={sec.key === 'expenses' ? 'No expenses for this business date' : 'No entries'}
+          emptyText={
+            sec.key === 'expenses'
+              ? 'No expenses for this business date'
+              : sec.key === 'sales'
+                ? 'No sales for this date'
+                : 'No entries'
+          }
         />
       ))}
 

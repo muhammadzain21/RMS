@@ -747,11 +747,15 @@ export function DataProvider({ children }) {
   }, [openingsSorted, closedSetDC, realToday])
 
   const effectiveDaybook = useMemo(() => {
-    // Prefer explicit open flag if present; otherwise infer from openings
+    const bookDate = state?.daybook?.date || ''
+    // A synced day close always wins — offline close must show Closed once it arrives
+    if (bookDate && closedSetDC.has(bookDate)) {
+      return { ...(state?.daybook || {}), open: false, date: bookDate }
+    }
     if (state?.daybook?.open) return state.daybook
     if (inferredOpenDate) return { ...(state?.daybook || {}), open: true, date: inferredOpenDate, records: state?.daybook?.records || [] }
     return state.daybook
-  }, [state.daybook, inferredOpenDate])
+  }, [state.daybook, inferredOpenDate, closedSetDC])
 
   // Business date shown in the header + used for CSV/PDF/Print filenames.
   // Open daybook always wins (operational day). When closed, stay on calendar today —

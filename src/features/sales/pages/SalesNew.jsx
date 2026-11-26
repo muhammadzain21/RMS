@@ -1552,6 +1552,16 @@ export default function SalesNew() {
       if (!kotTable && activeRecall.tableNo) setKotTable(activeRecall.tableNo)
     }
     if (orderType === 'Dine-in') {
+      // Waiter is compulsory when sending KOT (not for change-table only)
+      if (kotMode === 'kot') {
+        const selectedWaiter = String(kotWaiterId || activeRecall?.waiterId || '').trim()
+        if (!selectedWaiter) {
+          toast.error('Please select a waiter')
+          kotSubmittingRef.current = false
+          setKotSubmitting(false)
+          return
+        }
+      }
       const selectedTable = String(kotTable || '').trim()
       if (!selectedTable) { toast.error('Please select a table'); kotSubmittingRef.current = false; setKotSubmitting(false); return }
       // Block creating a new recall on an occupied table (allow if updating same recalled order)

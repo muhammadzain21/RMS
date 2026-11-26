@@ -78,7 +78,7 @@ export default function KotModal({
         {orderType === 'Dine-in' && (
           <div className="space-y-5">
             <div>
-              <div className="text-sm font-medium mb-1 text-gray-800 dark:text-gray-200">Waiter (optional)</div>
+              <div className="text-sm font-medium mb-1 text-gray-800 dark:text-gray-200">Waiter *</div>
               {staffWaiters.length > 0 ? (
                 <select
                   className="px-3 py-2.5 border rounded-lg w-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white dark:border-gray-600"

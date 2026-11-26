@@ -12,6 +12,7 @@ import DeleteKeyModal from '@shared/components/DeleteKeyModal.jsx'
 import SlipDialog from '@shared/components/SlipDialog.jsx'
 import { useConfirm } from '@shared/components/useConfirm.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
+import { requestSync } from '@/sync/SyncEngine.js'
 
 function money(n) {
   return Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
@@ -320,6 +321,8 @@ export default function DayClose() {
  dispatch({ type: 'ADD_DAY_CLOSE', payload: rec })
  // Mark day closed for that date — do NOT auto-open next day
  dispatch({ type: 'DAY_CLOSE', payload: { date } })
+ // Upload the close (and that day's sales) as soon as the cloud is reachable
+ try { requestSync('day-close') } catch {}
  if (hint?.date) {
   toast.success(`Day closed. Left at counter PKR ${Number(hint.openingCash || 0).toLocaleString()} will show on Day Opening for ${hint.date} — record opening manually.`)
  } else {
