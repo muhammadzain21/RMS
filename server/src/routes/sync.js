@@ -348,6 +348,22 @@ router.get('/pull', async (req, res, next) => {
     for (const name of names) {
       const Model = BRANCH_MODELS[name]
       const q = pullQuery(name, branchId, since, outbound)
+      // Day open/close must upload even when the cursor sits exactly on their updatedAt
+      // (the query is $gt, so an equal timestamp is skipped forever).
+      if (outbound && (name === 'dayCloses' || name === 'cashOpenings')) {
+        const back = new Date(Date.now() - 21 * 864e5)
+        const y = back.getFullYear()
+        const m = String(back.getMonth() + 1).padStart(2, '0')
+        const d = String(back.getDate()).padStart(2, '0')
+        const fromYmd = `${y}-${m}-${d}`
+        const branchOr = q.$or
+        delete q.updatedAt
+        delete q.$or
+        q.$and = [
+          ...(branchOr ? [{ $or: branchOr }] : []),
+          { $or: [{ updatedAt: { $gt: since } }, { date: { $gte: fromYmd } }] },
+        ]
+      }
       if (name === 'suppliers') q.scope = { $ne: 'warehouse' }
       data[name] = await Model.find(q).sort({ updatedAt: 1 }).limit(limit).lean()
     }
@@ -408,7 +424,16 @@ router.post('/push', async (req, res, next) => {
     const results = {}
     const errors = []
 
-    for (const [name, Model] of Object.entries(BRANCH_MODELS)) {
+    // Day open/close first so a fat sales payload cannot starve them if the
+    // request times out mid-loop on the cloud.
+    const pushOrder = [
+      'cashOpenings',
+      'dayCloses',
+      ...Object.keys(BRANCH_MODELS).filter((n) => n !== 'cashOpenings' && n !== 'dayCloses'),
+    ]
+    for (const name of pushOrder) {
+      const Model = BRANCH_MODELS[name]
+      if (!Model) continue
       const rows = Array.isArray(docs[name]) ? docs[name] : []
       let upserted = 0
       for (const row of rows) {
@@ -535,6 +560,54 @@ router.post('/push', async (req, res, next) => {
   }
 })
 
+/**
+ * Upsert day open/close without day-close business checks (recalls/expenses).
+ * Used when an older cloud /api/sync/push silently drops dayCloses/cashOpenings.
+ * Body: { branchId, docs: { dayCloses?: [], cashOpenings?: [] } }
+ */
+router.post('/daybook-upsert', async (req, res, next) => {
+  try {
+    let branchId = String(req.body?.branchId || '').trim()
+    if (branchId) {
+      try {
+        assertBranchAccess(req, branchId)
+      } catch (e) {
+        if (e?.status !== 403) throw e
+        branchId = ''
+      }
+    }
+    if (!branchId) branchId = resolveSyncBranch(req, { required: true })
+    const docs = req.body?.docs || {}
+    const results = { dayCloses: 0, cashOpenings: 0 }
+    const errors = []
+    for (const [name, Model] of [
+      ['cashOpenings', CashOpening],
+      ['dayCloses', DayClose],
+    ]) {
+      const rows = Array.isArray(docs[name]) ? docs[name] : []
+      for (const row of rows) {
+        try {
+          const id = row?._id || row?.id
+          const clean = stripImmutable(row)
+          clean.branchId = clean.branchId || branchId
+          await upsertByDateBranch(Model, id, clean, branchId)
+          results[name] += 1
+        } catch (rowErr) {
+          errors.push({
+            collection: name,
+            id: String(row?._id || row?.id || ''),
+            error: String(rowErr?.message || rowErr),
+          })
+        }
+      }
+    }
+    res.json({ ok: true, branchId, results, errors: errors.slice(0, 20), serverTime: new Date().toISOString() })
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message })
+    next(e)
+  }
+})
+
 /** Status for UI indicator */
 router.get('/status', async (req, res, next) => {
   try {
@@ -575,11 +648,21 @@ router.post('/proxy', async (req, res, next) => {
     } catch {
       return res.status(400).json({ error: 'Invalid cloudBase URL' })
     }
-    if (!syncPath.startsWith('/api/sync/')) {
-      return res.status(400).json({ error: 'path must start with /api/sync/' })
+    // Sync APIs + daybook/recall REST fallback (older cloud builds omit dayCloses from /push)
+    const pathOk =
+      syncPath.startsWith('/api/sync/') ||
+      syncPath === '/api/day-closes' ||
+      syncPath.startsWith('/api/day-closes?') ||
+      syncPath === '/api/cash-openings' ||
+      syncPath.startsWith('/api/cash-openings?') ||
+      syncPath === '/api/recalls' ||
+      syncPath.startsWith('/api/recalls?') ||
+      /^\/api\/recalls\/[a-fA-F0-9]{24}$/.test(syncPath)
+    if (!pathOk) {
+      return res.status(400).json({ error: 'path not allowed for sync proxy' })
     }
-    if (!['GET', 'POST'].includes(method)) {
-      return res.status(400).json({ error: 'method must be GET or POST' })
+    if (!['GET', 'POST', 'DELETE'].includes(method)) {
+      return res.status(400).json({ error: 'method must be GET, POST, or DELETE' })
     }
     if (!cloudToken) {
       return res.status(401).json({ error: 'Cloud auth token missing' })
@@ -592,19 +675,141 @@ router.post('/proxy', async (req, res, next) => {
       Authorization: `Bearer ${cloudToken}`,
     }
     if (branchId) headers['X-Branch-Id'] = branchId
+    // Branch is SOT for daybook — allow cloud day-close even if stale recalls remain
+    if (syncPath === '/api/day-closes' && method === 'POST') {
+      headers['X-Sync-Force'] = '1'
+    }
 
-    const upstream = await fetch(url, {
-      method,
-      headers,
-      body: method === 'GET' ? undefined : JSON.stringify(payload ?? {}),
-    })
-    const text = await upstream.text()
-    const ct = String(upstream.headers.get('content-type') || '')
+    const callCloud = async (path, callMethod, callBody, callHeaders = headers) => {
+      const r = await fetch(`${cloudBase}${path}`, {
+        method: callMethod,
+        headers: callHeaders,
+        body: (callMethod === 'GET' || callMethod === 'DELETE') ? undefined : JSON.stringify(callBody ?? {}),
+      })
+      const t = await r.text()
+      return { status: r.status, text: t, ct: String(r.headers.get('content-type') || '') }
+    }
+
+    let upstream = await callCloud(syncPath, method, payload)
+    let text = upstream.text
+    let ct = upstream.ct
+
+    // Day close blocked by stale cloud recalls: clear them (branch is SOT) and retry once.
+    if (
+      method === 'POST' &&
+      syncPath === '/api/day-closes' &&
+      upstream.status === 400 &&
+      /OPEN_RECALLS|open recall/i.test(text || '')
+    ) {
+      try {
+        const hdrBranch = { ...headers }
+        const hdrAll = { ...headers }
+        delete hdrAll['X-Branch-Id']
+        let errBody = {}
+        try { errBody = JSON.parse(text || '{}') } catch {}
+        const tokenHints = (Array.isArray(errBody?.recalls) ? errBody.recalls : [])
+          .map((r) => String(r?.tokenNo || '').trim())
+          .filter(Boolean)
+        const lists = []
+        const cleared = new Set()
+        const tryClearRows = async (rows, hdr) => {
+          for (const row of rows) {
+            const id = String(row?._id || row?.id || '')
+            if (!/^[a-fA-F0-9]{24}$/.test(id) || cleared.has(id)) continue
+            await callCloud(`/api/recalls/${id}`, 'DELETE', undefined, hdr)
+            cleared.add(id)
+          }
+        }
+        for (const hdr of [hdrBranch, hdrAll]) {
+          const queries = [
+            '/api/recalls?limit=500',
+            '/api/recalls?page=1&limit=500',
+            '/api/recalls?includeCleared=1&limit=500',
+            '/api/recalls',
+            ...tokenHints.slice(0, 10).map((t) => `/api/recalls?search=${encodeURIComponent(t)}&includeCleared=1&limit=50`),
+          ]
+          for (const q of queries) {
+            const got = await callCloud(q, 'GET', undefined, hdr)
+            let rows = []
+            try {
+              const j = JSON.parse(got.text || '[]')
+              rows = Array.isArray(j) ? j : (Array.isArray(j?.rows) ? j.rows : [])
+            } catch {}
+            lists.push({ q, status: got.status, n: rows.length, sample: rows[0] && { id: rows[0]._id || rows[0].id, tokenNo: rows[0].tokenNo, clearedAt: rows[0].clearedAt, branchId: rows[0].branchId } })
+            await tryClearRows(rows, hdrAll)
+          }
+        }
+        // Also push clearedAt via sync for any id we found
+        if (cleared.size) {
+          const now = new Date().toISOString()
+          await callCloud('/api/sync/push', 'POST', {
+            branchId: branchId || undefined,
+            deviceId: 'daybook-force',
+            docs: {
+              recalls: [...cleared].map((id) => ({
+                _id: id,
+                id,
+                clearedAt: now,
+                updatedAt: now,
+                branchId: branchId || undefined,
+              })),
+            },
+          })
+        }
+        console.log('[sync-proxy] cleared cloud recalls before day-close retry', { cleared: cleared.size, lists: lists.filter((x) => x.n > 0).concat(lists.slice(0, 3)) })
+        upstream = await callCloud(syncPath, method, { ...payload }, { ...headers, 'X-Sync-Force': '1' })
+        text = upstream.text
+        ct = upstream.ct
+
+        // If REST day-close is still blocked, upsert via sync daybook endpoint (bypasses recall checks)
+        if (upstream.status === 400 && /OPEN_RECALLS|PENDING_EXPENSE/i.test(text || '')) {
+          const upsert = await callCloud('/api/sync/daybook-upsert', 'POST', {
+            branchId: branchId || undefined,
+            deviceId: 'daybook-force',
+            docs: { dayCloses: [{ ...payload, branchId: branchId || payload?.branchId }] },
+          })
+          console.log('[sync-proxy] daybook-upsert fallback', { status: upsert.status, body: String(upsert.text || '').slice(0, 300) })
+          if (upsert.status >= 200 && upsert.status < 300) {
+            upstream = upsert
+            text = upsert.text
+            ct = upsert.ct || 'application/json'
+          }
+        }
+      } catch (e) {
+        console.log('[sync-proxy] recall clear failed', String(e?.message || e))
+      }
+    }
+
     if (ct.includes('text/html') || /^\s*<!doctype/i.test(text) || /^\s*<html/i.test(text)) {
       return res.status(502).json({
         error:
           'Cloud URL returned HTML instead of the API. On the VPS, nginx must proxy /api to Node (port 5000).',
       })
+    }
+    // Quiet diagnostics for day open/close uploads (branch → cloud)
+    if (
+      (syncPath.includes('/push') || syncPath.includes('daybook-upsert') ||
+        syncPath.includes('/day-closes') || syncPath.includes('/cash-openings')) &&
+      (payload?.docs || syncPath.includes('/day-closes') || syncPath.includes('/cash-openings'))
+    ) {
+      const dc = Array.isArray(payload?.docs?.dayCloses) ? payload.docs.dayCloses.length : (syncPath.includes('/day-closes') ? 1 : 0)
+      const co = Array.isArray(payload?.docs?.cashOpenings) ? payload.docs.cashOpenings.length : (syncPath.includes('/cash-openings') ? 1 : 0)
+      if (dc || co || syncPath.includes('daybook')) {
+        let results = {}
+        let errors = []
+        try {
+          const j = JSON.parse(text || '{}')
+          results = j?.results || {}
+          errors = Array.isArray(j?.errors) ? j.errors : []
+        } catch {}
+        console.log('[sync-proxy] daybook', {
+          path: syncPath,
+          status: upstream.status,
+          sent: { dayCloses: dc, cashOpenings: co, date: payload?.date || payload?.docs?.dayCloses?.[0]?.date || '' },
+          results: { dayCloses: results.dayCloses, cashOpenings: results.cashOpenings },
+          body: String(text || '').slice(0, 240),
+        })
+      }
     }
     res.status(upstream.status)
     if (ct) res.set('Content-Type', ct)

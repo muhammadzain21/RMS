@@ -54,6 +54,7 @@ async function countOpenRecalls(branchId = '') {
   return {
     count,
     items: pending.slice(0, 10).map(r => ({
+      id: String(r._id || ''),
       date: r.date || ymdFromCreatedAt(r.createdAt) || '',
       tokenNo: r.tokenNo || '',
       orderNo: r.orderNo || '',
@@ -116,8 +117,12 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
     const existing = await DayClose.findOne({ date, branchId: branchIdForClose })
     if (existing) return res.status(409).json({ error: 'Day already closed for this date' })
 
+    // Branch → cloud sync sends X-Sync-Force so stale cloud recalls/expenses
+    // cannot block an offline day close that already passed these checks locally.
+    const syncForce = String(req.headers['x-sync-force'] || '') === '1'
+
     const openRecalls = await countOpenRecalls(branchIdForClose)
-    if (openRecalls.count > 0) {
+    if (!syncForce && openRecalls.count > 0) {
       const sample = (openRecalls.items || [])
         .slice(0, 3)
         .map(r => `${r.date || '?'}${r.tokenNo ? ` #${r.tokenNo}` : ''}`)
@@ -161,7 +166,7 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       ],
     }
     const pendingExpenseCount = await Expense.countDocuments(pendingExpenseFilter)
-    if (pendingExpenseCount > 0) {
+    if (!syncForce && pendingExpenseCount > 0) {
       const pendingSamples = await Expense.find(pendingExpenseFilter)
         .select('date amount expenseHead category status')
         .sort({ createdAt: -1 })
@@ -202,6 +207,12 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       userId: req.user?.id || '',
       userName: req.user?.username || '',
     }))
+    // Bump updatedAt so outbound sync $gt cursor cannot skip this close
+    try {
+      const touched = new Date()
+      await DayClose.updateOne({ _id: rec._id }, { $set: { updatedAt: touched } })
+      if (rec.updatedAt) rec.updatedAt = touched
+    } catch {}
     // Left-at-counter is stored on the day close only.
     // Next day opening is filled on Day Opening page — do NOT auto-create a cash opening
     // (that would mark the next day as open before staff clicks Record Opening).

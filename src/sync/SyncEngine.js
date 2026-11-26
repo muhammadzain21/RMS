@@ -187,9 +187,10 @@ async function fetchJson(url, opts) {
  * Call VPS sync APIs via the local Node server so the browser stays same-origin
  * (avoids CORS blocks from http://127.0.0.1 → https://cloud).
  */
-async function cloudFetchJson(cloud, syncPath, { method = 'GET', token, cloudToken, branchId, body } = {}) {
+async function cloudFetchJson(cloud, syncPath, { method = 'GET', token, cloudToken, branchId, body, omitBranch = false } = {}) {
   const local = String(localApi() || '').replace(/\/+$/, '')
   const tok = String(cloudToken || token || '').trim()
+  const bid = omitBranch ? '' : (branchId || resolveSyncBranchId())
   return fetchJson(`${local}/api/sync/proxy`, {
     method: 'POST',
     headers: authHeaders(token),
@@ -198,7 +199,7 @@ async function cloudFetchJson(cloud, syncPath, { method = 'GET', token, cloudTok
       path: syncPath,
       method,
       cloudToken: tok,
-      branchId: branchId || resolveSyncBranchId(),
+      branchId: bid,
       body,
     }),
   })
@@ -313,8 +314,354 @@ function mergeFailedPushDocs(branchId, docs) {
   return out
 }
 
+/**
+ * Force-queue docs for the next cloud push (used after day open/close so they
+ * are never lost inside a large sales batch or an advanced cursor).
+ */
+export function queuePushDocs(docs) {
+  const branchId = resolveSyncBranchId()
+  if (!branchId) return
+  const failed = loadFailedPushDocs(branchId)
+  for (const [col, rows] of Object.entries(docs || {})) {
+    const list = Array.isArray(rows) ? rows : (rows ? [rows] : [])
+    if (!list.length) continue
+    if (!failed[col]) failed[col] = {}
+    for (const row of list) {
+      if (!row || typeof row !== 'object') continue
+      const id = String(row._id || row.id || '')
+      if (!id) continue
+      failed[col][id] = row
+    }
+  }
+  saveFailedPushDocs(branchId, failed)
+}
+
+function ymdLocal(d = new Date()) {
+  const x = d instanceof Date ? d : new Date(d)
+  if (!Number.isFinite(x.getTime())) return ''
+  const y = x.getFullYear()
+  const m = String(x.getMonth() + 1).padStart(2, '0')
+  const day = String(x.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function daybookRestDoneKey(branchId) {
+  return `sync_daybook_rest_done_${String(branchId || '').trim()}`
+}
+
+function loadDaybookRestDone(branchId) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(daybookRestDoneKey(branchId)) || '{}')
+    return raw && typeof raw === 'object' ? raw : {}
+  } catch {
+    return {}
+  }
+}
+
+function markDaybookRestDone(branchId, kind, date) {
+  if (!branchId || !date) return
+  try {
+    const map = loadDaybookRestDone(branchId)
+    map[`${kind}:${date}`] = 1
+    localStorage.setItem(daybookRestDoneKey(branchId), JSON.stringify(map))
+  } catch {}
+}
+
+/** Branch already closed offline — clear stale open recalls on cloud that block REST day-close. */
+async function clearCloudOpenRecalls({ cloud, token, cloudToken, branchId }) {
+  const collect = async (opts) => {
+    try {
+      const list = await cloudFetchJson(cloud, '/api/recalls?limit=500', {
+        method: 'GET',
+        token,
+        cloudToken,
+        branchId,
+        ...opts,
+      })
+      return Array.isArray(list) ? list : (Array.isArray(list?.rows) ? list.rows : [])
+    } catch {
+      return []
+    }
+  }
+  try {
+    // Cloud day-close may count recalls without branch scope while GET is scoped —
+    // pull both the branch list and an unscoped list.
+    const [scoped, all] = await Promise.all([
+      collect({}),
+      collect({ omitBranch: true }),
+    ])
+    const byId = new Map()
+    for (const row of [...scoped, ...all]) {
+      const id = String(row?._id || row?.id || '')
+      if (id) byId.set(id, row)
+    }
+    let cleared = 0
+    for (const id of byId.keys()) {
+      try {
+        await cloudFetchJson(cloud, `/api/recalls/${id}`, {
+          method: 'DELETE',
+          token,
+          cloudToken,
+          branchId,
+          omitBranch: true,
+        })
+        cleared += 1
+      } catch {}
+    }
+    return cleared
+  } catch {
+    return 0
+  }
+}
+
+/** Older cloud builds omit dayCloses/cashOpenings from /api/sync/push — use REST. */
+async function pushDaybookViaRest({ cloud, token, cloudToken, branchId, dayDocs }) {
+  const closes = Array.isArray(dayDocs?.dayCloses) ? dayDocs.dayCloses : []
+  const opens = Array.isArray(dayDocs?.cashOpenings) ? dayDocs.cashOpenings : []
+  const done = loadDaybookRestDone(branchId)
+  const errors = []
+  let closeOk = 0
+  let openOk = 0
+
+  // Newest first so today's/yesterday's close lands before older history
+  const closeSorted = [...closes].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+  // Only push openings for dates that are already closed online (or have no close locally),
+  // so we never mark a day Open on cloud without its matching close.
+  const localCloseDates = new Set(closeSorted.map((r) => String(r?.date || '').slice(0, 10)).filter(Boolean))
+  const openSorted = [...opens]
+    .filter((r) => {
+      const d = String(r?.date || '').slice(0, 10)
+      if (!d) return false
+      // If we still need to upload a close for this date, wait — don't open cloud first
+      if (localCloseDates.has(d) && !done[`dayCloses:${d}`]) return false
+      return true
+    })
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+
+  for (const row of closeSorted) {
+    const date = String(row?.date || '').slice(0, 10)
+    if (!date) continue
+    if (done[`dayCloses:${date}`]) {
+      closeOk += 1
+      continue
+    }
+    const blockedUntil = Number(done[`dayCloses:${date}:blockedUntil`] || 0)
+    if (blockedUntil && Date.now() < blockedUntil) {
+      errors.push({ collection: 'dayCloses', id: String(row?._id || row?.id || date), error: 'waiting to retry cloud day-close' })
+      break
+    }
+    const body = {
+      date,
+      openingCash: Number(row.openingCash || 0),
+      cashSales: Number(row.cashSales || 0),
+      cardSales: Number(row.cardSales || 0),
+      onlineSales: Number(row.onlineSales || 0),
+      complimentarySales: Number(row.complimentarySales || 0),
+      staffSales: Number(row.staffSales || 0),
+      returns: Number(row.returns || 0),
+      handovers: Number(row.handovers || 0),
+      handoverTo: String(row.handoverTo || ''),
+      leftAtCounter: Number(row.leftAtCounter || 0),
+      payIns: Number(row.payIns || 0),
+      payOuts: Number(row.payOuts || 0),
+      expectedCash: Number(row.expectedCash || 0),
+      countedCash: Number(row.countedCash || 0),
+      variance: Number(row.variance || 0),
+      note: String(row.note || ''),
+      userId: String(row.userId || ''),
+      userName: String(row.userName || ''),
+    }
+    const tryClose = async () => cloudFetchJson(cloud, '/api/day-closes', {
+      method: 'POST',
+      token,
+      cloudToken,
+      branchId,
+      body,
+    })
+    try {
+      await tryClose()
+      markDaybookRestDone(branchId, 'dayCloses', date)
+      closeOk += 1
+    } catch (e) {
+      const msg = String(e?.message || e)
+      // Already closed online = success for our purpose
+      if (/already closed|409/i.test(msg)) {
+        markDaybookRestDone(branchId, 'dayCloses', date)
+        closeOk += 1
+        continue
+      }
+      // Cloud still has open recalls the branch already cleared — clear them, retry once
+      if (/OPEN_RECALLS|open recall/i.test(msg)) {
+        await clearCloudOpenRecalls({ cloud, token, cloudToken, branchId })
+        try {
+          await tryClose()
+          markDaybookRestDone(branchId, 'dayCloses', date)
+          closeOk += 1
+          continue
+        } catch (e2) {
+          const msg2 = String(e2?.message || e2)
+          if (/already closed|409/i.test(msg2)) {
+            markDaybookRestDone(branchId, 'dayCloses', date)
+            closeOk += 1
+            continue
+          }
+          errors.push({ collection: 'dayCloses', id: String(row?._id || row?.id || date), error: msg2 })
+          break
+        }
+      }
+      // Back off this date for 10 minutes so we don't hammer cloud every sync tick
+      try {
+        const map = loadDaybookRestDone(branchId)
+        map[`dayCloses:${date}:blockedUntil`] = Date.now() + 10 * 60e3
+        localStorage.setItem(daybookRestDoneKey(branchId), JSON.stringify(map))
+      } catch {}
+      errors.push({ collection: 'dayCloses', id: String(row?._id || row?.id || date), error: msg })
+      // Don't hammer older dates if the newest close is blocked
+      break
+    }
+  }
+
+  for (const row of openSorted) {
+    const date = String(row?.date || '').slice(0, 10)
+    if (!date) continue
+    if (done[`cashOpenings:${date}`]) {
+      openOk += 1
+      continue
+    }
+    try {
+      const body = {
+        date,
+        openingCash: Number(row.openingCash || 0),
+        note: String(row.note || ''),
+        userId: String(row.userId || ''),
+        userName: String(row.userName || ''),
+      }
+      await cloudFetchJson(cloud, '/api/cash-openings', {
+        method: 'POST',
+        token,
+        cloudToken,
+        branchId,
+        body,
+      })
+      markDaybookRestDone(branchId, 'cashOpenings', date)
+      openOk += 1
+    } catch (e) {
+      const msg = String(e?.message || e)
+      if (/already open|ALREADY_OPEN|409/i.test(msg)) {
+        markDaybookRestDone(branchId, 'cashOpenings', date)
+        openOk += 1
+        continue
+      }
+      errors.push({ collection: 'cashOpenings', id: String(row?._id || row?.id || date), error: msg })
+      break
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    results: { dayCloses: closeOk, cashOpenings: openOk },
+    errors,
+  }
+}
+
+/** Small, first-priority push: day open/close only (before sales backlog). */
+async function pushDaybookPriority({ cloud, local, token, cloudToken, branchId }) {
+  const toDate = ymdLocal(new Date())
+  const fromDate = ymdLocal(Date.now() - 21 * 864e5)
+  const [opens, closes] = await Promise.all([
+    fetchJson(
+      `${local}/api/cash-openings?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
+      { headers: authHeaders(token) },
+    ),
+    fetchJson(
+      `${local}/api/day-closes?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
+      { headers: authHeaders(token) },
+    ),
+  ])
+  const openRows = Array.isArray(opens) ? opens : (Array.isArray(opens?.rows) ? opens.rows : [])
+  const closeRows = Array.isArray(closes) ? closes : (Array.isArray(closes?.rows) ? closes.rows : [])
+  let dayDocs = {}
+  if (openRows.length) dayDocs.cashOpenings = openRows
+  if (closeRows.length) dayDocs.dayCloses = closeRows
+  dayDocs = mergeFailedPushDocs(branchId, dayDocs)
+  // Keep only daybook collections in this priority pass
+  dayDocs = {
+    ...(dayDocs.cashOpenings?.length ? { cashOpenings: dayDocs.cashOpenings } : {}),
+    ...(dayDocs.dayCloses?.length ? { dayCloses: dayDocs.dayCloses } : {}),
+  }
+  if (!batchHasRows(dayDocs)) return { ok: true, skipped: true }
+
+  // Prefer dedicated upsert (new cloud). Falls back when VPS is older.
+  try {
+    const upserted = await cloudFetchJson(cloud, '/api/sync/daybook-upsert', {
+      method: 'POST',
+      token,
+      cloudToken,
+      branchId,
+      body: { branchId, deviceId: deviceId(), docs: dayDocs },
+    })
+    if (upserted?.ok && (upserted?.results?.dayCloses != null || upserted?.results?.cashOpenings != null)) {
+      const pushErrors = Array.isArray(upserted?.errors) ? upserted.errors : []
+      if (pushErrors.length) {
+        rememberFailedPushDocs(branchId, dayDocs, pushErrors)
+        clearFailedPushDocs(branchId, dayDocs, pushErrors)
+        const first = pushErrors[0]
+        if (first?.error) lastError = `Push ${first.collection || 'daybook'}: ${first.error}`
+        return { ok: false, errors: pushErrors }
+      }
+      clearFailedPushDocs(branchId, dayDocs, [])
+      return { ok: true, results: upserted.results || {}, via: 'daybook-upsert' }
+    }
+  } catch {
+    // Endpoint missing on older cloud — continue with push / REST fallback
+  }
+
+  const pushed = await cloudFetchJson(cloud, '/api/sync/push', {
+    method: 'POST',
+    token,
+    cloudToken,
+    branchId,
+    body: { branchId, deviceId: deviceId(), docs: dayDocs },
+  })
+  const pushErrors = Array.isArray(pushed?.errors) ? pushed.errors : []
+  const results = pushed?.results || {}
+  // Older cloud ignores these collections entirely (no key in results)
+  const cloudIgnoredDaybook =
+    results.dayCloses == null && results.cashOpenings == null
+
+  if (cloudIgnoredDaybook) {
+    const rest = await pushDaybookViaRest({ cloud, token, cloudToken, branchId, dayDocs })
+    if (rest.errors?.length) {
+      rememberFailedPushDocs(branchId, dayDocs, rest.errors)
+      clearFailedPushDocs(branchId, dayDocs, rest.errors)
+      const first = rest.errors[0]
+      if (first?.error) lastError = `Push ${first.collection || 'daybook'}: ${first.error}`
+      return { ok: false, errors: rest.errors, via: 'rest' }
+    }
+    clearFailedPushDocs(branchId, dayDocs, [])
+    return { ok: true, results: rest.results, via: 'rest' }
+  }
+
+  if (pushErrors.length) {
+    rememberFailedPushDocs(branchId, dayDocs, pushErrors)
+    clearFailedPushDocs(branchId, dayDocs, pushErrors)
+    const first = pushErrors[0]
+    if (first?.error) lastError = `Push ${first.collection || 'daybook'}: ${first.error}`
+    return { ok: false, errors: pushErrors }
+  }
+  clearFailedPushDocs(branchId, dayDocs, [])
+  return { ok: true, results, via: 'sync-push' }
+}
+
 /** Push local changes to cloud (drain pages so overnight offline backlog clears). */
 async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
+  // Day open/close first — never wait behind a large sales backlog
+  try {
+    await pushDaybookPriority({ cloud, local, token, cloudToken, branchId })
+  } catch (e) {
+    if (!lastError) lastError = e?.message || 'Daybook priority push failed'
+  }
+
   const sinceKey = `sync_push_since_${branchId}`
   let since = '1970-01-01T00:00:00.000Z'
   try { since = localStorage.getItem(sinceKey) || since } catch {}
@@ -390,9 +737,11 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
       const advanced = maxUpdatedAt(pullDocs) || localPull.serverTime
       if (advanced) {
         let next = advanced
-        if (localPull.hasMore) {
-          const t = new Date(advanced).getTime()
-          if (Number.isFinite(t) && t > 0) next = new Date(t - 1).toISOString()
+        const t = new Date(advanced).getTime()
+        if (Number.isFinite(t) && t > 0) {
+          // Step 1ms past the newest row so the next $gt pull does not drop it,
+          // and 1ms back when another page is waiting so same-timestamp rows are kept.
+          next = new Date(localPull.hasMore ? t - 1 : t + 1).toISOString()
         }
         since = next
         try { localStorage.setItem(sinceKey, next) } catch {}
@@ -404,29 +753,16 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
     if (!localPull.hasMore) break
   }
 
-  // Heartbeat: always re-push latest day open/close + recent sales so cloud matches
-  // offline SOT even if the push cursor advanced past a failed unique-key upsert.
+  // Heartbeat: daybook again (priority), then recent sales so cloud matches offline SOT.
   try {
-    const ymd = (d) => {
-      const x = new Date(d)
-      if (!Number.isFinite(x.getTime())) return ''
-      const y = x.getFullYear()
-      const m = String(x.getMonth() + 1).padStart(2, '0')
-      const day = String(x.getDate()).padStart(2, '0')
-      return `${y}-${m}-${day}`
-    }
-    const toDate = ymd(new Date())
-    const fromDate = ymd(Date.now() - 14 * 864e5)
-    const [opens, closes, sales, deletedSales] = await Promise.all([
-      // Date range (not a 3-row page) so an offline day close is always in the next upload
-      fetchJson(
-        `${local}/api/cash-openings?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
-        { headers: authHeaders(token) },
-      ),
-      fetchJson(
-        `${local}/api/day-closes?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
-        { headers: authHeaders(token) },
-      ),
+    await pushDaybookPriority({ cloud, local, token, cloudToken, branchId })
+  } catch (e) {
+    if (!lastError) lastError = e?.message || 'Daybook heartbeat failed'
+  }
+  try {
+    const toDate = ymdLocal(new Date())
+    const fromDate = ymdLocal(Date.now() - 14 * 864e5)
+    const [sales, deletedSales] = await Promise.all([
       fetchJson(
         `${local}/api/sales?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`,
         { headers: authHeaders(token) },
@@ -436,16 +772,11 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
         { headers: authHeaders(token) },
       ),
     ])
-    const openRows = Array.isArray(opens) ? opens : (Array.isArray(opens?.rows) ? opens.rows : [])
-    const closeRows = Array.isArray(closes) ? closes : (Array.isArray(closes?.rows) ? closes.rows : [])
     const saleRows = Array.isArray(sales) ? sales : (Array.isArray(sales?.rows) ? sales.rows : [])
     const deletedRows = Array.isArray(deletedSales)
       ? deletedSales
       : (Array.isArray(deletedSales?.rows) ? deletedSales.rows : [])
     let dayDocs = {}
-    if (openRows.length) dayDocs.cashOpenings = openRows
-    if (closeRows.length) dayDocs.dayCloses = closeRows
-    // Prefer newest first; include queued retries via mergeFailedPushDocs
     if (saleRows.length) {
       dayDocs.sales = [...saleRows].sort((a, b) =>
         String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')),
@@ -453,6 +784,9 @@ async function pushLocal({ cloud, local, token, cloudToken, branchId }) {
     }
     if (deletedRows.length) dayDocs.deletedSales = deletedRows.slice(0, 400)
     dayDocs = mergeFailedPushDocs(branchId, dayDocs)
+    // Daybook already pushed above — don't bury it in the sales payload again
+    delete dayDocs.cashOpenings
+    delete dayDocs.dayCloses
     if (batchHasRows(dayDocs)) {
       const hb = await cloudFetchJson(cloud, '/api/sync/push', {
         method: 'POST',

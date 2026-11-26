@@ -9,6 +9,7 @@ import { toast } from 'react-hot-toast'
 import DeleteKeyModal from '@shared/components/DeleteKeyModal.jsx'
 import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport, downloadHtmlReport } from '@shared/utils/reportDoc.js'
 import { exportDateStamp } from '@shared/utils/listReportExport.js'
+import { queuePushDocs, requestSync } from '@/sync/SyncEngine.js'
 
 export default function CashOpening() {
  const { state, dispatch } = useData()
@@ -224,11 +225,23 @@ export default function CashOpening() {
  }
  const saved = await res.json().catch(() => null)
  if (saved) {
+  const openingRec = {
+   ...saved,
+   id: saved.id || saved._id,
+   date: saved.date || date,
+   openingCash: saved.openingCash ?? amt,
+   note: saved.note || note,
+   userName: saved.userName || user?.name || '',
+  }
   dispatch({
    type: 'UPSERT_CASH_OPENING',
-   payload: { id: saved.id || saved._id, date: saved.date || date, openingCash: saved.openingCash ?? amt, note: saved.note || note, userName: saved.userName || user?.name || '' },
+   payload: openingRec,
   })
   dispatch({ type: 'DAY_OPEN', payload: { date: saved.date || date, openingCash: saved.openingCash ?? amt, userId: user?.id || '', userName: user?.name || user?.username || '' } })
+  try {
+   queuePushDocs({ cashOpenings: [openingRec] })
+   requestSync('day-open')
+  } catch {}
  }
  await refreshOpenings()
  toast.success(`Opening cash recorded: PKR ${amt.toLocaleString()}`)
