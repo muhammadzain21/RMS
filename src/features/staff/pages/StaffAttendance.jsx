@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useAuth } from '@/state/AuthContext.jsx';
 import { useData } from '@/state/DataContext.jsx';
+import { useBranch } from '@/state/BranchContext.jsx';
 import { useConfirm } from '@shared/components/useConfirm.jsx';
 import { toast } from 'react-hot-toast';
 import { getLocalDateString, formatTime12 } from '@shared/utils/dateUtils.js';
@@ -18,8 +19,14 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  const auth = useAuth();
  const token = auth?.token;
  const { state, businessDate } = useData();
+ const { activeBranchId } = useBranch();
  const { confirm, ConfirmDialog } = useConfirm();
  const API = (import.meta).env.VITE_API_BASE || 'http://localhost:5000';
+
+ const staffAuthHeaders = useMemo(() => ({
+  Authorization: `Bearer ${token}`,
+  ...(activeBranchId ? { 'X-Branch-Id': String(activeBranchId) } : {}),
+ }), [token, activeBranchId]);
 
  const [tab, setTab] = useState(initialTab);
  const [staff, setStaff] = useState([]);
@@ -42,7 +49,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
  // Load staff with pagination
- const fetchStaff = async () => {
+ const fetchStaff = useCallback(async () => {
  if (!token) return;
  setLoadingStaff(true);
  try {
@@ -52,7 +59,8 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  search: search
  });
  const res = await fetch(`${API}/api/staff?${params.toString()}`, {
- headers: { Authorization: `Bearer ${token}` }
+ headers: staffAuthHeaders,
+ cache: 'no-store',
  });
  if (res.ok) {
  const result = await res.json();
@@ -69,6 +77,8 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  joinDate: d.joinDate ? String(d.joinDate).slice(0, 10) : undefined,
  status: d.status === 'Inactive' ? 'inactive' : 'active',
  shiftId: d.shiftId || '',
+ branchId: d.branchId || '',
+ branchName: d.branchName || '',
  loginUsername: d.loginUsername || '',
  loginRole: d.loginRole || 'Staff',
  myWorkAccess: d.myWorkAccess !== false,
@@ -86,11 +96,16 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  } finally {
  setLoadingStaff(false);
  }
- };
+ }, [token, API, pagination.page, pagination.limit, search, staffAuthHeaders]);
 
  useEffect(() => {
  fetchStaff();
- }, [token, API, pagination.page, pagination.limit, search]);
+ }, [fetchStaff]);
+
+ // Reset to page 1 when header branch changes so lists stay branch-scoped
+ useEffect(() => {
+ setPagination(prev => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+ }, [activeBranchId]);
 
  const fetchBiometricMaps = useCallback(async () => {
  if (!token) return;
@@ -216,7 +231,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  method: 'POST',
  headers: {
  'Content-Type': 'application/json',
- Authorization: `Bearer ${token}`
+ ...staffAuthHeaders,
  },
  body: JSON.stringify({
  name: payload.name.trim(),
@@ -229,6 +244,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  status: payload.status === 'inactive' ? 'Inactive' : 'Active',
  joinDate: payload.joinDate,
  shiftId: payload.shiftId || '',
+ ...(payload.branchId ? { branchId: String(payload.branchId) } : {}),
  myWorkAccess: Array.isArray(payload.myWorkPages) ? payload.myWorkPages.length > 0 : payload.myWorkAccess !== false,
  ...(Array.isArray(payload.myWorkPages) ? { myWorkPages: payload.myWorkPages } : {}),
  ...(payload.username ? { username: payload.username, password: payload.password || '', role: payload.role || 'Staff' } : {})
@@ -253,7 +269,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  method: 'PATCH',
  headers: {
  'Content-Type': 'application/json',
- Authorization: `Bearer ${token}`
+ ...staffAuthHeaders,
  },
  body: JSON.stringify({
  name: payload.name.trim(),
@@ -266,6 +282,7 @@ export default function StaffAttendance({ initialTab = 'attendance', showTabs = 
  status: payload.status === 'inactive' ? 'Inactive' : 'Active',
  joinDate: payload.joinDate,
  shiftId: payload.shiftId || '',
+ ...(payload.branchId ? { branchId: String(payload.branchId) } : {}),
  myWorkAccess: Array.isArray(payload.myWorkPages) ? payload.myWorkPages.length > 0 : payload.myWorkAccess !== false,
  ...(Array.isArray(payload.myWorkPages) ? { myWorkPages: payload.myWorkPages } : {}),
  ...(payload.username || payload.password ? { username: payload.username || '', password: payload.password || '', role: payload.role || 'Staff' } : {})

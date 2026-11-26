@@ -107,8 +107,16 @@ router.post('/', requireRole('Admin','Manager'), async (req, res, next) => {
       const exists = await User.findOne({ username: uname })
       if (exists) return res.status(409).json({ error: 'Username already exists — pick another or edit the user in Users' })
     }
-    const { stampBranchId } = await import('../utils/branchScope.js')
-    const s = await Staff.create(stampBranchId(req, staffBody))
+    const { stampBranchId, isHqUser, assertBranchAccess } = await import('../utils/branchScope.js')
+    // Admin can assign branch from the form; others stay stamped from header
+    let createPayload = staffBody
+    if (isHqUser(req.user) && staffBody.branchId) {
+      assertBranchAccess(req, staffBody.branchId)
+      createPayload = { ...staffBody, branchId: String(staffBody.branchId) }
+    } else {
+      createPayload = stampBranchId(req, staffBody)
+    }
+    const s = await Staff.create(createPayload)
     if (uname) {
       if (!password || String(password).length < 4) {
         await Staff.findByIdAndDelete(s._id)
@@ -151,16 +159,31 @@ router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
 
     const existing = await Staff.findById(req.params.id)
     if (!existing) return res.status(404).json({ error: 'Staff not found' })
+    const { assertDocumentBranch, isHqUser, assertBranchAccess } = await import('../utils/branchScope.js')
+    const hq = isHqUser(req.user)
     try {
-      const { assertDocumentBranch } = await import('../utils/branchScope.js')
-      assertDocumentBranch(req, existing)
+      // HQ/Admin may edit any branch’s staff; managers stay locked to header branch
+      if (!hq) assertDocumentBranch(req, existing)
     } catch (e) {
       if (e.status) return res.status(e.status).json({ error: e.message })
       throw e
     }
-    if (existing.branchId) staffBody.branchId = String(existing.branchId)
+    if (hq && staffBody.branchId) {
+      assertBranchAccess(req, staffBody.branchId)
+      staffBody.branchId = String(staffBody.branchId)
+    } else if (existing.branchId) {
+      staffBody.branchId = String(existing.branchId)
+    }
     const s = await Staff.findByIdAndUpdate(req.params.id, staffBody, { new: true })
     if (!s) return res.status(404).json({ error: 'Not found' })
+
+    const syncUserBranch = (u) => {
+      if (!u || !s.branchId) return false
+      u.homeBranchId = String(s.branchId)
+      const ids = new Set([...(u.branchIds || []).map(String), String(s.branchId)])
+      u.branchIds = [...ids]
+      return true
+    }
 
     // Sync the linked login account: create if missing, update username/password if present
     if (uname || password) {
@@ -182,17 +205,11 @@ router.patch('/:id', requireRole('Admin','Manager'), async (req, res, next) => {
         if (uname) linked.username = uname
         if (password) linked.passwordHash = await bcrypt.hash(String(password), 10)
         if (roleName) linked.role = roleName
-        if (s.branchId) {
-          linked.homeBranchId = String(s.branchId)
-          const ids = new Set([...(linked.branchIds || []).map(String), String(s.branchId)])
-          linked.branchIds = [...ids]
-        }
+        syncUserBranch(linked)
         await linked.save()
       }
-    } else if (linked && s.branchId && !linked.homeBranchId) {
-      linked.homeBranchId = String(s.branchId)
-      const ids = new Set([...(linked.branchIds || []).map(String), String(s.branchId)])
-      linked.branchIds = [...ids]
+    } else if (linked && s.branchId && (String(linked.homeBranchId || '') !== String(s.branchId) || !linked.homeBranchId)) {
+      syncUserBranch(linked)
       await linked.save()
     }
 

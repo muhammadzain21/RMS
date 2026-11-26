@@ -2,6 +2,8 @@ import React from 'react';
 import { formatTime12 } from '@shared/utils/dateUtils.js';
 import DatePicker from '@shared/components/DatePicker.jsx';
 import { MY_WORK_PAGE_OPTIONS } from '@features/my-work/utils/myWorkPages.js';
+import { useAuth } from '@/state/AuthContext.jsx';
+import { useBranch } from '@/state/BranchContext.jsx';
 
 function PageToggle({ on, onClick }) {
   return (
@@ -28,9 +30,13 @@ export default function StaffFormDialog({
   shifts = [],
   roles = []
 }) {
+  const { user } = useAuth();
+  const { branches, activeBranchId } = useBranch();
+  const isAdmin = user?.role === 'Admin' || user?.role === 'SuperAdmin' || !!user?.isHq;
   if (!isOpen) return null;
 
   const pages = Array.isArray(formData.myWorkPages) ? formData.myWorkPages : [];
+  const branchValue = formData.branchId || activeBranchId || '';
   const togglePage = (path) => {
     const next = pages.includes(path)
       ? pages.filter(p => p !== path)
@@ -137,6 +143,24 @@ export default function StaffFormDialog({
               ))}
             </select>
           </div>
+          {isAdmin ? (
+            <div>
+              <label className="block text-sm mb-1">Branch</label>
+              <select
+                className="w-full px-3 py-2 rounded border bg-white dark:bg-gray-800"
+                value={branchValue}
+                onChange={e => setFormData({ ...formData, branchId: e.target.value })}
+              >
+                <option value="">Select branch…</option>
+                {(branches || []).map(b => (
+                  <option key={b._id || b.id} value={String(b._id || b.id)}>
+                    {b.name || b.code || b._id}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-500">Admin can move staff between branches</p>
+            </div>
+          ) : null}
           <div>
             <label className="block text-sm mb-1">Salary (PKR)</label>
             <input

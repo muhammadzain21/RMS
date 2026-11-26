@@ -11,14 +11,31 @@ import { wrapReportDoc, reportSummary, reportSec, reportTable, previewHtmlReport
 import { exportDateStamp } from '@shared/utils/listReportExport.js'
 
 export default function CashOpening() {
- const { state, dispatch, businessDate } = useData()
+ const { state, dispatch } = useData()
  const { user, token } = useAuth()
  const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
  const authHeaders = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
- const today = businessDate || format(new Date(), 'yyyy-MM-dd')
+ // Default opening date: open daybook date if open, else calendar today.
+ // Never auto-jump to lastClosed+1 — user picks the day to open.
+ const calendarToday = format(new Date(), 'yyyy-MM-dd')
+ const today = (state?.daybook?.open && state?.daybook?.date)
+  ? state.daybook.date
+  : calendarToday
  const [date, setDate] = useState(today)
  const [openingCash, setOpeningCash] = useState('')
  const [search, setSearch] = useState('')
+
+ // When daybook closes (or was never open), keep form on calendar today so skipped
+ // days are not auto-selected after a late close. User changes the date if needed.
+ const daybookOpen = !!state?.daybook?.open
+ const daybookDate = state?.daybook?.date || ''
+ useEffect(() => {
+  if (daybookOpen && daybookDate) {
+   setDate(daybookDate)
+   return
+  }
+  setDate(format(new Date(), 'yyyy-MM-dd'))
+ }, [daybookOpen, daybookDate])
 
  // Most recent day close before the selected date → next opening source
  const previousDayClose = useMemo(() => {

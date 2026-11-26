@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useC
 import { useAuth } from '@/state/AuthContext.jsx'
 import { useBranch } from '@/state/BranchContext.jsx'
 import { isUserBusy } from '@shared/utils/userBusy.js'
-import { addDays, format } from 'date-fns'
+import { format } from 'date-fns'
 
 const DataContext = createContext(null)
 
@@ -754,32 +754,12 @@ export function DataProvider({ children }) {
   }, [state.daybook, inferredOpenDate])
 
   // Business date shown in the header + used for CSV/PDF/Print filenames.
-  // Open daybook always wins (operational day). Otherwise optional "use business day"
-  // setting advances past last close / latest open data day.
-  const useBusiness = Boolean(state?.settings?.useBusinessDayForToday)
+  // Open daybook always wins (operational day). When closed, stay on calendar today —
+  // never auto-advance to lastClosed+1 (that made skipped days look primed/open after a late close).
+  // Staff open the next day themselves on Day Opening.
   let businessDate = realToday
   if (effectiveDaybook?.open && (effectiveDaybook?.date || '')) {
     businessDate = effectiveDaybook.date
-  } else if (useBusiness) {
-    // If there is a recent Day Close, advance business date to the next day (but not beyond today)
-    const closedDatesSorted = Array.from(closedSetDC).filter(Boolean).sort()
-    if (closedDatesSorted.length) {
-      const lastClosed = closedDatesSorted[closedDatesSorted.length - 1]
-      try {
-        const nextDay = format(addDays(new Date(lastClosed), 1), 'yyyy-MM-dd')
-        businessDate = nextDay <= realToday ? nextDay : realToday
-      } catch { businessDate = realToday }
-    } else {
-      // Otherwise, pick the most recent non-closed date with data up to today
-      const dataDates = new Set([
-        ...((state.sales||[]).map(s=>s.date)),
-        ...((state.returns||[]).map(r=>r.date)),
-        ...((state.expenses||[]).map(e=>e.date)),
-        ...((state.supplies||[]).map(s=>s.date)),
-      ].filter(Boolean))
-      const candidates = Array.from(dataDates).filter(d => d <= realToday && !closedSetDC.has(d)).sort()
-      if (candidates.length) businessDate = candidates[candidates.length - 1]
-    }
   }
   const monthKey = format(new Date(), 'yyyy-MM')
   const salesArr = Array.isArray(state.sales) ? state.sales : []

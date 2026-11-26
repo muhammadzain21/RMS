@@ -42,8 +42,6 @@ export default function SalesNew() {
   const { confirm, ConfirmDialog } = useConfirm()
   const API = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
   const authHeaders = token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' }
-  // Cross-branch staff for Staff Purchase picker (sale finance still uses active branch)
-  const [staffAllBranches, setStaffAllBranches] = useState([])
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -589,40 +587,10 @@ export default function SalesNew() {
       .map(s => ({ id: s.id, name: s.name }))
   ), [staff])
 
-  // Staff purchase: list Active staff from every accessible branch
-  useEffect(() => {
-    if (!token) { setStaffAllBranches([]); return }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await fetch(`${API}/api/staff?limit=500&allBranches=1`, {
-          headers: authHeaders,
-          cache: 'no-store',
-        })
-        if (!res.ok) return
-        const json = await res.json().catch(() => ({}))
-        const rows = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : [])
-        const branchLabel = (bid) => {
-          const b = (branches || []).find(x => String(x._id || x.id) === String(bid || ''))
-          return b?.name || b?.code || ''
-        }
-        const mapped = rows.map(r => ({
-          ...r,
-          id: r.id || r._id,
-          branchName: r.branchName || branchLabel(r.branchId) || '',
-        }))
-        if (!cancelled) setStaffAllBranches(mapped)
-      } catch {
-        if (!cancelled) setStaffAllBranches([])
-      }
-    })()
-    return () => { cancelled = true }
-  }, [token, API, branches])
-
+  // Staff purchase / waiter: only this branch’s staff (header branch scopes DataContext)
   const staffForPurchase = useMemo(() => {
-    const list = staffAllBranches.length ? staffAllBranches : staff
-    return (list || []).filter(s => String(s.status || 'Active').toLowerCase() !== 'inactive')
-  }, [staffAllBranches, staff])
+    return (staff || []).filter(s => String(s.status || 'Active').toLowerCase() !== 'inactive')
+  }, [staff])
   const helds = Array.isArray(state.helds) ? state.helds : []
   // Tables can come either from state.tables or settings.tables depending on auth/hydration
   const tables = Array.isArray(state.tables) && state.tables.length

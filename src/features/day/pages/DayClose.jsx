@@ -23,24 +23,15 @@ export default function DayClose() {
  // Use businessDate from context as the primary date reference
  const realToday = format(new Date(), 'yyyy-MM-dd')
  const effectiveBusinessDate = businessDate || realToday
- const closedSet = useMemo(() => new Set((state.dayCloses||[]).map(d=>d.date)), [state.dayCloses])
- 
- // Derive suggested date based on businessDate from context
+
+ // Suggested close date: only the currently open daybook. When closed, stay on calendar
+ // today — do NOT jump to lastClosed+1 (skipped days must be opened manually).
  const suggestedDate = useMemo(() => {
  if (state?.daybook?.open && (state?.daybook?.date || '')) {
  return state.daybook.date
  }
- // If there is a recent Day Close, advance business date to the next day (but not beyond today)
- const closedDatesSorted = Array.from(closedSet).filter(Boolean).sort()
- if (closedDatesSorted.length) {
- const lastClosed = closedDatesSorted[closedDatesSorted.length - 1]
- try {
- const nextDay = format(addDays(new Date(`${lastClosed}T00:00:00`), 1), 'yyyy-MM-dd')
- return nextDay <= realToday ? nextDay : realToday
- } catch { return realToday }
- }
- return effectiveBusinessDate
- }, [state?.daybook?.open, state?.daybook?.date, closedSet, realToday, effectiveBusinessDate])
+ return realToday
+ }, [state?.daybook?.open, state?.daybook?.date, realToday])
 
  const [date, setDate] = useState(suggestedDate)
  const [countedCash, setCountedCash] = useState('')

@@ -38,6 +38,8 @@ export default function AddStaffTab({
  joinDate: new Date().toLocaleDateString('en-CA'),
  status: 'active',
  shiftId: '',
+ branchId: '',
+ branchName: '',
  username: '',
  password: '',
  role: 'Staff',
@@ -197,6 +199,8 @@ export default function AddStaffTab({
  joinDate: s.joinDate,
  status: s.status || 'active',
  shiftId: s.shiftId || '',
+ branchId: s.branchId || '',
+ branchName: s.branchName || '',
  username: s.loginUsername || '',
  password: '',
  role: s.loginRole || 'Staff',
@@ -221,6 +225,8 @@ export default function AddStaffTab({
  joinDate: new Date().toLocaleDateString('en-CA'),
  status: 'active',
  shiftId: '',
+ branchId: '',
+ branchName: '',
  username: '',
  password: '',
  role: 'Staff',
@@ -482,6 +488,7 @@ export default function AddStaffTab({
           </div>
           <div className="min-w-0">
            <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">{s.name}</div>
+           {s.branchName ? <div className="text-xs font-medium text-indigo-600 dark:text-indigo-300 truncate">{s.branchName}</div> : null}
            {s.joinDate ? <div className="text-xs text-slate-400">Joined {s.joinDate}</div> : null}
           </div>
          </div>

@@ -84,15 +84,18 @@ export default function PayrollTab({
     const q = staffSearch.trim().toLowerCase();
     if (!q) return tabRowsRaw;
     return tabRowsRaw.filter((r) => {
+      const st = (staff || []).find(s => String(s.id) === String(r.staffId));
       const hay = [
         r.staffName,
+        r.branchName,
+        st?.branchName,
         r.position,
         r.slipNo,
         r.status,
       ].join(' ').toLowerCase();
       return hay.includes(q);
     });
-  }, [tabRowsRaw, staffSearch]);
+  }, [tabRowsRaw, staffSearch, staff]);
   const visibleSelectable = tabRows.map((r) => String(r._id)).filter((id) => selectableIds.includes(id));
   const allVisibleSelected = visibleSelectable.length > 0 && visibleSelectable.every((id) => selected.includes(id));
 
@@ -481,6 +484,11 @@ export default function PayrollTab({
                     </td>
                     <td className="px-3 py-2">
                       <div className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</div>
+                      {(() => {
+                        const st = (staff || []).find(s => String(s.id) === String(r.staffId));
+                        const branch = r.branchName || st?.branchName || '';
+                        return branch ? <div className="text-[11px] font-medium text-indigo-600 dark:text-indigo-300">{branch}</div> : null;
+                      })()}
                       <div className="text-[11px] text-slate-400">{r.position || ''} · {r.presentDays ?? 0} present / {r.absentDays ?? 0} absent</div>
                     </td>
                     <td className="px-3 py-2 text-right font-semibold dark:text-slate-200">{money(r.basicSalary)}</td>

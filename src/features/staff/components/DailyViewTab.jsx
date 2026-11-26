@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -22,8 +22,39 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
   const m = dailyDate.slice(0, 7);
   if (m && m !== month) setMonth(m);
  }, [dailyDate, month, setMonth]);
- 
- const daily = attendance.filter(r => r.date === dailyDate);
+
+ // Active staff with no attendance row for the day count as Absent
+ const daily = useMemo(() => {
+  const dayRecs = (attendance || []).filter(r => String(r.date) === String(dailyDate));
+  const byStaff = new Map(dayRecs.map(r => [String(r.staffId), r]));
+  const active = (staff || []).filter(s => {
+   if (s.status === 'inactive') return false;
+   if (s.joinDate && String(s.joinDate) > String(dailyDate)) return false;
+   return true;
+  });
+  const rows = active.map(s => {
+   const existing = byStaff.get(String(s.id));
+   if (existing) return existing;
+   return {
+    id: `absent-${s.id}-${dailyDate}`,
+    staffId: s.id,
+    staffName: s.name,
+    branchName: s.branchName || '',
+    date: dailyDate,
+    status: 'Absent',
+    checkIn: '',
+    checkOut: '',
+    lateMinutes: 0,
+    earlyOutMinutes: 0,
+    _synthetic: true,
+   };
+  });
+  // Keep any orphan records (staff deleted) that already exist for the day
+  for (const r of dayRecs) {
+   if (!rows.some(x => String(x.staffId) === String(r.staffId))) rows.push(r);
+  }
+  return rows.sort((a, b) => String(a.staffName || '').localeCompare(String(b.staffName || '')));
+ }, [attendance, staff, dailyDate]);
  
  const getStatusColor = (status) => {
  switch(status) {
@@ -52,7 +83,8 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
  const reportRows = daily.map(r => {
   const st = staff.find(s => String(s.id) === String(r.staffId));
   return {
-   staffName: r.staffName,
+   staffName: r.staffName || st?.name || '-',
+   branchName: st?.branchName || r.branchName || '-',
    position: st?.position || '-',
    shift: shiftLabelFor(st),
    status: r.status,
@@ -75,9 +107,9 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
    ]) +
    reportSec(`Daily Attendance — ${dailyDate}`) +
    reportTable({
-    headers: ['Staff', 'Position', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'],
+    headers: ['Staff', 'Branch', 'Position', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'],
     numbered: true,
-    rows: reportRows.map(r => [r.staffName, r.position, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]),
+    rows: reportRows.map(r => [r.staffName, r.branchName, r.position, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]),
     emptyText: 'No attendance records for this date',
    });
   const html = wrapReportDoc({
@@ -116,9 +148,9 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
 
  const exportCSV = () => {
   try {
-   const header = ['Staff', 'Position', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'];
+   const header = ['Staff', 'Branch', 'Position', 'Shift', 'Status', 'Check In', 'Check Out', 'Late Min', 'Early Min'];
    const lines = reportRows.map(r =>
-    [r.staffName, r.position, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]
+    [r.staffName, r.branchName, r.position, r.shift, r.status, r.checkIn, r.checkOut, r.lateMinutes, r.earlyMinutes]
      .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
    );
    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -175,7 +207,7 @@ export default function DailyViewTab({ attendance, staff, fmt12, onMarkLeave, to
  return (
  <tr key={r.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-50/50 dark:bg-slate-800/50'}`}><td className="px-4 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
  {r.staffName?.charAt(0).toUpperCase()}
- </div><span className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</span></div></td><td className="px-4 py-4"><span className={`font-mono text-sm ${st?.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>{st?.biometricId || '—'}</span></td><td className="px-4 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+ </div><div className="min-w-0"><div className="font-semibold text-slate-800 dark:text-slate-200 truncate">{r.staffName}</div>{(st?.branchName || r.branchName) ? <div className="text-xs font-medium text-indigo-600 dark:text-indigo-300 truncate">{st?.branchName || r.branchName}</div> : null}</div></div></td><td className="px-4 py-4"><span className={`font-mono text-sm ${st?.biometricId ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'}`}>{st?.biometricId || '—'}</span></td><td className="px-4 py-4"><span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
  {st?.position || '-'}
  </span></td><td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">{shiftLabelFor(st)}</td><td className="px-4 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>
  {r.status}

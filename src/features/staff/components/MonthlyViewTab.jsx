@@ -231,7 +231,7 @@ export default function MonthlyViewTab({
  const sh = shifts.find(x => x.id === s.shiftId);
  return (
  <option key={s.id} value={s.id}>
- {s.name} - {s.position}{sh ? ` · ${sh.name}` : ''}{s.biometricId ? ` · Bio ${s.biometricId}` : ''}
+ {s.name}{s.branchName ? ` · ${s.branchName}` : ''} - {s.position}{sh ? ` · ${sh.name}` : ''}{s.biometricId ? ` · Bio ${s.biometricId}` : ''}
  </option>
  );
  })}
@@ -281,6 +281,7 @@ export default function MonthlyViewTab({
      </div>
      <div className="min-w-0">
       <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">{sel.name}</div>
+      {sel.branchName ? <div className="text-xs font-medium text-indigo-600 dark:text-indigo-300 truncate">{sel.branchName}</div> : null}
       <div className="text-xs text-slate-500 dark:text-slate-400">{sel.position || 'Staff'}</div>
      </div>
     </div>

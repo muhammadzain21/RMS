@@ -205,6 +205,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false)
   const [voidRows, setVoidRows] = useState([])
   const [attendanceRows, setAttendanceRows] = useState([])
+  const [biometricByStaff, setBiometricByStaff] = useState(() => new Map())
   const [pieIndex, setPieIndex] = useState(0)
   // Sales fetched for the selected date (source of truth for dashboard filter)
   const [daySalesOverride, setDaySalesOverride] = useState(null)
@@ -444,6 +445,11 @@ export default function Dashboard() {
     }
   }, [dayExpenses, state.expenses, state.payInOuts, selectedDate])
 
+  const authHeaders = useMemo(
+    () => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }),
+    [token]
+  )
+
   const hrRows = useMemo(() => {
     const staffById = Object.fromEntries((state.staff || []).map(s => [String(s.id), s]))
     const byPos = {}
@@ -463,20 +469,71 @@ export default function Dashboard() {
       .sort((a, b) => a.designation.localeCompare(b.designation))
   }, [attendanceRows, state.staff])
 
+  // Biometric enroll IDs live in mappings, not on the staff document
+  useEffect(() => {
+    if (!token) {
+      setBiometricByStaff(new Map())
+      return undefined
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`${API}/api/biometric/mappings`, {
+          headers: authHeaders,
+          cache: 'no-store',
+        })
+        if (!res.ok || cancelled) return
+        const data = await res.json().catch(() => ({}))
+        const items = Array.isArray(data?.items) ? data.items : []
+        const map = new Map()
+        for (const m of items) {
+          if (!m || m.active === false || !m.staffId || !m.enrollId) continue
+          map.set(String(m.staffId), String(m.enrollId).trim())
+        }
+        if (!cancelled) setBiometricByStaff(map)
+      } catch {
+        if (!cancelled) setBiometricByStaff(new Map())
+      }
+    })()
+    return () => { cancelled = true }
+  }, [token, API, authHeaders])
+
   const hrAttendanceTable = useMemo(() => {
-    const staffList = state.staff || []
-    const rows = (attendanceRows || []).map(r => {
-      const st = staffList.find(s => String(s.id) === String(r.staffId))
+    const staffList = (state.staff || []).filter(s => {
+      if (s.status === 'inactive') return false
+      if (s.joinDate && selectedDate && String(s.joinDate) > String(selectedDate)) return false
+      return true
+    })
+    const byStaff = new Map((attendanceRows || []).map(r => [String(r.staffId), r]))
+    const rows = staffList.map(st => {
+      const r = byStaff.get(String(st.id))
+      const biometricId = biometricByStaff.get(String(st.id)) || st?.biometricId || ''
+      if (r) {
+        return {
+          id: r.id || r._id || `${r.staffId}-${r.date}`,
+          staffName: r.staffName || st?.name || '—',
+          branchName: st?.branchName || '',
+          biometricId,
+          position: st?.position || '—',
+          status: r.status || '—',
+          checkIn: r.checkIn || '',
+          checkOut: r.checkOut || '',
+          lateMinutes: Number(r.lateMinutes || 0),
+          earlyOutMinutes: Number(r.earlyOutMinutes || 0),
+        }
+      }
+      // Not marked → Absent (for widgets + table)
       return {
-        id: r.id || r._id || `${r.staffId}-${r.date}`,
-        staffName: r.staffName || st?.name || '—',
-        biometricId: st?.biometricId || '',
-        position: st?.position || '—',
-        status: r.status || '—',
-        checkIn: r.checkIn || '',
-        checkOut: r.checkOut || '',
-        lateMinutes: Number(r.lateMinutes || 0),
-        earlyOutMinutes: Number(r.earlyOutMinutes || 0),
+        id: `absent-${st.id}-${selectedDate}`,
+        staffName: st.name || '—',
+        branchName: st.branchName || '',
+        biometricId,
+        position: st.position || '—',
+        status: 'Absent',
+        checkIn: '',
+        checkOut: '',
+        lateMinutes: 0,
+        earlyOutMinutes: 0,
       }
     }).sort((a, b) => String(a.staffName).localeCompare(String(b.staffName)))
     const stats = {
@@ -486,7 +543,7 @@ export default function Dashboard() {
       absent: rows.filter(r => r.status === 'Absent').length,
     }
     return { rows, stats }
-  }, [attendanceRows, state.staff])
+  }, [attendanceRows, state.staff, selectedDate, biometricByStaff])
 
   const hrStatusClass = (status) => {
     switch (String(status || '')) {
@@ -497,11 +554,6 @@ export default function Dashboard() {
       default: return 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-400'
     }
   }
-
-  const authHeaders = useMemo(
-    () => ({ ...(token ? { Authorization: `Bearer ${token}` } : {}) }),
-    [token]
-  )
 
   const refreshData = useCallback(async (opts = {}) => {
     const quiet = !!opts.quiet
@@ -1093,7 +1145,12 @@ export default function Dashboard() {
                           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-blue-500 text-sm font-bold text-white">
                             {String(r.staffName || '?').charAt(0).toUpperCase()}
                           </div>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</span>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">{r.staffName}</div>
+                            {r.branchName ? (
+                              <div className="text-xs font-medium text-indigo-600 dark:text-indigo-300">{r.branchName}</div>
+                            ) : null}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">

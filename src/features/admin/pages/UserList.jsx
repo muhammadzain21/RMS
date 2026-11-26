@@ -156,12 +156,14 @@ export default function UserList() {
   const [addOpen, setAddOpen] = useState(false)
   const [roleOpen, setRoleOpen] = useState(false)
   const [addUserError, setAddUserError] = useState('')
-  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, userId: null })
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, userIds: [] })
   const [deleteRoleOpen, setDeleteRoleOpen] = useState(false)
   const [deleteRole, setDeleteRole] = useState(null)
   const [editing, setEditing] = useState(null)
   // Admin default All. Values: 'all' | concrete branchId. Header wins when set.
   const [branchFilter, setBranchFilter] = useState('all')
+  const [userSearch, setUserSearch] = useState('')
+  const [selectedUserIds, setSelectedUserIds] = useState(() => new Set())
 
   const branchName = (id) => {
     if (!id) return '—'
@@ -337,11 +339,28 @@ export default function UserList() {
   }
 
   const confirmDeleteUser = async () => {
+    const ids = (deleteConfirm.userIds || []).map(String).filter(Boolean)
+    if (!ids.length) {
+      setDeleteConfirm({ isOpen: false, userIds: [] })
+      return
+    }
     try {
       setLoading(true)
-      await removeUser(deleteConfirm.userId)
-      toast.success('User removed')
-      setDeleteConfirm({ isOpen: false, userId: null })
+      let ok = 0
+      let fail = 0
+      for (const id of ids) {
+        if (String(currentUser?.id) === String(id)) {
+          fail += 1
+          continue
+        }
+        const res = await removeUser(id)
+        if (res?.ok) ok += 1
+        else fail += 1
+      }
+      if (ok) toast.success(ok === 1 ? 'User removed' : `${ok} users removed`)
+      if (fail) toast.error(fail === 1 ? 'Could not remove 1 user' : `Could not remove ${fail} users`)
+      setSelectedUserIds(new Set())
+      setDeleteConfirm({ isOpen: false, userIds: [] })
     } catch {
       toast.error('Failed to remove user')
     } finally {
@@ -414,23 +433,70 @@ export default function UserList() {
     })
   }
 
-  const userList = useMemo(() => {
-    const list = users || []
-    if (!isAdminUser) return list
-    const effectiveId = headerLocksBranch
-      ? String(activeBranchId)
-      : (branchFilter && branchFilter !== 'all' ? String(branchFilter) : '')
-    if (!effectiveId) return list
-    return list.filter(u => {
-      if (u.role === 'Admin' || u.role === 'SuperAdmin' || u.isHq) return true
-      if (String(u.homeBranchId || '') === effectiveId) return true
-      return Array.isArray(u.branchIds) && u.branchIds.map(String).includes(effectiveId)
-    })
-  }, [users, branchFilter, activeBranchId, isAdminUser, headerLocksBranch])
-
   const pageAccessLabel = (u) => {
     if (Array.isArray(u.pageAccess) && u.pageAccess.length) return `${u.pageAccess.length} custom pages`
     return 'Role default'
+  }
+
+  const userList = useMemo(() => {
+    let list = users || []
+    if (isAdminUser) {
+      const effectiveId = headerLocksBranch
+        ? String(activeBranchId)
+        : (branchFilter && branchFilter !== 'all' ? String(branchFilter) : '')
+      if (effectiveId) {
+        // Branch-scoped: only users belonging to this branch (HQ admins stay visible)
+        list = list.filter(u => {
+          if (u.role === 'Admin' || u.role === 'SuperAdmin' || u.isHq) return true
+          if (String(u.homeBranchId || '') === effectiveId) return true
+          return Array.isArray(u.branchIds) && u.branchIds.map(String).includes(effectiveId)
+        })
+      }
+    }
+    const q = userSearch.trim().toLowerCase()
+    if (!q) return list
+    return list.filter(u => {
+      const branchLabel = u.role === 'Admin' || u.isHq
+        ? 'all branches'
+        : (branches.find(x => String(x._id) === String(u.homeBranchId || ''))?.name || u.homeBranchId || '')
+      const hay = [u.username, u.role, branchLabel, pageAccessLabel(u)].join(' ').toLowerCase()
+      return hay.includes(q)
+    })
+  }, [users, branchFilter, activeBranchId, isAdminUser, headerLocksBranch, userSearch, branches])
+
+  // Drop selections that are no longer visible
+  useEffect(() => {
+    const visible = new Set(userList.map(u => String(u.id)))
+    setSelectedUserIds(prev => {
+      const next = new Set([...prev].filter(id => visible.has(String(id))))
+      return next.size === prev.size ? prev : next
+    })
+  }, [userList])
+
+  const selectableUserIds = useMemo(
+    () => userList.map(u => String(u.id)).filter(id => String(currentUser?.id) !== id),
+    [userList, currentUser?.id]
+  )
+  const allVisibleSelected = selectableUserIds.length > 0 && selectableUserIds.every(id => selectedUserIds.has(id))
+  const someSelected = selectedUserIds.size > 0
+
+  const toggleSelectUser = (id) => {
+    const key = String(id)
+    if (String(currentUser?.id) === key) return
+    setSelectedUserIds(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      setSelectedUserIds(new Set())
+      return
+    }
+    setSelectedUserIds(new Set(selectableUserIds))
   }
 
   const userReportRows = () => userList.map(u => [
@@ -528,6 +594,13 @@ export default function UserList() {
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)]">Users</div>
           <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="text"
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              placeholder="Search users…"
+              className="input py-1.5 text-sm min-w-[12rem]"
+            />
             {isAdminUser ? (
               <div className="flex flex-col gap-0.5">
                 <select
@@ -553,6 +626,23 @@ export default function UserList() {
                 {branchName(managerBranchId) || 'Your branch'}
               </span>
             )}
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              disabled={!selectableUserIds.length}
+              className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+            >
+              {allVisibleSelected ? 'Deselect all' : 'Select all'}
+            </button>
+            <button
+              type="button"
+              disabled={!someSelected || loading}
+              onClick={() => setDeleteConfirm({ isOpen: true, userIds: [...selectedUserIds] })}
+              className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete selected ({selectedUserIds.size})
+            </button>
             <button type="button" onClick={openPrintPreview} className={btnPrint}>Print</button>
             <button type="button" onClick={exportPDF} className={btnPdf}>PDF</button>
             <button type="button" onClick={exportCSV} className={btnCsv}>CSV</button>
@@ -589,6 +679,15 @@ export default function UserList() {
           <table className="tbl min-w-full text-left">
             <thead>
               <tr>
+                <th className="w-10">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAll}
+                    disabled={!selectableUserIds.length}
+                    title={allVisibleSelected ? 'Deselect all' : 'Select all'}
+                  />
+                </th>
                 <th>User</th>
                 <th>Role</th>
                 <th>Branch</th>
@@ -599,6 +698,15 @@ export default function UserList() {
             <tbody>
               {userList.map((u) => (
                 <tr key={u.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.has(String(u.id))}
+                      disabled={String(currentUser?.id) === String(u.id)}
+                      onChange={() => toggleSelectUser(u.id)}
+                      title={String(currentUser?.id) === String(u.id) ? 'Cannot select your own account' : 'Select'}
+                    />
+                  </td>
                   <td>
                     <div className="flex items-center gap-3">
                       <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--color-surface-muted)] text-sm font-semibold text-[var(--color-text-primary)] ring-1 ring-[var(--color-border)]">
@@ -627,14 +735,22 @@ export default function UserList() {
                   <td>
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => openEdit(u)} className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700">Edit</button>
-                      <button onClick={() => setDeleteConfirm({ isOpen: true, userId: u.id })} className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">Delete</button>
+                      <button
+                        onClick={() => setDeleteConfirm({ isOpen: true, userIds: [String(u.id)] })}
+                        disabled={String(currentUser?.id) === String(u.id)}
+                        className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
               ))}
               {userList.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-[var(--color-text-muted)]">No users for this branch yet.</td>
+                  <td colSpan={6} className="py-8 text-center text-[var(--color-text-muted)]">
+                    {userSearch.trim() ? 'No users match your search.' : 'No users for this branch yet.'}
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -804,9 +920,13 @@ export default function UserList() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-[var(--color-surface)] shadow-2xl ring-1 ring-black/5">
             <div className="border-b border-[var(--color-border)] px-5 py-3 text-base font-semibold text-[var(--color-text-primary)]">Confirm Delete</div>
-            <div className="px-5 py-4 text-sm text-[var(--color-text-body)]">Delete this user? This action cannot be undone.</div>
+            <div className="px-5 py-4 text-sm text-[var(--color-text-body)]">
+              {(deleteConfirm.userIds || []).length > 1
+                ? `Delete ${deleteConfirm.userIds.length} selected users? This cannot be undone.`
+                : 'Delete this user? This action cannot be undone.'}
+            </div>
             <div className="flex items-center justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
-              <button onClick={() => setDeleteConfirm({ isOpen: false, userId: null })} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)]">Cancel</button>
+              <button onClick={() => setDeleteConfirm({ isOpen: false, userIds: [] })} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-text-body)] hover:bg-[var(--color-surface-muted)]">Cancel</button>
               <button onClick={confirmDeleteUser} disabled={loading} className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50">{loading ? 'Deleting…' : 'Delete'}</button>
             </div>
           </div>
